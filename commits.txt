@@ -1081,3 +1081,6 @@ atividade 2026-06-04T10:07:00 - 5
 atividade 2026-06-05T17:08:00 - 1
 atividade 2026-07-06T13:12:00 - 2
 atividade 2026-06-05T20:46:00 - 2
+atividade 2026-07-06T21:17:00 - 3
+atividade 2026-06-07T20:18:00 - 1
+atividade 2026-07-08T13:07:00 - 1
