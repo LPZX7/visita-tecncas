@@ -17,6 +17,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5183,http:/
   .filter(Boolean);
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
