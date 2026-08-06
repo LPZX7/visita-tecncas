@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Dashboard from './Dashboard';
 import Requests from './Requests';
@@ -12,6 +12,7 @@ import Users from './Users';
 import Contracts from './Contracts';
 import ApproveBudget from './ApproveBudget';
 import NotificationBell from '../components/NotificationBell';
+import Sidebar from '../components/Sidebar';
 import Signup from './Signup';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
@@ -54,6 +55,7 @@ export default function App() {
   const linksForRole = (role) => {
     if (!role) return [];
     if (role === 'cliente') return [
+      { to: '/dashboard', label: 'Início' },
       { to: '/requests', label: 'Chamados' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' }
@@ -111,39 +113,40 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
-        <Link to="/dashboard" className="brand-block">
-          <img src="/mirontec-logo.jpg" alt="Mirontec" className="mirontec-mark" onError={(e)=>{e.target.src='/mirontec-logo.svg'}} />
-          <div>
-            <span className="brand-eyebrow">MIRONTEC · OPERAÇÕES DE CAMPO</span>
-            <h1 className="brand-title">Sistema de manutenção de catracas</h1>
+      <Sidebar links={links} user={user} onLogout={handleLogout} />
+
+      <div className="app-main">
+        <header className="topbar">
+          <div className="topbar__title">
+            <span className="topbar__eyebrow">MIRONTEC · OPERAÇÕES DE CAMPO</span>
           </div>
-        </Link>
 
-        <nav className="app-nav">
-          {links.map((l) => (
-            <Link key={l.to} to={l.to}>{l.label}</Link>
-          ))}
-          {isCliente && <NotificationBell />}
-          <button className="secondary-button" onClick={handleLogout} style={{ marginLeft: 12 }}>Sair</button>
-        </nav>
-      </header>
+          {!isCliente && (
+            <div className="topbar__status">
+              <span className="status-item">
+                <span className="status-dot status-dot--green" /> {status.visitasHoje} visita{status.visitasHoje === 1 ? '' : 's'} hoje
+              </span>
+              <span className="status-item">
+                <span className="status-dot status-dot--amber" /> {status.tecnicosEmCampo} técnico{status.tecnicosEmCampo === 1 ? '' : 's'} em campo
+              </span>
+              <span className="status-item">
+                <span className="status-dot status-dot--red" /> {status.orcamentosPendentes} orçamento{status.orcamentosPendentes === 1 ? '' : 's'} pendente{status.orcamentosPendentes === 1 ? '' : 's'}
+              </span>
+            </div>
+          )}
 
-      {!isCliente && (
-        <div className="status-bar">
-          <span className="status-item">
-            <span className="status-dot status-dot--green" /> {status.visitasHoje} visita{status.visitasHoje === 1 ? '' : 's'} hoje
-          </span>
-          <span className="status-item">
-            <span className="status-dot status-dot--amber" /> {status.tecnicosEmCampo} técnico{status.tecnicosEmCampo === 1 ? '' : 's'} em campo
-          </span>
-          <span className="status-item">
-            <span className="status-dot status-dot--red" /> {status.orcamentosPendentes} orçamento{status.orcamentosPendentes === 1 ? '' : 's'} pendente{status.orcamentosPendentes === 1 ? '' : 's'}
-          </span>
-        </div>
-      )}
+          <div className="topbar__actions">
+            <NotificationBell />
+            <button type="button" className="topbar__logout-mobile" onClick={handleLogout} aria-label="Sair">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <path d="M16 17l5-5-5-5M21 12H9" />
+              </svg>
+            </button>
+          </div>
+        </header>
 
-      <main className="page-content">
+        <main className="page-content">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Navigate to="/dashboard" replace />} />
@@ -220,7 +223,8 @@ export default function App() {
             }
           />
         </Routes>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

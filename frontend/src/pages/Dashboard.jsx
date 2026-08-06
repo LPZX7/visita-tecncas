@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser, clearAuth } from '../utils/auth';
-import { BarTrend, CategoryBars } from '../components/Charts';
+import { BarTrend, CategoryBars, Sparkline } from '../components/Charts';
 import Timeline from '../components/Timeline';
 import EmptyState from '../components/EmptyState';
 import RatingInput from '../components/RatingInput';
@@ -32,13 +32,18 @@ function countBy(list, key, colorMap) {
     .filter((row) => row.value > 0);
 }
 
-function last14DaysTrend(requests) {
+function last14Days() {
   const days = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     days.push(d.toISOString().slice(0, 10));
   }
+  return days;
+}
+
+function last14DaysTrend(requests) {
+  const days = last14Days();
   const counts = {};
   requests.forEach((r) => {
     const day = (r.criado_em || '').slice(0, 10);
@@ -49,6 +54,16 @@ function last14DaysTrend(requests) {
     fullLabel: new Date(day).toLocaleDateString('pt-BR'),
     value: counts[day] || 0
   }));
+}
+
+function last14DaysRevenue(budgets) {
+  const days = last14Days();
+  const sums = {};
+  budgets.filter((b) => b.status === 'Aprovado').forEach((b) => {
+    const day = (b.atualizado_em || b.criado_em || '').slice(0, 10);
+    sums[day] = (sums[day] || 0) + Number(b.total || 0);
+  });
+  return days.map((day) => sums[day] || 0);
 }
 
 const STATUS_BADGE = {
@@ -163,6 +178,9 @@ export default function Dashboard() {
   const chamadosPorStatus = countBy(requests, 'status', REQUEST_STATUS_COLOR);
   const orcamentosPorStatus = countBy(budgets, 'status', BUDGET_STATUS_COLOR);
   const tendenciaChamados = last14DaysTrend(requests);
+  const tendenciaChamadosValores = tendenciaChamados.map((d) => d.value);
+  const tendenciaFaturamento = last14DaysRevenue(budgets);
+  const chamadosAbertos = requests.filter((r) => !['Concluída', 'Cancelada'].includes(r.status)).length;
 
   // ---------- cliente-specific derived data ----------
   const minhaEmpresa = companies[0] || null;
@@ -481,29 +499,53 @@ export default function Dashboard() {
 
       {!loading && role === 'gestor' && (
         <div className="stats-grid">
-          <div className="metric-card">
-            <span>Chamados abertos</span>
-            <strong>{metrics.requests}</strong>
+          <div className="metric-card" style={{ '--stagger': 0 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--vermelho"><MetricIcon name="ticket" /></span>
+              <span className="metric-card__label">Chamados abertos</span>
+            </div>
+            <strong>{chamadosAbertos}</strong>
+            {tendenciaChamadosValores.some((v) => v > 0) && (
+              <div className="metric-card__spark"><Sparkline data={tendenciaChamadosValores} color="var(--vermelho)" /></div>
+            )}
           </div>
-          <div className="metric-card">
-            <span>Orçamentos em revisão</span>
+          <div className="metric-card" style={{ '--stagger': 1 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--ambar"><MetricIcon name="budget" /></span>
+              <span className="metric-card__label">Orçamentos em revisão</span>
+            </div>
             <strong>{metrics.budgets}</strong>
           </div>
-          <div className="metric-card">
-            <span>Empresas atendidas</span>
+          <div className="metric-card" style={{ '--stagger': 2 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--azul"><MetricIcon name="building" /></span>
+              <span className="metric-card__label">Empresas atendidas</span>
+            </div>
             <strong>{metrics.companies}</strong>
           </div>
-          <div className="metric-card">
-            <span>Catracas cadastradas</span>
+          <div className="metric-card" style={{ '--stagger': 3 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--azul"><MetricIcon name="equipment" /></span>
+              <span className="metric-card__label">Catracas cadastradas</span>
+            </div>
             <strong>{metrics.equipments}</strong>
           </div>
-          <div className="metric-card">
-            <span>Peças no estoque</span>
+          <div className="metric-card" style={{ '--stagger': 4 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--ambar"><MetricIcon name="box" /></span>
+              <span className="metric-card__label">Peças no estoque</span>
+            </div>
             <strong>{metrics.parts}</strong>
           </div>
-          <div className="metric-card">
-            <span>Faturamento aprovado</span>
+          <div className="metric-card metric-card--highlight" style={{ '--stagger': 5 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--verde"><MetricIcon name="cash" /></span>
+              <span className="metric-card__label">Faturamento aprovado</span>
+            </div>
             <strong>R$ {faturamentoAprovado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            {tendenciaFaturamento.some((v) => v > 0) && (
+              <div className="metric-card__spark"><Sparkline data={tendenciaFaturamento} color="var(--verde)" /></div>
+            )}
           </div>
         </div>
       )}
@@ -616,6 +658,22 @@ export default function Dashboard() {
         </>
       )}
     </section>
+  );
+}
+
+function MetricIcon({ name }) {
+  const paths = {
+    ticket: <><path d="M3 8a2 2 0 012-2h14a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a2 2 0 000-4V8z" /><path d="M10 6v12" strokeDasharray="2 2" /></>,
+    budget: <><rect x="2.5" y="6" width="19" height="13" rx="2.5" /><circle cx="12" cy="12.5" r="3" /></>,
+    building: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h2M14 8h2M8 12h2M14 12h2M8 16h2M14 16h2" /></>,
+    equipment: <><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="12" cy="12" r="4" /></>,
+    box: <><path d="M12 2.5l8.5 4.9v9.2L12 21.5l-8.5-4.9V7.4L12 2.5z" /><path d="M12 21.5v-9M3.5 7.4L12 12.5l8.5-5.1" /></>,
+    cash: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 9v0M18 15v0" /></>
+  };
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
   );
 }
 
