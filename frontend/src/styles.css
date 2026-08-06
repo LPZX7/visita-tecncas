@@ -1688,6 +1688,84 @@ a:hover {
   border-bottom: none;
 }
 
+.row-expand-btn {
+  background: #f1f5f9;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #475569;
+}
+
+.row-expand-btn:hover {
+  background: #e2e8f0;
+}
+
+.units-panel {
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin: 6px 0;
+  animation: cardFadeIn 0.25s ease;
+}
+
+.units-panel h4 {
+  margin: 0 0 12px;
+  font-size: 0.92rem;
+  color: var(--grafite);
+}
+
+.units-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.units-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid rgba(27, 30, 34, 0.06);
+  flex-wrap: wrap;
+}
+
+.units-list li > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.units-list__meta {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.units-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(27, 30, 34, 0.1);
+}
+
+.units-form .form-input,
+.units-form .form-select {
+  width: auto;
+  flex: 1;
+  min-width: 140px;
+}
+
 .row-actions {
   display: flex;
   gap: 8px;

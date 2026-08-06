@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 
-const emptyForm = { empresa_id: '', modelo: '', numero_serie: '', local_instalacao: '', data_instalacao: '', garantia_ate: '' };
+const emptyForm = { empresa_id: '', unidade_id: '', modelo: '', numero_serie: '', local_instalacao: '', data_instalacao: '', garantia_ate: '' };
 
 export default function Equipments() {
   const [equipments, setEquipments] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
@@ -13,6 +14,7 @@ export default function Equipments() {
   const load = () => {
     api.get('/equipments').then((res) => setEquipments(res.data));
     api.get('/companies').then((res) => setCompanies(res.data));
+    api.get('/units').then((res) => setUnits(res.data));
   };
 
   useEffect(() => {
@@ -20,6 +22,8 @@ export default function Equipments() {
   }, []);
 
   const companyName = (id) => companies.find((c) => c.id === id)?.razao_social || '—';
+  const unitName = (id) => units.find((u) => u.id === id)?.nome || null;
+  const unitsForSelectedCompany = units.filter((u) => u.empresa_id === form.empresa_id);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,6 +46,7 @@ export default function Equipments() {
     setEditingId(equipment.id);
     setForm({
       empresa_id: equipment.empresa_id || '',
+      unidade_id: equipment.unidade_id || '',
       modelo: equipment.modelo || '',
       numero_serie: equipment.numero_serie || '',
       local_instalacao: equipment.local_instalacao || '',
@@ -73,11 +78,19 @@ export default function Equipments() {
         <h3>{editingId ? 'Editar equipamento' : 'Novo equipamento'}</h3>
         {error && <div className="alert alert-error">{error}</div>}
         <label className="form-field">Empresa
-          <select className="form-select" value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} required>
+          <select className="form-select" value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value, unidade_id: '' })} required>
             <option value="">Selecione</option>
             {companies.map((company) => (<option key={company.id} value={company.id}>{company.razao_social}</option>))}
           </select>
         </label>
+        {form.empresa_id && unitsForSelectedCompany.length > 0 && (
+          <label className="form-field">Unidade
+            <select className="form-select" value={form.unidade_id} onChange={(e) => setForm({ ...form, unidade_id: e.target.value })}>
+              <option value="">Sede principal (sem unidade específica)</option>
+              {unitsForSelectedCompany.map((unit) => (<option key={unit.id} value={unit.id}>{unit.tipo} — {unit.nome}</option>))}
+            </select>
+          </label>
+        )}
         <label className="form-field">Modelo<input className="form-input" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} required /></label>
         <label className="form-field">Número de série<input className="form-input" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} required /></label>
         <label className="form-field">Local instalação<input className="form-input" value={form.local_instalacao} onChange={(e) => setForm({ ...form, local_instalacao: e.target.value })} /></label>
@@ -95,6 +108,7 @@ export default function Equipments() {
             <th>Modelo</th>
             <th>Nº série</th>
             <th>Empresa</th>
+            <th>Unidade</th>
             <th>Local</th>
             <th></th>
           </tr>
@@ -105,6 +119,7 @@ export default function Equipments() {
               <td>{equipment.modelo}</td>
               <td>{equipment.numero_serie}</td>
               <td>{companyName(equipment.empresa_id)}</td>
+              <td>{unitName(equipment.unidade_id) || '—'}</td>
               <td>{equipment.local_instalacao}</td>
               <td>
                 <div className="row-actions">

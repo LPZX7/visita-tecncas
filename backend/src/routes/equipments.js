@@ -19,11 +19,11 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
+    const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
     if (!empresa_id || !modelo || !numero_serie) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    const equipment = await db.createEquipment({ empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+    const equipment = await db.createEquipment({ empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
     res.status(201).json(equipment);
   } catch (err) {
     next(err);
@@ -36,11 +36,11 @@ router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => 
     if (!existing) {
       return res.status(404).json({ error: 'Equipamento não encontrado' });
     }
-    const { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
+    const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
     if (!empresa_id || !modelo || !numero_serie) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    const updated = await db.updateEquipment(req.params.id, { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+    const updated = await db.updateEquipment(req.params.id, { empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
     res.json(updated);
   } catch (err) {
     next(err);

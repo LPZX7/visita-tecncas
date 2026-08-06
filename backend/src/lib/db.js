@@ -34,6 +34,18 @@ const SCHEMA_SQL = `
     atualizado_em TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS unidades (
+    id TEXT PRIMARY KEY,
+    empresa_id TEXT NOT NULL REFERENCES empresas(id),
+    nome TEXT NOT NULL,
+    tipo TEXT NOT NULL DEFAULT 'Filial',
+    endereco TEXT,
+    telefone TEXT,
+    responsavel TEXT,
+    criado_em TEXT NOT NULL,
+    atualizado_em TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS equipamentos (
     id TEXT PRIMARY KEY,
     empresa_id TEXT NOT NULL REFERENCES empresas(id),
@@ -45,6 +57,8 @@ const SCHEMA_SQL = `
     criado_em TEXT NOT NULL,
     atualizado_em TEXT
   );
+
+  ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
 
   CREATE TABLE IF NOT EXISTS pecas (
     id TEXT PRIMARY KEY,
@@ -136,6 +150,7 @@ const SCHEMA_SQL = `
     criado_em TEXT NOT NULL
   );
 
+  CREATE INDEX IF NOT EXISTS idx_unidades_empresa ON unidades(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_equipamentos_empresa ON equipamentos(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_requests_empresa ON requests(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_budgets_request ON budgets(request_id);
@@ -276,6 +291,43 @@ async function deleteCompany(id) {
   return safeDelete('empresas', id);
 }
 
+// ---------- unidades ----------
+
+async function getUnits(empresa_id) {
+  if (empresa_id) {
+    const { rows } = await pool.query('SELECT * FROM unidades WHERE empresa_id = $1 ORDER BY criado_em DESC', [empresa_id]);
+    return rows;
+  }
+  const { rows } = await pool.query('SELECT * FROM unidades ORDER BY criado_em DESC');
+  return rows;
+}
+
+async function getUnitById(id) {
+  const { rows } = await pool.query('SELECT * FROM unidades WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+async function createUnit(unit) {
+  const row = withDefaults({ id: uuid(), ...unit, criado_em: now() });
+  await pool.query(
+    `INSERT INTO unidades (id, empresa_id, nome, tipo, endereco, telefone, responsavel, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [row.id, row.empresa_id, row.nome, row.tipo, row.endereco, row.telefone, row.responsavel, row.criado_em]
+  );
+  return getUnitById(row.id);
+}
+
+async function updateUnit(id, patch) {
+  const existing = await getUnitById(id);
+  if (!existing) return null;
+  await updateRow('unidades', id, patch);
+  return getUnitById(id);
+}
+
+async function deleteUnit(id) {
+  return safeDelete('unidades', id);
+}
+
 // ---------- equipamentos ----------
 
 async function getEquipments() {
@@ -291,9 +343,9 @@ async function getEquipmentById(id) {
 async function createEquipment(equipment) {
   const row = withDefaults({ id: uuid(), ...equipment, criado_em: now() });
   await pool.query(
-    `INSERT INTO equipamentos (id, empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [row.id, row.empresa_id, row.modelo, row.numero_serie, row.local_instalacao, row.data_instalacao, row.garantia_ate, row.criado_em]
+    `INSERT INTO equipamentos (id, empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [row.id, row.empresa_id, row.unidade_id, row.modelo, row.numero_serie, row.local_instalacao, row.data_instalacao, row.garantia_ate, row.criado_em]
   );
   return getEquipmentById(row.id);
 }
@@ -578,6 +630,11 @@ module.exports = {
   getCompanies,
   getCompanyById,
   createCompany,
+  getUnits,
+  getUnitById,
+  createUnit,
+  updateUnit,
+  deleteUnit,
   updateCompany,
   deleteCompany,
   getEquipments,
