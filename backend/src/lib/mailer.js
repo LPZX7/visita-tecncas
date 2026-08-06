@@ -1,4 +1,7 @@
+const dns = require('dns');
 const nodemailer = require('nodemailer');
+
+dns.setDefaultResultOrder('ipv4first');
 
 const { GMAIL_USER, GMAIL_APP_PASSWORD } = process.env;
 
