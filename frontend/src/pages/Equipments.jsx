@@ -23,7 +23,7 @@ export default function Equipments() {
 
   const companyName = (id) => companies.find((c) => c.id === id)?.razao_social || '—';
   const unitName = (id) => units.find((u) => u.id === id)?.nome || null;
-  const unitsForSelectedCompany = units.filter((u) => u.empresa_id === form.empresa_id);
+  const unitsForSelectedCompany = units.filter((u) => u.empresa_id === form.empresa_id && u.status !== 'inativo');
 
   const handleSubmit = async (e) => {
     e.preventDefault();

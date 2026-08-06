@@ -5,6 +5,8 @@ import Dashboard from './Dashboard';
 import Requests from './Requests';
 import Budgets from './Budgets';
 import Companies from './Companies';
+import CreateSede from './CreateSede';
+import CreateFilial from './CreateFilial';
 import Equipments from './Equipments';
 import Parts from './Parts';
 import Rules from './Rules';
@@ -64,12 +66,20 @@ export default function App() {
       { to: '/dashboard', label: 'Agenda' },
       { to: '/requests', label: 'Chamados' }
     ];
+    const empresaGroup = {
+      label: 'Empresa',
+      children: [
+        { to: '/companies/nova', label: 'Cadastrar Empresa' },
+        { to: '/companies/sede', label: 'Cadastrar Sede' },
+        { to: '/companies/filial', label: 'Cadastrar Filial' }
+      ]
+    };
     if (role === 'analista') return [
       { to: '/dashboard', label: 'Dashboard' },
       { to: '/requests', label: 'Chamados' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
-      { to: '/companies', label: 'Empresas' },
+      empresaGroup,
       { to: '/equipments', label: 'Equipamentos' },
       { to: '/users', label: 'Usuários' }
     ];
@@ -78,7 +88,7 @@ export default function App() {
       { to: '/requests', label: 'Chamados' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
-      { to: '/companies', label: 'Empresas' },
+      empresaGroup,
       { to: '/equipments', label: 'Equipamentos' },
       { to: '/parts', label: 'Peças' },
       { to: '/rules', label: 'Regras' },
@@ -179,6 +189,30 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista']}>
                 <Companies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/nova"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista']}>
+                <Companies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/sede"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista']}>
+                <CreateSede />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/companies/filial"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista']}>
+                <CreateFilial />
               </ProtectedRoute>
             }
           />

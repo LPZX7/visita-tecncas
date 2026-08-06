@@ -19,11 +19,11 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status = 'ativo' } = req.body;
-    if (!razao_social || !cnpj || !endereco) {
+    const { razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status = 'ativo' } = req.body;
+    if (!razao_social || !cnpj) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    const company = await db.createCompany({ razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status });
+    const company = await db.createCompany({ razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status });
     res.status(201).json(company);
   } catch (err) {
     next(err);
@@ -36,11 +36,11 @@ router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => 
     if (!existing) {
       return res.status(404).json({ error: 'Empresa não encontrada' });
     }
-    const { razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status } = req.body;
-    if (!razao_social || !cnpj || !endereco) {
+    const { razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status } = req.body;
+    if (!razao_social || !cnpj) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    const updated = await db.updateCompany(req.params.id, { razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status });
+    const updated = await db.updateCompany(req.params.id, { razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status });
     res.json(updated);
   } catch (err) {
     next(err);

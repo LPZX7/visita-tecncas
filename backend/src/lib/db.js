@@ -46,6 +46,21 @@ const SCHEMA_SQL = `
     atualizado_em TEXT
   );
 
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS codigo TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS cnpj TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS cep TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS numero TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS complemento TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS bairro TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS cidade TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS estado TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS email TEXT;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_sede_unica ON unidades(empresa_id) WHERE tipo = 'Sede';
+
+  ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
+  ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
+
   CREATE TABLE IF NOT EXISTS equipamentos (
     id TEXT PRIMARY KEY,
     empresa_id TEXT NOT NULL REFERENCES empresas(id),
@@ -273,9 +288,9 @@ async function getCompanyById(id) {
 async function createCompany(company) {
   const row = withDefaults({ id: uuid(), ...company, criado_em: now() });
   await pool.query(
-    `INSERT INTO empresas (id, razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-    [row.id, row.razao_social, row.nome_fantasia, row.cnpj, row.endereco, row.telefone, row.email, row.responsavel, row.modelo_cobranca, row.status, row.criado_em]
+    `INSERT INTO empresas (id, razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [row.id, row.razao_social, row.nome_fantasia, row.cnpj, row.inscricao_estadual, row.endereco, row.telefone, row.email, row.responsavel, row.modelo_cobranca, row.status, row.criado_em]
   );
   return getCompanyById(row.id);
 }
@@ -308,11 +323,16 @@ async function getUnitById(id) {
 }
 
 async function createUnit(unit) {
-  const row = withDefaults({ id: uuid(), ...unit, criado_em: now() });
+  const row = withDefaults({
+    id: uuid(),
+    ...unit,
+    status: unit.status || 'ativo',
+    criado_em: now()
+  });
   await pool.query(
-    `INSERT INTO unidades (id, empresa_id, nome, tipo, endereco, telefone, responsavel, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [row.id, row.empresa_id, row.nome, row.tipo, row.endereco, row.telefone, row.responsavel, row.criado_em]
+    `INSERT INTO unidades (id, empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+    [row.id, row.empresa_id, row.nome, row.tipo, row.codigo, row.cnpj, row.cep, row.endereco, row.numero, row.complemento, row.bairro, row.cidade, row.estado, row.responsavel, row.telefone, row.email, row.status, row.criado_em]
   );
   return getUnitById(row.id);
 }
