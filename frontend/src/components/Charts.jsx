@@ -101,6 +101,66 @@ export function Sparkline({ data, color = 'var(--azul)', width = 120, height = 3
   );
 }
 
+export function DonutChart({ data, size = 200, thickness = 26 }) {
+  const [hover, setHover] = useState(null);
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  let cumulative = 0;
+
+  return (
+    <div className="donut-wrap">
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="donut-svg">
+        <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+          {total === 0 ? (
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={GRID} strokeWidth={thickness} />
+          ) : (
+            data.map((d, i) => {
+              const frac = d.value / total;
+              const dash = frac * c;
+              const offset = -cumulative;
+              cumulative += dash;
+              return (
+                <circle
+                  key={d.label}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={r}
+                  fill="none"
+                  stroke={d.color}
+                  strokeWidth={thickness}
+                  strokeDasharray={`${dash} ${c - dash}`}
+                  strokeDashoffset={offset}
+                  opacity={hover === null || hover === i ? 1 : 0.35}
+                  onMouseEnter={() => setHover(i)}
+                  onMouseLeave={() => setHover((h) => (h === i ? null : h))}
+                  style={{ transition: 'opacity 0.15s ease', cursor: 'pointer' }}
+                />
+              );
+            })
+          )}
+        </g>
+        <text x={size / 2} y={size / 2 - 4} textAnchor="middle" fontSize="22" fontWeight="700" fill={INK}>{total}</text>
+        <text x={size / 2} y={size / 2 + 16} textAnchor="middle" fontSize="11" fill={MUTED}>visitas</text>
+      </svg>
+      <ul className="donut-legend">
+        {data.map((d, i) => (
+          <li
+            key={d.label}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover((h) => (h === i ? null : h))}
+            style={{ opacity: hover === null || hover === i ? 1 : 0.5 }}
+          >
+            <span className="donut-legend__dot" style={{ background: d.color }} />
+            <span className="donut-legend__label">{d.label}</span>
+            <span className="donut-legend__value">{d.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function CategoryBars({ data, height }) {
   const [hover, setHover] = useState(null);
   const width = 560;

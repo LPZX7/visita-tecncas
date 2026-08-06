@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser, clearAuth } from '../utils/auth';
-import { BarTrend, CategoryBars, Sparkline } from '../components/Charts';
+import { BarTrend, CategoryBars, Sparkline, DonutChart } from '../components/Charts';
 import Timeline from '../components/Timeline';
 import EmptyState from '../components/EmptyState';
 import RatingInput from '../components/RatingInput';
+import VisitCalendar from '../components/VisitCalendar';
+
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 const REQUEST_STATUS_COLOR = {
   'Aberta': 'var(--vermelho)',
@@ -101,6 +104,7 @@ export default function Dashboard() {
   const [companies, setCompanies] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [contracts, setContracts] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
@@ -113,15 +117,17 @@ export default function Dashboard() {
     setLoading(true);
     try {
       if (role === 'gestor') {
-        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes] = await Promise.all([
+        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes, usersRes] = await Promise.all([
           api.get('/requests'),
           api.get('/budgets'),
           api.get('/companies'),
           api.get('/equipments'),
-          api.get('/parts')
+          api.get('/parts'),
+          api.get('/users')
         ]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
+        setUsers(usersRes.data);
         setMetrics({
           requests: requestsRes.data.length,
           budgets: budgetsRes.data.length,
@@ -181,6 +187,51 @@ export default function Dashboard() {
   const tendenciaChamadosValores = tendenciaChamados.map((d) => d.value);
   const tendenciaFaturamento = last14DaysRevenue(budgets);
   const chamadosAbertos = requests.filter((r) => !['Concluída', 'Cancelada'].includes(r.status)).length;
+
+  // ---------- calendário de visitas (mês atual) ----------
+  const now = new Date();
+  const calYear = now.getFullYear();
+  const calMonth = now.getMonth();
+  const approvedByRequest = {};
+  budgets.filter((b) => b.status === 'Aprovado').forEach((b) => {
+    approvedByRequest[b.request_id] = (approvedByRequest[b.request_id] || 0) + Number(b.total || 0);
+  });
+
+  const monthRequests = requests.filter((r) => {
+    const day = (r.agendado_para || '').slice(0, 10);
+    if (!day) return false;
+    const d = new Date(day);
+    return d.getFullYear() === calYear && d.getMonth() === calMonth;
+  });
+
+  const calendarDayData = {};
+  monthRequests.forEach((r) => {
+    const day = r.agendado_para.slice(0, 10);
+    if (!calendarDayData[day]) calendarDayData[day] = { count: 0, valor: 0 };
+    calendarDayData[day].count += 1;
+    calendarDayData[day].valor += approvedByRequest[r.id] || 0;
+  });
+
+  const daysInCalMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const revenueColumnData = Array.from({ length: daysInCalMonth }, (_, i) => {
+    const d = i + 1;
+    const key = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const valor = calendarDayData[key]?.valor || 0;
+    return { label: String(d).padStart(2, '0'), fullLabel: `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, value: valor };
+  });
+
+  const userNameById = {};
+  users.forEach((u) => { userNameById[u.id] = u.nome; });
+  const TECH_COLORS = ['var(--azul)', 'var(--verde)', 'var(--ambar)', 'var(--vermelho)', '#8b5cf6', '#0ea5e9', '#f472b6'];
+  const visitasPorTecnico = {};
+  monthRequests.forEach((r) => {
+    if (!r.assigned_technician) return;
+    const nome = userNameById[r.assigned_technician] || 'Técnico';
+    visitasPorTecnico[nome] = (visitasPorTecnico[nome] || 0) + 1;
+  });
+  const tecnicoDonutData = Object.entries(visitasPorTecnico)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, value], i) => ({ label, value, color: TECH_COLORS[i % TECH_COLORS.length] }));
 
   // ---------- cliente-specific derived data ----------
   const minhaEmpresa = companies[0] || null;
@@ -577,6 +628,41 @@ export default function Dashboard() {
               <p className="section-text">Nenhum orçamento cadastrado.</p>
             ) : (
               <CategoryBars data={orcamentosPorStatus} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {!loading && role === 'gestor' && (
+        <div className="panel-card">
+          <h3><SectionIcon name="calendar" /> Calendário de visitas — {MONTH_NAMES[calMonth]} {calYear}</h3>
+          <p className="chart-card__subtitle">Cada dia mostra quantas visitas aconteceram e o valor aprovado no período.</p>
+          {monthRequests.length === 0 ? (
+            <p className="section-text">Nenhuma visita agendada em {MONTH_NAMES[calMonth]}.</p>
+          ) : (
+            <VisitCalendar year={calYear} month={calMonth} dayData={calendarDayData} />
+          )}
+        </div>
+      )}
+
+      {!loading && role === 'gestor' && (
+        <div className="charts-grid charts-grid--split">
+          <div className="chart-card">
+            <h3>Faturamento aprovado por dia</h3>
+            <p className="chart-card__subtitle">Valor aprovado por dia em {MONTH_NAMES[calMonth]}</p>
+            {revenueColumnData.every((d) => d.value === 0) ? (
+              <p className="section-text">Nenhum orçamento aprovado neste mês ainda.</p>
+            ) : (
+              <BarTrend data={revenueColumnData} color="var(--verde)" />
+            )}
+          </div>
+          <div className="chart-card">
+            <h3>Técnicos em campo</h3>
+            <p className="chart-card__subtitle">Visitas realizadas por técnico em {MONTH_NAMES[calMonth]}</p>
+            {tecnicoDonutData.length === 0 ? (
+              <p className="section-text">Nenhum técnico com visitas atribuídas neste mês.</p>
+            ) : (
+              <DonutChart data={tecnicoDonutData} />
             )}
           </div>
         </div>

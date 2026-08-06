@@ -805,6 +805,159 @@ a:hover {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.charts-grid--split {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+/* ---------- Visit calendar ---------- */
+
+.visit-calendar {
+  margin-top: 8px;
+}
+
+.visit-calendar__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 6px;
+}
+
+.visit-calendar__weekdays span {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.visit-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.visit-calendar__cell {
+  aspect-ratio: 1;
+  min-height: 64px;
+  border-radius: 10px;
+  border: 1px solid rgba(27, 30, 34, 0.06);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #f8fafc;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.visit-calendar__cell--empty {
+  border: none;
+  background: transparent;
+}
+
+.visit-calendar__cell.has-visit {
+  border-color: rgba(34, 197, 94, 0.35);
+  cursor: default;
+}
+
+.visit-calendar__cell.has-visit:hover {
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
+}
+
+.visit-calendar__cell.is-today {
+  border: 2px solid var(--azul);
+}
+
+.visit-calendar__day {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.visit-calendar__badge {
+  align-self: flex-start;
+  background: var(--verde);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.visit-calendar__valor {
+  margin-top: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #166534;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  .visit-calendar__cell {
+    min-height: 46px;
+    padding: 4px;
+  }
+  .visit-calendar__valor {
+    display: none;
+  }
+}
+
+/* ---------- Donut chart ---------- */
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.donut-svg {
+  flex-shrink: 0;
+}
+
+.donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #334155;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.donut-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donut-legend__label {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legend__value {
+  font-weight: 700;
+  color: #0f172a;
+}
+
 .charts-grid {
   display: grid;
   gap: 18px;
