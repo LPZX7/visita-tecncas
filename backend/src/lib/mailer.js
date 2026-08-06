@@ -5,9 +5,11 @@ const { GMAIL_USER, GMAIL_APP_PASSWORD } = process.env;
 const transporter = GMAIL_USER && GMAIL_APP_PASSWORD
   ? nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false,
+      requireTLS: true,
       family: 4,
+      connectionTimeout: 15000,
       auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }
     })
   : null;
@@ -24,7 +26,7 @@ async function sendMail({ to, subject, text }) {
     const info = await transporter.sendMail({ from: GMAIL_USER, to, subject, text });
     console.log(`[mailer] Email aceito pelo Gmail — messageId: ${info.messageId}, response: ${info.response}`);
   } catch (err) {
-    console.error('[mailer] Falha ao enviar email:', err.message);
+    console.error(`[mailer] Falha ao enviar email: ${err.message} (code=${err.code}, address=${err.address}, port=${err.port})`);
   }
 }
 
