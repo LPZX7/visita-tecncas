@@ -1,6 +1,0 @@
-**/node_modules
-backend/data
-backend/.env
-frontend/.env
-frontend/dist
-.git
