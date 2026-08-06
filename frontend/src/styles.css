@@ -1928,6 +1928,55 @@ a:hover {
   border: 1px solid rgba(37, 99, 235, 0.2);
 }
 
+.import-panel {
+  background: #f8fafc;
+  border: 1px dashed rgba(27, 30, 34, 0.15);
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin: 20px 0;
+}
+
+.import-panel h4 {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+  color: var(--grafite);
+}
+
+.import-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.import-panel__file {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 0.85rem;
+  color: #475569;
+  cursor: pointer;
+  max-width: 240px;
+}
+
+.import-panel__file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-panel__file input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .map-link {
   display: inline-flex;
   align-items: center;

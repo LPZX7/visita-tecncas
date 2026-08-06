@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
+import { normalizeDoc } from '../utils/csv';
+import ImportPanel from '../components/ImportPanel';
 
 const emptyForm = {
   nome: '', codigo: '', cnpj: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '',
@@ -109,9 +111,59 @@ export default function CreateFilial() {
     }
   };
 
+  const handleImport = async (rows) => {
+    let successCount = 0;
+    const errors = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const empresa = companies.find((c) => normalizeDoc(c.cnpj) === normalizeDoc(r.empresa_cnpj));
+      if (!empresa) {
+        errors.push({ row: i + 2, message: `Empresa com CNPJ "${r.empresa_cnpj || ''}" não encontrada.` });
+        continue;
+      }
+      if (!r.nome) {
+        errors.push({ row: i + 2, message: 'Nome da filial é obrigatório.' });
+        continue;
+      }
+      try {
+        await api.post('/units', {
+          empresa_id: empresa.id,
+          tipo: 'Filial',
+          nome: r.nome,
+          codigo: r.codigo || '',
+          cnpj: r.cnpj || '',
+          cep: r.cep || '',
+          endereco: r.endereco || '',
+          numero: r.numero || '',
+          complemento: r.complemento || '',
+          bairro: r.bairro || '',
+          cidade: r.cidade || '',
+          estado: r.estado || '',
+          responsavel: r.responsavel || '',
+          telefone: r.telefone || '',
+          email: r.email || '',
+          status: r.status === 'inativo' ? 'inativo' : 'ativo'
+        });
+        successCount++;
+      } catch (err) {
+        errors.push({ row: i + 2, message: err.response?.data?.error || 'Erro ao importar' });
+      }
+    }
+    await load();
+    return { success: successCount, errors };
+  };
+
   return (
     <div>
       <h2 className="page-title">Cadastrar Filial</h2>
+
+      <ImportPanel
+        title="Importar filiais em massa"
+        hint="Envie um CSV com as colunas: empresa_cnpj (deve ser de uma empresa já cadastrada), nome, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status (ativo/inativo)."
+        templateHeaders={['empresa_cnpj', 'nome', 'codigo', 'cnpj', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'responsavel', 'telefone', 'email', 'status']}
+        templateExample={['12.345.678/0001-90', 'Filial Zona Sul', 'FL-001', '12.345.678/0002-71', '04571-000', 'Av. Ibirapuera', '2000', 'Sala 10', 'Moema', 'São Paulo', 'SP', 'João Souza', '(11) 98888-0000', 'filial@exemplo.com', 'ativo']}
+        onImport={handleImport}
+      />
 
       <form onSubmit={handleSubmit} className="card-form">
         <label className="form-field">Empresa

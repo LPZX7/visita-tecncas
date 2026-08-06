@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
+import { normalizeDoc } from '../utils/csv';
+import ImportPanel from '../components/ImportPanel';
 
 const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '' };
 
@@ -87,10 +89,56 @@ export default function CreateSede() {
     }
   };
 
+  const handleImport = async (rows) => {
+    let successCount = 0;
+    const errors = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const empresa = companies.find((c) => normalizeDoc(c.cnpj) === normalizeDoc(r.empresa_cnpj));
+      if (!empresa) {
+        errors.push({ row: i + 2, message: `Empresa com CNPJ "${r.empresa_cnpj || ''}" não encontrada.` });
+        continue;
+      }
+      if (!r.nome) {
+        errors.push({ row: i + 2, message: 'Nome da sede é obrigatório.' });
+        continue;
+      }
+      try {
+        await api.post('/units', {
+          empresa_id: empresa.id,
+          tipo: 'Sede',
+          nome: r.nome,
+          cep: r.cep || '',
+          endereco: r.endereco || '',
+          numero: r.numero || '',
+          cidade: r.cidade || '',
+          estado: r.estado || '',
+          responsavel: r.responsavel || '',
+          telefone: r.telefone || '',
+          email: r.email || ''
+        });
+        successCount++;
+      } catch (err) {
+        errors.push({ row: i + 2, message: err.response?.data?.error || 'Erro ao importar' });
+      }
+    }
+    const res = await api.get('/units');
+    setUnits(res.data);
+    return { success: successCount, errors };
+  };
+
   return (
     <div>
       <h2 className="page-title">Cadastrar Sede</h2>
       <p className="section-text">Cada empresa pode ter apenas uma sede principal.</p>
+
+      <ImportPanel
+        title="Importar sedes em massa"
+        hint="Envie um CSV com as colunas: empresa_cnpj (deve ser de uma empresa já cadastrada), nome, cep, endereco, numero, cidade, estado, responsavel, telefone, email."
+        templateHeaders={['empresa_cnpj', 'nome', 'cep', 'endereco', 'numero', 'cidade', 'estado', 'responsavel', 'telefone', 'email']}
+        templateExample={['12.345.678/0001-90', 'Sede Principal', '01310-100', 'Avenida Paulista', '1000', 'São Paulo', 'SP', 'Maria Silva', '(11) 99999-0000', 'sede@exemplo.com']}
+        onImport={handleImport}
+      />
 
       <form onSubmit={handleSubmit} className="card-form">
         <label className="form-field">Empresa

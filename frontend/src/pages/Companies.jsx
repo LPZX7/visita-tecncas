@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
+import ImportPanel from '../components/ImportPanel';
 
 const emptyForm = { razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '', email: '', telefone: '', status: 'ativo' };
 
@@ -71,6 +72,34 @@ export default function Companies() {
     }
   };
 
+  const handleImport = async (rows) => {
+    let successCount = 0;
+    const errors = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.razao_social || !r.cnpj) {
+        errors.push({ row: i + 2, message: 'Razão social e CNPJ são obrigatórios.' });
+        continue;
+      }
+      try {
+        await api.post('/companies', {
+          razao_social: r.razao_social,
+          nome_fantasia: r.nome_fantasia || '',
+          cnpj: r.cnpj,
+          inscricao_estadual: r.inscricao_estadual || '',
+          email: r.email || '',
+          telefone: r.telefone || '',
+          status: r.status === 'inativo' ? 'inativo' : 'ativo'
+        });
+        successCount++;
+      } catch (err) {
+        errors.push({ row: i + 2, message: err.response?.data?.error || 'Erro ao importar' });
+      }
+    }
+    await load();
+    return { success: successCount, errors };
+  };
+
   return (
     <div>
       <h2 className="page-title">Cadastrar Empresa</h2>
@@ -96,6 +125,14 @@ export default function Companies() {
           {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
         </div>
       </form>
+
+      <ImportPanel
+        title="Importar empresas em massa"
+        hint="Envie um CSV com as colunas: razao_social, nome_fantasia, cnpj, inscricao_estadual, email, telefone, status (ativo/inativo)."
+        templateHeaders={['razao_social', 'nome_fantasia', 'cnpj', 'inscricao_estadual', 'email', 'telefone', 'status']}
+        templateExample={['Empresa Exemplo LTDA', 'Exemplo', '12.345.678/0001-90', '123456789', 'contato@exemplo.com', '(11) 99999-0000', 'ativo']}
+        onImport={handleImport}
+      />
 
       <table className="data-table">
         <thead>
