@@ -108,6 +108,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
+  const [selectedDay, setSelectedDay] = useState(null);
   const profile = getUser();
   const navigate = useNavigate();
   const role = profile?.role;
@@ -128,6 +129,7 @@ export default function Dashboard() {
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
         setUsers(usersRes.data);
+        setCompanies(companiesRes.data);
         setMetrics({
           requests: requestsRes.data.length,
           budgets: budgetsRes.data.length,
@@ -204,12 +206,26 @@ export default function Dashboard() {
     return d.getFullYear() === calYear && d.getMonth() === calMonth;
   });
 
+  const userNameById = {};
+  users.forEach((u) => { userNameById[u.id] = u.nome; });
+  const companyNameById = {};
+  companies.forEach((c) => { companyNameById[c.id] = c.razao_social; });
+
   const calendarDayData = {};
   monthRequests.forEach((r) => {
     const day = r.agendado_para.slice(0, 10);
-    if (!calendarDayData[day]) calendarDayData[day] = { count: 0, valor: 0 };
+    if (!calendarDayData[day]) calendarDayData[day] = { count: 0, valor: 0, visits: [] };
+    const valor = approvedByRequest[r.id] || 0;
     calendarDayData[day].count += 1;
-    calendarDayData[day].valor += approvedByRequest[r.id] || 0;
+    calendarDayData[day].valor += valor;
+    calendarDayData[day].visits.push({
+      id: r.id,
+      empresa: companyNameById[r.empresa_id] || 'Empresa não identificada',
+      tecnico: userNameById[r.assigned_technician] || 'Não atribuído',
+      descricao: r.descricao,
+      status: r.status,
+      valor
+    });
   });
 
   const daysInCalMonth = new Date(calYear, calMonth + 1, 0).getDate();
@@ -220,8 +236,6 @@ export default function Dashboard() {
     return { label: String(d).padStart(2, '0'), fullLabel: `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, value: valor };
   });
 
-  const userNameById = {};
-  users.forEach((u) => { userNameById[u.id] = u.nome; });
   const TECH_COLORS = ['var(--azul)', 'var(--verde)', 'var(--ambar)', 'var(--vermelho)', '#8b5cf6', '#0ea5e9', '#f472b6'];
   const visitasPorTecnico = {};
   monthRequests.forEach((r) => {
@@ -636,11 +650,34 @@ export default function Dashboard() {
       {!loading && role === 'gestor' && (
         <div className="panel-card">
           <h3><SectionIcon name="calendar" /> Calendário de visitas — {MONTH_NAMES[calMonth]} {calYear}</h3>
-          <p className="chart-card__subtitle">Cada dia mostra quantas visitas aconteceram e o valor aprovado no período.</p>
-          {monthRequests.length === 0 ? (
-            <p className="section-text">Nenhuma visita agendada em {MONTH_NAMES[calMonth]}.</p>
-          ) : (
-            <VisitCalendar year={calYear} month={calMonth} dayData={calendarDayData} />
+          <p className="chart-card__subtitle">
+            {monthRequests.length === 0
+              ? `Nenhuma visita agendada em ${MONTH_NAMES[calMonth]} ainda.`
+              : 'Clique em um dia com visita para ver os detalhes.'}
+          </p>
+          <VisitCalendar year={calYear} month={calMonth} dayData={calendarDayData} onDayClick={setSelectedDay} selectedKey={selectedDay} />
+
+          {selectedDay && calendarDayData[selectedDay] && (
+            <div className="day-detail">
+              <div className="day-detail__header">
+                <strong>{new Date(selectedDay).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</strong>
+                <button type="button" className="day-detail__close" onClick={() => setSelectedDay(null)} aria-label="Fechar">×</button>
+              </div>
+              <ul className="day-detail__list">
+                {calendarDayData[selectedDay].visits.map((v) => (
+                  <li key={v.id}>
+                    <div>
+                      <strong>{v.empresa}</strong>
+                      <span className="day-detail__meta">{v.descricao} · Técnico: {v.tecnico}</span>
+                    </div>
+                    <div className="day-detail__right">
+                      <span className="day-detail__valor">{v.valor > 0 ? `R$ ${v.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'sem orçamento aprovado'}</span>
+                      <Badge status={v.status} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}
@@ -650,20 +687,16 @@ export default function Dashboard() {
           <div className="chart-card">
             <h3>Faturamento aprovado por dia</h3>
             <p className="chart-card__subtitle">Valor aprovado por dia em {MONTH_NAMES[calMonth]}</p>
-            {revenueColumnData.every((d) => d.value === 0) ? (
-              <p className="section-text">Nenhum orçamento aprovado neste mês ainda.</p>
-            ) : (
-              <BarTrend data={revenueColumnData} color="var(--verde)" />
-            )}
+            <BarTrend data={revenueColumnData} color="var(--verde)" />
           </div>
           <div className="chart-card">
             <h3>Técnicos em campo</h3>
-            <p className="chart-card__subtitle">Visitas realizadas por técnico em {MONTH_NAMES[calMonth]}</p>
-            {tecnicoDonutData.length === 0 ? (
-              <p className="section-text">Nenhum técnico com visitas atribuídas neste mês.</p>
-            ) : (
-              <DonutChart data={tecnicoDonutData} />
-            )}
+            <p className="chart-card__subtitle">
+              {tecnicoDonutData.length === 0
+                ? `Nenhum técnico foi para a rua em ${MONTH_NAMES[calMonth]} ainda.`
+                : `Visitas realizadas por técnico em ${MONTH_NAMES[calMonth]}`}
+            </p>
+            <DonutChart data={tecnicoDonutData} />
           </div>
         </div>
       )}

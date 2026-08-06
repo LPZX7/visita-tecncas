@@ -5,7 +5,7 @@ const GRID = '#e2e8f0';
 const INK = '#0f172a';
 
 function niceMax(value) {
-  if (value <= 0) return 4;
+  if (value <= 1) return 4;
   const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
   const steps = [1, 2, 2.5, 5, 10];
   for (const step of steps) {

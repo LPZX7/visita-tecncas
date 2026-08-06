@@ -856,7 +856,7 @@ a:hover {
 
 .visit-calendar__cell.has-visit {
   border-color: rgba(34, 197, 94, 0.35);
-  cursor: default;
+  cursor: pointer;
 }
 
 .visit-calendar__cell.has-visit:hover {
@@ -864,8 +864,90 @@ a:hover {
   transform: translateY(-1px);
 }
 
+.visit-calendar__cell.has-visit:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
+}
+
 .visit-calendar__cell.is-today {
   border: 2px solid var(--azul);
+}
+
+.visit-calendar__cell.is-selected {
+  border: 2px solid var(--verde);
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.25);
+}
+
+.day-detail {
+  margin-top: 18px;
+  border-top: 1px solid rgba(27, 30, 34, 0.08);
+  padding-top: 16px;
+  animation: cardFadeIn 0.3s ease;
+}
+
+.day-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.day-detail__header strong {
+  font-family: 'Poppins', sans-serif;
+}
+
+.day-detail__close {
+  background: #f1f5f9;
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #64748b;
+}
+
+.day-detail__close:hover {
+  background: #e2e8f0;
+}
+
+.day-detail__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.day-detail__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+.day-detail__meta {
+  display: block;
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.day-detail__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.day-detail__valor {
+  font-weight: 700;
+  color: #166534;
+  white-space: nowrap;
 }
 
 .visit-calendar__day {
