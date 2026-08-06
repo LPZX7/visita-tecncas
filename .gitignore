@@ -4,3 +4,4 @@ backend/.env
 frontend/.env
 frontend/dist/
 *.log
+frontend/package-lock.json
