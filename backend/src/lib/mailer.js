@@ -1,35 +1,33 @@
-const dns = require('dns');
-const nodemailer = require('nodemailer');
+const { RESEND_API_KEY, RESEND_FROM } = process.env;
 
-dns.setDefaultResultOrder('ipv4first');
-
-const { GMAIL_USER, GMAIL_APP_PASSWORD } = process.env;
-
-const transporter = GMAIL_USER && GMAIL_APP_PASSWORD
-  ? nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      family: 4,
-      connectionTimeout: 15000,
-      auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }
-    })
-  : null;
+const from = RESEND_FROM || 'onboarding@resend.dev';
 
 async function sendMail({ to, subject, text }) {
   if (!to) return;
 
-  if (!transporter) {
-    console.warn(`[mailer] GMAIL_USER/GMAIL_APP_PASSWORD não configurados — email não enviado: "${subject}" para ${to}`);
+  if (!RESEND_API_KEY) {
+    console.warn(`[mailer] RESEND_API_KEY não configurada — email não enviado: "${subject}" para ${to}`);
     return;
   }
 
   try {
-    const info = await transporter.sendMail({ from: GMAIL_USER, to, subject, text });
-    console.log(`[mailer] Email aceito pelo Gmail — messageId: ${info.messageId}, response: ${info.response}`);
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ from, to, subject, text })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error(`[mailer] Falha ao enviar email (${res.status}):`, JSON.stringify(data));
+      return;
+    }
+    console.log(`[mailer] Email aceito pelo Resend — id: ${data.id}`);
   } catch (err) {
-    console.error(`[mailer] Falha ao enviar email: ${err.message} (code=${err.code}, address=${err.address}, port=${err.port})`);
+    console.error('[mailer] Falha ao enviar email:', err.message);
   }
 }
 
