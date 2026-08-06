@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"require\\('./src/routes/companies'\\); require\\('./src/routes/equipments'\\); require\\('./src/routes/parts'\\); require\\('./src/routes/rules'\\); require\\('./src/routes/requests'\\); require\\('./src/routes/budgets'\\); console.log\\('OK: all route modules load without syntax errors'\\)\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\('Concluída'\\)\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\(JSON.stringify\\(JSON.parse\\(d\\).status\\)\\)\\)\")",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

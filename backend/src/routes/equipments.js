@@ -1,0 +1,49 @@
+const express = require('express');
+const db = require('../lib/db');
+const { verifyToken, requireRole } = require('../lib/auth');
+
+const router = express.Router();
+router.use(verifyToken);
+
+router.get('/', (req, res) => {
+  const equipments = db.getEquipments();
+  if (req.user.role === 'cliente') {
+    return res.json(equipments.filter((e) => e.empresa_id === req.user.empresa_id));
+  }
+  res.json(equipments);
+});
+
+router.post('/', requireRole('gestor', 'analista'), (req, res) => {
+  const { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
+  if (!empresa_id || !modelo || !numero_serie) {
+    return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+  }
+  const equipment = db.createEquipment({ empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+  res.status(201).json(equipment);
+});
+
+router.put('/:id', requireRole('gestor', 'analista'), (req, res) => {
+  const existing = db.getEquipmentById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ error: 'Equipamento não encontrado' });
+  }
+  const { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
+  if (!empresa_id || !modelo || !numero_serie) {
+    return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+  }
+  const updated = db.updateEquipment(req.params.id, { empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+  res.json(updated);
+});
+
+router.delete('/:id', requireRole('gestor'), (req, res) => {
+  const result = db.deleteEquipment(req.params.id);
+  if (result.blocked) {
+    return res.status(409).json({ error: 'Não é possível excluir: existem chamados vinculados a este equipamento' });
+  }
+  if (!result.deleted) {
+    return res.status(404).json({ error: 'Equipamento não encontrado' });
+  }
+  res.status(204).end();
+});
+
+module.exports = router;

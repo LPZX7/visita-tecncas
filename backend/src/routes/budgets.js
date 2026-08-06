@@ -1,0 +1,188 @@
+const express = require('express');
+const db = require('../lib/db');
+const { verifyToken, requireRole } = require('../lib/auth');
+const { sendMail } = require('../lib/mailer');
+const { signApprovalToken } = require('../lib/approvalToken');
+const { generateBudgetPdf } = require('../lib/budgetPdf');
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
+
+const router = express.Router();
+router.use(verifyToken);
+
+router.get('/', (req, res) => {
+  const budgets = db.getBudgets();
+  if (req.user.role === 'cliente') {
+    return res.json(budgets.filter((budget) => {
+      const request = db.getRequests().find((req) => req.id === budget.request_id);
+      return request && request.empresa_id === req.user.empresa_id;
+    }));
+  }
+  res.json(budgets);
+});
+
+router.get('/:id/pdf', (req, res) => {
+  const budget = db.getBudgetById(req.params.id);
+  if (!budget) {
+    return res.status(404).json({ error: 'Orçamento não encontrado' });
+  }
+  const request = db.getRequestById(budget.request_id);
+  if (req.user.role === 'cliente' && (!request || request.empresa_id !== req.user.empresa_id)) {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+
+  const company = request ? db.getCompanyById(request.empresa_id) : null;
+  const rule = db.getPricingRuleById(budget.regra_cobranca_id);
+  const items = budget.items.map((item) => ({
+    nome: db.getPartById(item.peca_id)?.nome || 'Peça',
+    quantidade: item.quantidade,
+    valor_unitario: item.valor_unitario
+  }));
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'inline; filename="orcamento.pdf"');
+
+  const doc = generateBudgetPdf({ budget, request, company, rule, items });
+  doc.pipe(res);
+  doc.end();
+});
+
+router.post('/', requireRole('tecnico', 'analista', 'gestor'), (req, res) => {
+  const { request_id, regra_cobranca_id, items = [], deslocamento = 0, urgencia = 0, horas_trabalho = 0 } = req.body;
+  const draft_by = req.user.sub;
+  if (!request_id || !regra_cobranca_id) {
+    return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+  }
+
+  const rule = db.getPricingRules().find((item) => item.id === regra_cobranca_id);
+  if (!rule) {
+    return res.status(400).json({ error: 'Regra de cobrança inválida' });
+  }
+
+  const request = db.getRequests().find((req) => req.id === request_id);
+  if (!request) {
+    return res.status(400).json({ error: 'Solicitação inválida' });
+  }
+
+  const partsTotal = items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0);
+  const laborTotal = horas_trabalho * 100;
+  const deslocamentoTotal = Number(deslocamento) || 0;
+  const urgenciaTotal = Number(urgencia) || 0;
+  const baseTotal = Number(rule.valor_base) || 0;
+
+  const total = baseTotal + partsTotal + laborTotal + deslocamentoTotal + urgenciaTotal;
+
+  const budget = {
+    request_id,
+    draft_by,
+    regra_cobranca_id,
+    base_total: baseTotal,
+    pecas_total: partsTotal,
+    mao_obra_total: laborTotal,
+    total,
+    status: 'Rascunho',
+    deslocamento: deslocamentoTotal,
+    urgencia: urgenciaTotal,
+    horas_trabalho: Number(horas_trabalho) || 0
+  };
+
+  const created = db.createBudget(budget, items);
+  res.status(201).json(created);
+});
+
+const BUDGET_STATUSES = ['Rascunho', 'Enviado', 'Aprovado', 'Rejeitado'];
+
+router.patch('/:id/status', (req, res) => {
+  const budget = db.getBudgetById(req.params.id);
+  if (!budget) {
+    return res.status(404).json({ error: 'Orçamento não encontrado' });
+  }
+
+  const { status } = req.body;
+  if (!BUDGET_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
+
+  if (req.user.role === 'cliente') {
+    const request = db.getRequests().find((item) => item.id === budget.request_id);
+    if (!request || request.empresa_id !== req.user.empresa_id) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (budget.status !== 'Enviado' || !['Aprovado', 'Rejeitado'].includes(status)) {
+      return res.status(400).json({ error: 'Transição de status não permitida' });
+    }
+  } else if (['tecnico', 'analista', 'gestor'].includes(req.user.role)) {
+    if (budget.status === 'Rascunho' && status !== 'Enviado') {
+      return res.status(400).json({ error: 'Transição de status não permitida' });
+    }
+    if (budget.status !== 'Rascunho' && !['Aprovado', 'Rejeitado', 'Enviado'].includes(status)) {
+      return res.status(400).json({ error: 'Transição de status não permitida' });
+    }
+  } else {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+
+  const updated = db.updateBudget(budget.id, { status });
+
+  const request = db.getRequests().find((item) => item.id === updated.request_id);
+
+  if (status === 'Enviado' && request) {
+    const company = db.getCompanyById(request.empresa_id);
+    if (company?.email) {
+      const token = signApprovalToken(updated.id);
+      const link = `${FRONTEND_URL}/aprovar-orcamento/${token}`;
+      sendMail({
+        to: company.email,
+        subject: 'Novo orçamento disponível para aprovação',
+        text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login:\n${link}\n\nEste link expira em 14 dias.`
+      });
+    }
+    db.createNotification({
+      empresa_id: request.empresa_id,
+      titulo: 'Novo orçamento para aprovação',
+      mensagem: `R$ ${updated.total.toFixed(2)} aguardando sua aprovação`,
+      link: '/budgets'
+    });
+  } else if (status === 'Aprovado') {
+    const contract = db.createContractForBudget(updated);
+
+    const draftUser = db.getUserById(updated.draft_by);
+    if (draftUser?.email) {
+      sendMail({
+        to: draftUser.email,
+        subject: 'Orçamento aprovado pelo cliente',
+        text: `O orçamento de R$ ${updated.total.toFixed(2)} que você enviou foi aprovado pelo cliente.\n\nContrato gerado automaticamente: ${contract.numero}\nDisponível no portal em Contratos.`
+      });
+    }
+
+    const company = request ? db.getCompanyById(request.empresa_id) : null;
+    if (company?.email) {
+      sendMail({
+        to: company.email,
+        subject: `Contrato ${contract.numero} gerado`,
+        text: `Seu orçamento foi aprovado e o contrato ${contract.numero} foi gerado automaticamente.\n\nVocê pode acessá-lo e baixar o PDF pelo portal Mirontec, na seção Contratos.`
+      });
+    }
+    if (request) {
+      db.createNotification({
+        empresa_id: request.empresa_id,
+        titulo: 'Orçamento aprovado',
+        mensagem: `Contrato ${contract.numero} gerado automaticamente`,
+        link: '/contracts'
+      });
+    }
+  } else if (status === 'Rejeitado') {
+    const draftUser = db.getUserById(updated.draft_by);
+    if (draftUser?.email) {
+      sendMail({
+        to: draftUser.email,
+        subject: 'Orçamento rejeitado pelo cliente',
+        text: `O orçamento de R$ ${updated.total.toFixed(2)} que você enviou foi rejeitado pelo cliente.`
+      });
+    }
+  }
+
+  res.json(updated);
+});
+
+module.exports = router;
