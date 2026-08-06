@@ -4,7 +4,7 @@ const db = require('../lib/db');
 const { signToken, comparePassword, hashPassword } = require('../lib/auth');
 const { requireRole, verifyToken } = require('../lib/auth');
 const { signResetToken, verifyResetToken } = require('../lib/resetToken');
-const { sendMail } = require('../lib/mailer');
+const { sendMail, actionEmailHtml } = require('../lib/mailer');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
@@ -116,7 +116,14 @@ router.post('/forgot-password', accountLimiter, async (req, res, next) => {
       sendMail({
         to: user.email,
         subject: 'Redefinição de senha — Mirontec',
-        text: `Olá,\n\nRecebemos um pedido para redefinir sua senha. Clique no link abaixo para criar uma nova senha:\n${link}\n\nEste link expira em 1 hora. Se você não pediu isso, ignore este email.`
+        text: `Olá,\n\nRecebemos um pedido para redefinir sua senha. Acesse o link abaixo para criar uma nova senha:\n${link}\n\nEste link expira em 1 hora. Se você não pediu isso, ignore este email.`,
+        html: actionEmailHtml({
+          title: 'Redefinir sua senha',
+          message: 'Recebemos um pedido para redefinir a senha da sua conta. Clique no botão abaixo para criar uma nova senha.',
+          buttonLabel: 'Redefinir senha',
+          buttonUrl: link,
+          footnote: 'Este link expira em 1 hora. Se você não pediu isso, pode ignorar este email com segurança.'
+        })
       });
     }
 

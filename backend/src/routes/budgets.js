@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
-const { sendMail } = require('../lib/mailer');
+const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { signApprovalToken } = require('../lib/approvalToken');
 const { generateBudgetPdf } = require('../lib/budgetPdf');
 
@@ -148,7 +148,14 @@ router.patch('/:id/status', async (req, res, next) => {
         sendMail({
           to: company.email,
           subject: 'Novo orçamento disponível para aprovação',
-          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login:\n${link}\n\nEste link expira em 14 dias.`
+          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login:\n${link}\n\nEste link expira em 14 dias.`,
+          html: actionEmailHtml({
+            title: 'Orçamento disponível para aprovação',
+            message: `Um orçamento no valor de <strong>R$ ${updated.total.toFixed(2)}</strong> está disponível para sua aprovação. Veja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login.`,
+            buttonLabel: 'Ver orçamento',
+            buttonUrl: link,
+            footnote: 'Este link expira em 14 dias.'
+          })
         });
       }
       await db.createNotification({
