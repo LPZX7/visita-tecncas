@@ -44,12 +44,7 @@ export default function VisitCalendar({ year, month, dayData, onDayClick, select
               onKeyDown={clickable ? (e) => { if (e.key === 'Enter') onDayClick(isSelected ? null : c.key); } : undefined}
             >
               <span className="visit-calendar__day">{c.day}</span>
-              {c.count > 0 && (
-                <>
-                  <span className="visit-calendar__badge">{c.count}</span>
-                  {c.valor > 0 && <span className="visit-calendar__valor">R$ {money(c.valor)}</span>}
-                </>
-              )}
+              {c.count > 0 && <span className="visit-calendar__badge">{c.count}</span>}
             </div>
           );
         })}

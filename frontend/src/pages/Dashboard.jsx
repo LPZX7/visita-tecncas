@@ -10,20 +10,29 @@ import VisitCalendar from '../components/VisitCalendar';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-const REQUEST_STATUS_COLOR = {
-  'Aberta': 'var(--vermelho)',
-  'Agendada': 'var(--ambar)',
-  'Em Atendimento': 'var(--azul)',
-  'Concluída': 'var(--verde)',
-  'Cancelada': '#94a3b8'
-};
-
 const BUDGET_STATUS_COLOR = {
   'Rascunho': '#94a3b8',
   'Enviado': 'var(--ambar)',
   'Aprovado': 'var(--verde)',
   'Rejeitado': 'var(--vermelho)'
 };
+
+const STATUS_GROUPS = [
+  { label: 'Aguardando', statuses: ['Aberta', 'Agendada'], color: 'var(--ambar)' },
+  { label: 'Realizando', statuses: ['Em Atendimento'], color: 'var(--azul)' },
+  { label: 'Concluído', statuses: ['Concluída'], color: 'var(--verde)' },
+  { label: 'Cancelado', statuses: ['Cancelada'], color: '#94a3b8' }
+];
+
+function groupedStatusCounts(requests) {
+  return STATUS_GROUPS
+    .map((g) => ({
+      label: g.label,
+      color: g.color,
+      value: requests.filter((r) => g.statuses.includes(r.status)).length
+    }))
+    .filter((row) => row.value > 0);
+}
 
 function countBy(list, key, colorMap) {
   const counts = {};
@@ -109,6 +118,10 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
   const [selectedDay, setSelectedDay] = useState(null);
+  const [calCursor, setCalCursor] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
   const profile = getUser();
   const navigate = useNavigate();
   const role = profile?.role;
@@ -183,7 +196,7 @@ export default function Dashboard() {
   const meusChamados = requests;
 
   const faturamentoAprovado = budgets.filter((b) => b.status === 'Aprovado').reduce((sum, b) => sum + Number(b.total || 0), 0);
-  const chamadosPorStatus = countBy(requests, 'status', REQUEST_STATUS_COLOR);
+  const chamadosPorStatus = groupedStatusCounts(requests);
   const orcamentosPorStatus = countBy(budgets, 'status', BUDGET_STATUS_COLOR);
   const tendenciaChamados = last14DaysTrend(requests);
   const tendenciaChamadosValores = tendenciaChamados.map((d) => d.value);
@@ -191,9 +204,26 @@ export default function Dashboard() {
   const chamadosAbertos = requests.filter((r) => !['Concluída', 'Cancelada'].includes(r.status)).length;
 
   // ---------- calendário de visitas (mês atual) ----------
-  const now = new Date();
-  const calYear = now.getFullYear();
-  const calMonth = now.getMonth();
+  const calYear = calCursor.year;
+  const calMonth = calCursor.month;
+  const isCurrentCalMonth = (() => {
+    const d = new Date();
+    return d.getFullYear() === calYear && d.getMonth() === calMonth;
+  })();
+
+  const goPrevMonth = () => {
+    setSelectedDay(null);
+    setCalCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }));
+  };
+  const goNextMonth = () => {
+    setSelectedDay(null);
+    setCalCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }));
+  };
+  const goCurrentMonth = () => {
+    setSelectedDay(null);
+    const d = new Date();
+    setCalCursor({ year: d.getFullYear(), month: d.getMonth() });
+  };
   const approvedByRequest = {};
   budgets.filter((b) => b.status === 'Aprovado').forEach((b) => {
     approvedByRequest[b.request_id] = (approvedByRequest[b.request_id] || 0) + Number(b.total || 0);
@@ -258,7 +288,7 @@ export default function Dashboard() {
 
   const proximaVisita = requests
     .filter((r) => r.agendado_para && !['Concluída', 'Cancelada'].includes(r.status))
-    .sort((a, b) => a.agendado_para.localeCompare(b.agendado_para))[0] || null;
+    .sort((a, b) => (a.agendado_para || '').localeCompare(b.agendado_para || ''))[0] || null;
 
   const equipamentosComStatus = equipments.map((eq) => {
     const emManutencao = requests.some((r) => r.equipamento_id === eq.id && ['Aberta', 'Agendada', 'Em Atendimento'].includes(r.status));
@@ -271,11 +301,11 @@ export default function Dashboard() {
 
   const chamadoEmDestaque = [...requests]
     .filter((r) => r.status !== 'Cancelada')
-    .sort((a, b) => b.atualizado_em.localeCompare(a.atualizado_em))[0] || null;
+    .sort((a, b) => (b.atualizado_em || '').localeCompare(a.atualizado_em || ''))[0] || null;
 
   const chamadoParaAvaliar = [...requests]
     .filter((r) => r.status === 'Concluída' && !r.avaliacao)
-    .sort((a, b) => b.concluded_at.localeCompare(a.concluded_at))[0] || null;
+    .sort((a, b) => (b.concluded_at || '').localeCompare(a.concluded_at || ''))[0] || null;
 
   const ultimoContrato = contracts[0] || null;
   const ultimoRelatorio = [...requests]
@@ -648,13 +678,25 @@ export default function Dashboard() {
       )}
 
       {!loading && role === 'gestor' && (
-        <div className="panel-card">
-          <h3><SectionIcon name="calendar" /> Calendário de visitas — {MONTH_NAMES[calMonth]} {calYear}</h3>
-          <p className="chart-card__subtitle">
-            {monthRequests.length === 0
-              ? `Nenhuma visita agendada em ${MONTH_NAMES[calMonth]} ainda.`
-              : 'Clique em um dia com visita para ver os detalhes.'}
-          </p>
+        <div className="panel-card panel-card--calendar">
+          <div className="panel-card__header-row">
+            <div>
+              <h3><SectionIcon name="calendar" /> Calendário de visitas</h3>
+              <p className="chart-card__subtitle">
+                {monthRequests.length === 0
+                  ? `Nenhuma visita agendada em ${MONTH_NAMES[calMonth]} ainda.`
+                  : 'Clique em um dia com visita para ver os detalhes.'}
+              </p>
+            </div>
+            <div className="calendar-nav">
+              <button type="button" className="calendar-nav__btn" onClick={goPrevMonth} aria-label="Mês anterior">‹</button>
+              <span className="calendar-nav__label">{MONTH_NAMES[calMonth]} {calYear}</span>
+              <button type="button" className="calendar-nav__btn" onClick={goNextMonth} aria-label="Próximo mês">›</button>
+              {!isCurrentCalMonth && (
+                <button type="button" className="calendar-nav__today" onClick={goCurrentMonth}>Hoje</button>
+              )}
+            </div>
+          </div>
           <VisitCalendar year={calYear} month={calMonth} dayData={calendarDayData} onDayClick={setSelectedDay} selectedKey={selectedDay} />
 
           {selectedDay && calendarDayData[selectedDay] && (
