@@ -21,7 +21,8 @@ async function sendMail({ to, subject, text }) {
   }
 
   try {
-    await transporter.sendMail({ from: GMAIL_USER, to, subject, text });
+    const info = await transporter.sendMail({ from: GMAIL_USER, to, subject, text });
+    console.log(`[mailer] Email aceito pelo Gmail — messageId: ${info.messageId}, response: ${info.response}`);
   } catch (err) {
     console.error('[mailer] Falha ao enviar email:', err.message);
   }
