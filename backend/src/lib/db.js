@@ -1,21 +1,13 @@
-const fs = require('fs');
-const path = require('path');
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 
-const dbDir = process.env.DATA_DIR || path.resolve(__dirname, '../../data');
-const dbPath = path.join(dbDir, 'mirontec.db');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : undefined
+});
 
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
-const db = new DatabaseSync(dbPath);
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
-
-db.exec(`
+const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     nome TEXT NOT NULL,
@@ -150,7 +142,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_itens_orcamento ON orcamento_itens(orcamento_id);
   CREATE INDEX IF NOT EXISTS idx_contratos_empresa ON contratos(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_notificacoes_empresa ON notificacoes(empresa_id);
-`);
+`;
 
 function now() {
   return new Date().toISOString();
@@ -169,41 +161,47 @@ function toUser(row) {
   return { ...row, ativo: !!row.ativo };
 }
 
-function seedDefaultAdmin() {
-  const count = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+async function seedDefaultAdmin() {
+  const { rows } = await pool.query('SELECT COUNT(*) AS n FROM users');
+  const count = Number(rows[0].n);
   if (count > 0) return;
   const email = process.env.ADMIN_EMAIL || 'admin@empresa.com';
   const password = process.env.ADMIN_PASSWORD || 'admin123';
   if (!process.env.ADMIN_PASSWORD) {
     console.warn('[aviso] ADMIN_PASSWORD não definido — usando senha padrão insegura "admin123". Configure ADMIN_PASSWORD antes de ir para produção.');
   }
-  db.prepare(
-    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, ativo, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(uuid(), 'Administrador', email, bcrypt.hashSync(password, 10), 'gestor', null, 1, now());
+  await pool.query(
+    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+    [uuid(), 'Administrador', email, bcrypt.hashSync(password, 10), 'gestor', null, 1, now()]
+  );
 }
 
-seedDefaultAdmin();
+async function initDb() {
+  await pool.query(SCHEMA_SQL);
+  await seedDefaultAdmin();
+}
 
 // ---------- generic partial-update helper ----------
 
-function updateRow(table, id, patch, { touchUpdatedAt = true } = {}) {
+async function updateRow(table, id, patch, { touchUpdatedAt = true } = {}) {
   const fields = { ...patch };
   if (touchUpdatedAt) fields.atualizado_em = now();
 
   const keys = Object.keys(fields);
   if (keys.length === 0) return;
 
-  const setClause = keys.map((key) => `${key} = ?`).join(', ');
+  const setClause = keys.map((key, idx) => `${key} = $${idx + 1}`).join(', ');
   const values = keys.map((key) => (fields[key] === undefined ? null : fields[key]));
-  db.prepare(`UPDATE ${table} SET ${setClause} WHERE id = ?`).run(...values, id);
+  values.push(id);
+  await pool.query(`UPDATE ${table} SET ${setClause} WHERE id = $${keys.length + 1}`, values);
 }
 
-function safeDelete(table, id) {
+async function safeDelete(table, id) {
   try {
-    const result = db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
-    return { deleted: result.changes > 0, blocked: false };
+    const result = await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+    return { deleted: result.rowCount > 0, blocked: false };
   } catch (err) {
-    if (err.code === 'ERR_SQLITE_ERROR' && /FOREIGN KEY/i.test(err.message)) {
+    if (err.code === '23503') {
       return { deleted: false, blocked: true };
     }
     throw err;
@@ -212,169 +210,192 @@ function safeDelete(table, id) {
 
 // ---------- users ----------
 
-function getUsers() {
-  return db.prepare('SELECT * FROM users ORDER BY criado_em DESC').all().map(toUser);
+async function getUsers() {
+  const { rows } = await pool.query('SELECT * FROM users ORDER BY criado_em DESC');
+  return rows.map(toUser);
 }
 
-function getUserById(id) {
-  return toUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id));
+async function getUserById(id) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+  return toUser(rows[0] || null);
 }
 
-function findUserByEmail(email) {
-  return toUser(db.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email || ''));
+async function findUserByEmail(email) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE lower(email) = lower($1)', [email || '']);
+  return toUser(rows[0] || null);
 }
 
-function createUser({ nome, email, senha_hash, role, empresa_id = null, ativo = true }) {
+async function createUser({ nome, email, senha_hash, role, empresa_id = null, ativo = true }) {
   const user = { id: uuid(), nome, email, senha_hash, role, empresa_id, ativo: ativo ? 1 : 0, criado_em: now() };
-  db.prepare(
-    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, ativo, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.ativo, user.criado_em);
+  await pool.query(
+    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+    [user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.ativo, user.criado_em]
+  );
   return toUser(user);
 }
 
-function updateUser(id, patch) {
-  if (!db.prepare('SELECT id FROM users WHERE id = ?').get(id)) return null;
+async function updateUser(id, patch) {
+  const { rows } = await pool.query('SELECT id FROM users WHERE id = $1', [id]);
+  if (!rows[0]) return null;
   const fields = { ...patch };
   if ('ativo' in fields) fields.ativo = fields.ativo ? 1 : 0;
-  updateRow('users', id, fields, { touchUpdatedAt: false });
+  await updateRow('users', id, fields, { touchUpdatedAt: false });
   return getUserById(id);
 }
 
 // ---------- empresas ----------
 
-function getCompanies() {
-  return db.prepare('SELECT * FROM empresas ORDER BY criado_em DESC').all();
+async function getCompanies() {
+  const { rows } = await pool.query('SELECT * FROM empresas ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getCompanyById(id) {
-  return db.prepare('SELECT * FROM empresas WHERE id = ?').get(id) || null;
+async function getCompanyById(id) {
+  const { rows } = await pool.query('SELECT * FROM empresas WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function createCompany(company) {
+async function createCompany(company) {
   const row = withDefaults({ id: uuid(), ...company, criado_em: now() });
-  db.prepare(
+  await pool.query(
     `INSERT INTO empresas (id, razao_social, nome_fantasia, cnpj, endereco, telefone, email, responsavel, modelo_cobranca, status, criado_em)
-     VALUES (@id, @razao_social, @nome_fantasia, @cnpj, @endereco, @telefone, @email, @responsavel, @modelo_cobranca, @status, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [row.id, row.razao_social, row.nome_fantasia, row.cnpj, row.endereco, row.telefone, row.email, row.responsavel, row.modelo_cobranca, row.status, row.criado_em]
+  );
   return getCompanyById(row.id);
 }
 
-function updateCompany(id, patch) {
-  if (!getCompanyById(id)) return null;
-  updateRow('empresas', id, patch);
+async function updateCompany(id, patch) {
+  const existing = await getCompanyById(id);
+  if (!existing) return null;
+  await updateRow('empresas', id, patch);
   return getCompanyById(id);
 }
 
-function deleteCompany(id) {
+async function deleteCompany(id) {
   return safeDelete('empresas', id);
 }
 
 // ---------- equipamentos ----------
 
-function getEquipments() {
-  return db.prepare('SELECT * FROM equipamentos ORDER BY criado_em DESC').all();
+async function getEquipments() {
+  const { rows } = await pool.query('SELECT * FROM equipamentos ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getEquipmentById(id) {
-  return db.prepare('SELECT * FROM equipamentos WHERE id = ?').get(id) || null;
+async function getEquipmentById(id) {
+  const { rows } = await pool.query('SELECT * FROM equipamentos WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function createEquipment(equipment) {
+async function createEquipment(equipment) {
   const row = withDefaults({ id: uuid(), ...equipment, criado_em: now() });
-  db.prepare(
+  await pool.query(
     `INSERT INTO equipamentos (id, empresa_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate, criado_em)
-     VALUES (@id, @empresa_id, @modelo, @numero_serie, @local_instalacao, @data_instalacao, @garantia_ate, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [row.id, row.empresa_id, row.modelo, row.numero_serie, row.local_instalacao, row.data_instalacao, row.garantia_ate, row.criado_em]
+  );
   return getEquipmentById(row.id);
 }
 
-function updateEquipment(id, patch) {
-  if (!getEquipmentById(id)) return null;
-  updateRow('equipamentos', id, patch);
+async function updateEquipment(id, patch) {
+  const existing = await getEquipmentById(id);
+  if (!existing) return null;
+  await updateRow('equipamentos', id, patch);
   return getEquipmentById(id);
 }
 
-function deleteEquipment(id) {
+async function deleteEquipment(id) {
   return safeDelete('equipamentos', id);
 }
 
 // ---------- pecas ----------
 
-function getParts() {
-  return db.prepare('SELECT * FROM pecas ORDER BY criado_em DESC').all();
+async function getParts() {
+  const { rows } = await pool.query('SELECT * FROM pecas ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getPartById(id) {
-  return db.prepare('SELECT * FROM pecas WHERE id = ?').get(id) || null;
+async function getPartById(id) {
+  const { rows } = await pool.query('SELECT * FROM pecas WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function createPart(part) {
+async function createPart(part) {
   const row = withDefaults({ id: uuid(), ...part, criado_em: now() });
-  db.prepare(
+  await pool.query(
     `INSERT INTO pecas (id, codigo, nome, categoria, preco_unitario, estoque, fornecedor, criado_em)
-     VALUES (@id, @codigo, @nome, @categoria, @preco_unitario, @estoque, @fornecedor, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [row.id, row.codigo, row.nome, row.categoria, row.preco_unitario, row.estoque, row.fornecedor, row.criado_em]
+  );
   return getPartById(row.id);
 }
 
-function updatePart(id, patch) {
-  if (!getPartById(id)) return null;
-  updateRow('pecas', id, patch);
+async function updatePart(id, patch) {
+  const existing = await getPartById(id);
+  if (!existing) return null;
+  await updateRow('pecas', id, patch);
   return getPartById(id);
 }
 
-function deletePart(id) {
+async function deletePart(id) {
   return safeDelete('pecas', id);
 }
 
 // ---------- regras_cobranca ----------
 
-function getPricingRules() {
-  return db.prepare('SELECT * FROM regras_cobranca ORDER BY criado_em DESC').all();
+async function getPricingRules() {
+  const { rows } = await pool.query('SELECT * FROM regras_cobranca ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getPricingRuleById(id) {
-  return db.prepare('SELECT * FROM regras_cobranca WHERE id = ?').get(id) || null;
+async function getPricingRuleById(id) {
+  const { rows } = await pool.query('SELECT * FROM regras_cobranca WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function createPricingRule(rule) {
+async function createPricingRule(rule) {
   const row = withDefaults({ id: uuid(), ...rule, criado_em: now() });
-  db.prepare(
+  await pool.query(
     `INSERT INTO regras_cobranca (id, empresa_id, tipo, valor_base, visitas_incluidas, criado_em)
-     VALUES (@id, @empresa_id, @tipo, @valor_base, @visitas_incluidas, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [row.id, row.empresa_id, row.tipo, row.valor_base, row.visitas_incluidas, row.criado_em]
+  );
   return getPricingRuleById(row.id);
 }
 
-function updatePricingRule(id, patch) {
-  if (!getPricingRuleById(id)) return null;
-  updateRow('regras_cobranca', id, patch);
+async function updatePricingRule(id, patch) {
+  const existing = await getPricingRuleById(id);
+  if (!existing) return null;
+  await updateRow('regras_cobranca', id, patch);
   return getPricingRuleById(id);
 }
 
-function deletePricingRule(id) {
+async function deletePricingRule(id) {
   return safeDelete('regras_cobranca', id);
 }
 
 // ---------- requests ----------
 
-function getRequests() {
-  return db.prepare('SELECT * FROM requests ORDER BY criado_em DESC').all();
+async function getRequests() {
+  const { rows } = await pool.query('SELECT * FROM requests ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getRequestById(id) {
-  return db.prepare('SELECT * FROM requests WHERE id = ?').get(id) || null;
+async function getRequestById(id) {
+  const { rows } = await pool.query('SELECT * FROM requests WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function nextRequestNumber() {
-  const max = db.prepare('SELECT MAX(numero) AS n FROM requests').get().n;
-  return (max || 0) + 1;
+async function nextRequestNumber() {
+  const { rows } = await pool.query('SELECT MAX(numero) AS n FROM requests');
+  return (rows[0].n || 0) + 1;
 }
 
-function createRequest(request) {
+async function createRequest(request) {
   const row = withDefaults({
     id: uuid(),
-    numero: nextRequestNumber(),
+    numero: await nextRequestNumber(),
     empresa_id: request.empresa_id,
     equipamento_id: request.equipamento_id,
     descricao: request.descricao,
@@ -393,42 +414,44 @@ function createRequest(request) {
     atualizado_em: now(),
     concluded_at: null
   });
-  db.prepare(
+  await pool.query(
     `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, criado_em, atualizado_em, concluded_at)
-     VALUES (@id, @numero, @empresa_id, @equipamento_id, @descricao, @urgencia, @endereco, @status, @assigned_technician, @agendado_para, @hora_checkin, @hora_checkout, @relatorio_visita, @avaliacao, @avaliacao_comentario, @aberto_por, @criado_em, @atualizado_em, @concluded_at)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.criado_em, row.atualizado_em, row.concluded_at]
+  );
   return getRequestById(row.id);
 }
 
-function updateRequest(id, patch) {
-  const current = getRequestById(id);
+async function updateRequest(id, patch) {
+  const current = await getRequestById(id);
   if (!current) return null;
   const fields = { ...patch };
   if (patch.status === 'Concluída' && !current.concluded_at) {
     fields.concluded_at = now();
   }
-  updateRow('requests', id, fields);
+  await updateRow('requests', id, fields);
   return getRequestById(id);
 }
 
 // ---------- budgets ----------
 
-function attachItems(budget) {
+async function attachItems(budget) {
   if (!budget) return null;
-  const items = db.prepare('SELECT * FROM orcamento_itens WHERE orcamento_id = ?').all(budget.id);
-  return { ...budget, items };
+  const { rows } = await pool.query('SELECT * FROM orcamento_itens WHERE orcamento_id = $1', [budget.id]);
+  return { ...budget, items: rows };
 }
 
-function getBudgets() {
-  return db.prepare('SELECT * FROM budgets ORDER BY criado_em DESC').all().map(attachItems);
+async function getBudgets() {
+  const { rows } = await pool.query('SELECT * FROM budgets ORDER BY criado_em DESC');
+  return Promise.all(rows.map(attachItems));
 }
 
-function getBudgetById(id) {
-  const budget = db.prepare('SELECT * FROM budgets WHERE id = ?').get(id);
-  return budget ? attachItems(budget) : null;
+async function getBudgetById(id) {
+  const { rows } = await pool.query('SELECT * FROM budgets WHERE id = $1', [id]);
+  return rows[0] ? attachItems(rows[0]) : null;
 }
 
-function createBudget(budget, items = []) {
+async function createBudget(budget, items = []) {
   const row = withDefaults({
     id: uuid(),
     request_id: budget.request_id,
@@ -445,55 +468,61 @@ function createBudget(budget, items = []) {
     criado_em: now(),
     atualizado_em: now()
   });
-  db.prepare(
+  await pool.query(
     `INSERT INTO budgets (id, request_id, draft_by, regra_cobranca_id, base_total, pecas_total, mao_obra_total, total, status, deslocamento, urgencia, horas_trabalho, criado_em, atualizado_em)
-     VALUES (@id, @request_id, @draft_by, @regra_cobranca_id, @base_total, @pecas_total, @mao_obra_total, @total, @status, @deslocamento, @urgencia, @horas_trabalho, @criado_em, @atualizado_em)`
-  ).run(row);
-
-  const insertItem = db.prepare(
-    'INSERT INTO orcamento_itens (id, orcamento_id, peca_id, valor_unitario, quantidade) VALUES (?, ?, ?, ?, ?)'
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    [row.id, row.request_id, row.draft_by, row.regra_cobranca_id, row.base_total, row.pecas_total, row.mao_obra_total, row.total, row.status, row.deslocamento, row.urgencia, row.horas_trabalho, row.criado_em, row.atualizado_em]
   );
-  items.forEach((item) => {
-    insertItem.run(uuid(), row.id, item.peca_id ?? null, item.valor_unitario, item.quantidade);
-  });
+
+  for (const item of items) {
+    await pool.query(
+      'INSERT INTO orcamento_itens (id, orcamento_id, peca_id, valor_unitario, quantidade) VALUES ($1, $2, $3, $4, $5)',
+      [uuid(), row.id, item.peca_id ?? null, item.valor_unitario, item.quantidade]
+    );
+  }
 
   return getBudgetById(row.id);
 }
 
-function updateBudget(id, patch) {
-  if (!db.prepare('SELECT id FROM budgets WHERE id = ?').get(id)) return null;
-  updateRow('budgets', id, patch);
+async function updateBudget(id, patch) {
+  const { rows } = await pool.query('SELECT id FROM budgets WHERE id = $1', [id]);
+  if (!rows[0]) return null;
+  await updateRow('budgets', id, patch);
   return getBudgetById(id);
 }
 
 // ---------- contratos ----------
 
-function getContracts() {
-  return db.prepare('SELECT * FROM contratos ORDER BY criado_em DESC').all();
+async function getContracts() {
+  const { rows } = await pool.query('SELECT * FROM contratos ORDER BY criado_em DESC');
+  return rows;
 }
 
-function getContractById(id) {
-  return db.prepare('SELECT * FROM contratos WHERE id = ?').get(id) || null;
+async function getContractById(id) {
+  const { rows } = await pool.query('SELECT * FROM contratos WHERE id = $1', [id]);
+  return rows[0] || null;
 }
 
-function getContractByBudgetId(orcamento_id) {
-  return db.prepare('SELECT * FROM contratos WHERE orcamento_id = ?').get(orcamento_id) || null;
+async function getContractByBudgetId(orcamento_id) {
+  const { rows } = await pool.query('SELECT * FROM contratos WHERE orcamento_id = $1', [orcamento_id]);
+  return rows[0] || null;
 }
 
-function nextContractNumber() {
+async function nextContractNumber() {
   const year = new Date().getFullYear();
-  const count = db.prepare("SELECT COUNT(*) AS n FROM contratos WHERE numero LIKE ?").get(`CT-${year}-%`).n;
+  const { rows } = await pool.query('SELECT COUNT(*) AS n FROM contratos WHERE numero LIKE $1', [`CT-${year}-%`]);
+  const count = Number(rows[0].n);
   return `CT-${year}-${String(count + 1).padStart(4, '0')}`;
 }
 
-function createContractForBudget(budget) {
-  const existing = getContractByBudgetId(budget.id);
+async function createContractForBudget(budget) {
+  const existing = await getContractByBudgetId(budget.id);
   if (existing) return existing;
 
-  const request = getRequestById(budget.request_id);
+  const request = await getRequestById(budget.request_id);
   const row = {
     id: uuid(),
-    numero: nextContractNumber(),
+    numero: await nextContractNumber(),
     orcamento_id: budget.id,
     empresa_id: request.empresa_id,
     request_id: request.id,
@@ -501,20 +530,22 @@ function createContractForBudget(budget) {
     status: 'Ativo',
     criado_em: now()
   };
-  db.prepare(
+  await pool.query(
     `INSERT INTO contratos (id, numero, orcamento_id, empresa_id, request_id, valor_total, status, criado_em)
-     VALUES (@id, @numero, @orcamento_id, @empresa_id, @request_id, @valor_total, @status, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [row.id, row.numero, row.orcamento_id, row.empresa_id, row.request_id, row.valor_total, row.status, row.criado_em]
+  );
   return getContractById(row.id);
 }
 
 // ---------- notificacoes ----------
 
-function getNotifications(empresa_id) {
-  return db.prepare('SELECT * FROM notificacoes WHERE empresa_id = ? ORDER BY criado_em DESC LIMIT 50').all(empresa_id).map((n) => ({ ...n, lida: !!n.lida }));
+async function getNotifications(empresa_id) {
+  const { rows } = await pool.query('SELECT * FROM notificacoes WHERE empresa_id = $1 ORDER BY criado_em DESC LIMIT 50', [empresa_id]);
+  return rows.map((n) => ({ ...n, lida: !!n.lida }));
 }
 
-function createNotification({ empresa_id, titulo, mensagem, link }) {
+async function createNotification({ empresa_id, titulo, mensagem, link }) {
   if (!empresa_id) return null;
   const row = withDefaults({
     id: uuid(),
@@ -525,18 +556,20 @@ function createNotification({ empresa_id, titulo, mensagem, link }) {
     lida: 0,
     criado_em: now()
   });
-  db.prepare(
+  await pool.query(
     `INSERT INTO notificacoes (id, empresa_id, titulo, mensagem, link, lida, criado_em)
-     VALUES (@id, @empresa_id, @titulo, @mensagem, @link, @lida, @criado_em)`
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [row.id, row.empresa_id, row.titulo, row.mensagem, row.link, row.lida, row.criado_em]
+  );
   return row;
 }
 
-function markNotificationsRead(empresa_id) {
-  db.prepare('UPDATE notificacoes SET lida = 1 WHERE empresa_id = ?').run(empresa_id);
+async function markNotificationsRead(empresa_id) {
+  await pool.query('UPDATE notificacoes SET lida = 1 WHERE empresa_id = $1', [empresa_id]);
 }
 
 module.exports = {
+  initDb,
   getUsers,
   getUserById,
   findUserByEmail,

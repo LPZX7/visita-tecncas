@@ -6,49 +6,61 @@ const { generateContractPdf } = require('../lib/contractPdf');
 const router = express.Router();
 router.use(verifyToken);
 
-router.get('/', (req, res) => {
-  const contracts = db.getContracts();
-  if (req.user.role === 'cliente') {
-    return res.json(contracts.filter((c) => c.empresa_id === req.user.empresa_id));
+router.get('/', async (req, res, next) => {
+  try {
+    const contracts = await db.getContracts();
+    if (req.user.role === 'cliente') {
+      return res.json(contracts.filter((c) => c.empresa_id === req.user.empresa_id));
+    }
+    res.json(contracts);
+  } catch (err) {
+    next(err);
   }
-  res.json(contracts);
 });
 
-function loadContractBundle(id) {
-  const contract = db.getContractById(id);
+async function loadContractBundle(id) {
+  const contract = await db.getContractById(id);
   if (!contract) return null;
-  const budget = db.getBudgetById(contract.orcamento_id);
-  const request = db.getRequestById(contract.request_id);
-  const company = db.getCompanyById(contract.empresa_id);
+  const budget = await db.getBudgetById(contract.orcamento_id);
+  const request = await db.getRequestById(contract.request_id);
+  const company = await db.getCompanyById(contract.empresa_id);
   return { contract, budget, request, company };
 }
 
-router.get('/:id', (req, res) => {
-  const bundle = loadContractBundle(req.params.id);
-  if (!bundle) {
-    return res.status(404).json({ error: 'Contrato não encontrado' });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const bundle = await loadContractBundle(req.params.id);
+    if (!bundle) {
+      return res.status(404).json({ error: 'Contrato não encontrado' });
+    }
+    if (req.user.role === 'cliente' && bundle.contract.empresa_id !== req.user.empresa_id) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    res.json(bundle.contract);
+  } catch (err) {
+    next(err);
   }
-  if (req.user.role === 'cliente' && bundle.contract.empresa_id !== req.user.empresa_id) {
-    return res.status(403).json({ error: 'Acesso negado' });
-  }
-  res.json(bundle.contract);
 });
 
-router.get('/:id/pdf', (req, res) => {
-  const bundle = loadContractBundle(req.params.id);
-  if (!bundle) {
-    return res.status(404).json({ error: 'Contrato não encontrado' });
-  }
-  if (req.user.role === 'cliente' && bundle.contract.empresa_id !== req.user.empresa_id) {
-    return res.status(403).json({ error: 'Acesso negado' });
-  }
+router.get('/:id/pdf', async (req, res, next) => {
+  try {
+    const bundle = await loadContractBundle(req.params.id);
+    if (!bundle) {
+      return res.status(404).json({ error: 'Contrato não encontrado' });
+    }
+    if (req.user.role === 'cliente' && bundle.contract.empresa_id !== req.user.empresa_id) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${bundle.contract.numero}.pdf"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${bundle.contract.numero}.pdf"`);
 
-  const doc = generateContractPdf(bundle);
-  doc.pipe(res);
-  doc.end();
+    const doc = generateContractPdf(bundle);
+    doc.pipe(res);
+    doc.end();
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

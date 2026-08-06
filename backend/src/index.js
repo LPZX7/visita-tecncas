@@ -5,6 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const routes = require('./routes');
+const { initDb } = require('./lib/db');
 
 if (!process.env.JWT_SECRET) {
   console.warn('[aviso] JWT_SECRET não definido no .env — usando um valor padrão inseguro. Configure JWT_SECRET antes de ir para produção.');
@@ -59,6 +60,15 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 4100;
-app.listen(port, () => {
-  console.log(`Backend running on http://localhost:${port}`);
-});
+
+(async () => {
+  try {
+    await initDb();
+    app.listen(port, () => {
+      console.log(`Backend running on http://localhost:${port}`);
+    });
+  } catch (err) {
+    console.error('Falha ao inicializar o banco de dados:', err);
+    process.exit(1);
+  }
+})();

@@ -15,7 +15,7 @@ const publicLimiter = rateLimit({
 });
 router.use(publicLimiter);
 
-function loadFromToken(req, res) {
+async function loadFromToken(req, res) {
   let payload;
   try {
     payload = verifyApprovalToken(req.params.token);
@@ -24,58 +24,62 @@ function loadFromToken(req, res) {
     return null;
   }
 
-  const budget = db.getBudgetById(payload.budgetId);
+  const budget = await db.getBudgetById(payload.budgetId);
   if (!budget) {
     res.status(404).json({ error: 'Orçamento não encontrado' });
     return null;
   }
 
-  const request = db.getRequestById(budget.request_id);
-  const company = request ? db.getCompanyById(request.empresa_id) : null;
-  const rule = db.getPricingRuleById(budget.regra_cobranca_id);
-  const items = budget.items.map((item) => ({
+  const request = await db.getRequestById(budget.request_id);
+  const company = request ? await db.getCompanyById(request.empresa_id) : null;
+  const rule = await db.getPricingRuleById(budget.regra_cobranca_id);
+  const items = await Promise.all(budget.items.map(async (item) => ({
     ...item,
-    peca: db.getPartById(item.peca_id)
-  }));
+    peca: await db.getPartById(item.peca_id)
+  })));
 
   return { budget, request, company, rule, items };
 }
 
-router.get('/:token', (req, res) => {
-  const data = loadFromToken(req, res);
-  if (!data) return;
-  res.json({
-    status: data.budget.status,
-    total: data.budget.total,
-    base_total: data.budget.base_total,
-    pecas_total: data.budget.pecas_total,
-    mao_obra_total: data.budget.mao_obra_total,
-    deslocamento: data.budget.deslocamento,
-    urgencia: data.budget.urgencia,
-    horas_trabalho: data.budget.horas_trabalho,
-    items: data.items.map((item) => ({ nome: item.peca?.nome || 'Peça', quantidade: item.quantidade, valor_unitario: item.valor_unitario })),
-    empresa: data.company?.razao_social || null,
-    regra: data.rule?.tipo || null,
-    chamado: data.request?.descricao || null
-  });
+router.get('/:token', async (req, res, next) => {
+  try {
+    const data = await loadFromToken(req, res);
+    if (!data) return;
+    res.json({
+      status: data.budget.status,
+      total: data.budget.total,
+      base_total: data.budget.base_total,
+      pecas_total: data.budget.pecas_total,
+      mao_obra_total: data.budget.mao_obra_total,
+      deslocamento: data.budget.deslocamento,
+      urgencia: data.budget.urgencia,
+      horas_trabalho: data.budget.horas_trabalho,
+      items: data.items.map((item) => ({ nome: item.peca?.nome || 'Peça', quantidade: item.quantidade, valor_unitario: item.valor_unitario })),
+      empresa: data.company?.razao_social || null,
+      regra: data.rule?.tipo || null,
+      chamado: data.request?.descricao || null
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
-function respond(req, res, status, successMessage) {
-  const data = loadFromToken(req, res);
+async function respond(req, res, status, successMessage) {
+  const data = await loadFromToken(req, res);
   if (!data) return;
 
   if (data.budget.status !== 'Enviado') {
     return res.status(409).json({ error: `Este orçamento já foi ${data.budget.status.toLowerCase()} anteriormente.`, status: data.budget.status });
   }
 
-  const updated = db.updateBudget(data.budget.id, { status });
+  const updated = await db.updateBudget(data.budget.id, { status });
 
   let contract = null;
   if (status === 'Aprovado') {
-    contract = db.createContractForBudget(updated);
+    contract = await db.createContractForBudget(updated);
   }
 
-  const draftUser = data.budget.draft_by ? db.getUserById(data.budget.draft_by) : null;
+  const draftUser = data.budget.draft_by ? await db.getUserById(data.budget.draft_by) : null;
   if (draftUser?.email) {
     sendMail({
       to: draftUser.email,
@@ -87,7 +91,7 @@ function respond(req, res, status, successMessage) {
   }
 
   if (data.request) {
-    db.createNotification({
+    await db.createNotification({
       empresa_id: data.request.empresa_id,
       titulo: contract ? 'Orçamento aprovado' : 'Orçamento rejeitado',
       mensagem: contract ? `Contrato ${contract.numero} gerado automaticamente` : `Orçamento de R$ ${Number(updated.total).toFixed(2)} rejeitado`,
@@ -98,12 +102,20 @@ function respond(req, res, status, successMessage) {
   res.json({ status: updated.status, message: successMessage, contractNumber: contract?.numero || null });
 }
 
-router.post('/:token/approve', (req, res) => {
-  respond(req, res, 'Aprovado', 'Orçamento aprovado com sucesso. Nossa equipe foi notificada e o contrato foi gerado.');
+router.post('/:token/approve', async (req, res, next) => {
+  try {
+    await respond(req, res, 'Aprovado', 'Orçamento aprovado com sucesso. Nossa equipe foi notificada e o contrato foi gerado.');
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.post('/:token/reject', (req, res) => {
-  respond(req, res, 'Rejeitado', 'Orçamento rejeitado. Nossa equipe foi notificada.');
+router.post('/:token/reject', async (req, res, next) => {
+  try {
+    await respond(req, res, 'Rejeitado', 'Orçamento rejeitado. Nossa equipe foi notificada.');
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

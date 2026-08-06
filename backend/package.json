@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^9.0.4",
     "pdfkit": "^0.19.1",
+    "pg": "^8.11.0",
     "uuid": "^9.0.0"
   }
 }
