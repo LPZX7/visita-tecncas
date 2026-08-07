@@ -3,6 +3,7 @@ import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
 import ImportPanel from '../components/ImportPanel';
+import SearchableSelect from '../components/SearchableSelect';
 
 const emptyForm = {
   nome: '', codigo: '', cnpj: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '',
@@ -157,54 +158,74 @@ export default function CreateFilial() {
     <div>
       <h2 className="page-title">Cadastrar Filial</h2>
 
-      <ImportPanel
-        title="Importar filiais em massa"
-        hint="Envie um CSV com as colunas: empresa_cnpj (deve ser de uma empresa já cadastrada), nome, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status (ativo/inativo)."
-        templateHeaders={['empresa_cnpj', 'nome', 'codigo', 'cnpj', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'responsavel', 'telefone', 'email', 'status']}
-        templateExample={['12.345.678/0001-90', 'Filial Zona Sul', 'FL-001', '12.345.678/0002-71', '04571-000', 'Av. Ibirapuera', '2000', 'Sala 10', 'Moema', 'São Paulo', 'SP', 'João Souza', '(11) 98888-0000', 'filial@exemplo.com', 'ativo']}
-        onImport={handleImport}
-      />
+      <div className="import-layout">
+        <div className="panel-card import-layout__company">
+          <h3>Empresa</h3>
+          <label className="form-field">
+            <SearchableSelect
+              value={empresaId}
+              onChange={(id) => { setEmpresaId(id); setEditingId(null); setForm(emptyForm); }}
+              placeholder="Pesquise uma empresa..."
+              options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+            />
+          </label>
 
-      <form onSubmit={handleSubmit} className="card-form">
-        <label className="form-field">Empresa
-          <select className="form-select" value={empresaId} onChange={(e) => { setEmpresaId(e.target.value); setEditingId(null); setForm(emptyForm); }} required>
-            <option value="">Selecione a empresa</option>
-            {companies.map((c) => (<option key={c.id} value={c.id}>{c.razao_social}</option>))}
-          </select>
-        </label>
-
-        {empresaId && (
-          <>
-            {error && <div className="alert alert-error">{error}</div>}
-            {success && <div className="alert alert-success">{success}</div>}
-
-            <label className="form-field">Nome da Filial<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
-            <label className="form-field">Código da Filial<input className="form-input" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></label>
-            <label className="form-field">CNPJ<input className="form-input" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} /></label>
-            <label className="form-field">CEP{cepLoading && ' (buscando...)'}<input className="form-input" value={form.cep} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={handleCepBlur} placeholder="00000-000" /></label>
-            <label className="form-field">Endereço<input className="form-input" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} /></label>
-            <label className="form-field">Número<input className="form-input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></label>
-            <label className="form-field">Complemento<input className="form-input" value={form.complemento} onChange={(e) => setForm({ ...form, complemento: e.target.value })} /></label>
-            <label className="form-field">Bairro<input className="form-input" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} /></label>
-            <label className="form-field">Cidade<input className="form-input" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></label>
-            <label className="form-field">Estado<input className="form-input" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} placeholder="UF" /></label>
-            <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
-            <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
-            <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-            <label className="form-field">Status
-              <select className="form-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                <option value="ativo">Ativa</option>
-                <option value="inativo">Inativa</option>
-              </select>
+          {empresaId && filiaisDaEmpresa.length > 0 && (
+            <label className="form-field">Buscar filial existente
+              <SearchableSelect
+                value={editingId || ''}
+                onChange={(id) => { const u = filiaisDaEmpresa.find((f) => f.id === id); if (u) handleEdit(u); }}
+                placeholder="Digite o nome da filial para editar..."
+                options={filiaisDaEmpresa.map((u) => ({
+                  value: u.id,
+                  label: u.nome,
+                  sublabel: [u.endereco, u.numero, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                }))}
+              />
             </label>
+          )}
+        </div>
 
-            <div className="row-actions">
-              <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar filial'}</button>
-              {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
-            </div>
-          </>
-        )}
-      </form>
+        <ImportPanel
+          title="Importação em Massa"
+          hint="Importe várias filiais utilizando um arquivo CSV."
+          templateHeaders={['empresa_cnpj', 'nome', 'codigo', 'cnpj', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'responsavel', 'telefone', 'email', 'status']}
+          templateExample={['12.345.678/0001-90', 'Filial Zona Sul', 'FL-001', '12.345.678/0002-71', '04571-000', 'Av. Ibirapuera', '2000', 'Sala 10', 'Moema', 'São Paulo', 'SP', 'João Souza', '(11) 98888-0000', 'filial@exemplo.com', 'ativo']}
+          onImport={handleImport}
+        />
+      </div>
+
+      {empresaId && (
+        <form onSubmit={handleSubmit} className="card-form">
+          {error && <div className="alert alert-error">{error}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
+
+          <label className="form-field">Nome da Filial<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
+          <label className="form-field">Código da Filial<input className="form-input" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></label>
+          <label className="form-field">CNPJ<input className="form-input" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} /></label>
+          <label className="form-field">CEP{cepLoading && ' (buscando...)'}<input className="form-input" value={form.cep} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={handleCepBlur} placeholder="00000-000" /></label>
+          <label className="form-field">Endereço<input className="form-input" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} /></label>
+          <label className="form-field">Número<input className="form-input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></label>
+          <label className="form-field">Complemento<input className="form-input" value={form.complemento} onChange={(e) => setForm({ ...form, complemento: e.target.value })} /></label>
+          <label className="form-field">Bairro<input className="form-input" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} /></label>
+          <label className="form-field">Cidade<input className="form-input" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></label>
+          <label className="form-field">Estado<input className="form-input" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} placeholder="UF" /></label>
+          <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
+          <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
+          <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label className="form-field">Status
+            <select className="form-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option value="ativo">Ativa</option>
+              <option value="inativo">Inativa</option>
+            </select>
+          </label>
+
+          <div className="row-actions">
+            <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar filial'}</button>
+            {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
+          </div>
+        </form>
+      )}
 
       {empresaId && (
         <table className="data-table">
@@ -212,6 +233,7 @@ export default function CreateFilial() {
             <tr>
               <th>Nome</th>
               <th>Código</th>
+              <th>Endereço</th>
               <th>Cidade/UF</th>
               <th>Status</th>
               <th></th>
@@ -219,12 +241,13 @@ export default function CreateFilial() {
           </thead>
           <tbody>
             {filiaisDaEmpresa.length === 0 ? (
-              <tr><td colSpan={5} className="section-text">Nenhuma filial cadastrada para esta empresa ainda.</td></tr>
+              <tr><td colSpan={6} className="section-text">Nenhuma filial cadastrada para esta empresa ainda.</td></tr>
             ) : (
               filiaisDaEmpresa.map((unit) => (
                 <tr key={unit.id}>
                   <td>{unit.nome}</td>
                   <td>{unit.codigo || '—'}</td>
+                  <td>{[unit.endereco, unit.numero].filter(Boolean).join(', ') || '—'}</td>
                   <td>{unit.cidade ? `${unit.cidade}/${unit.estado || ''}` : '—'}</td>
                   <td><span className={`badge badge-${unit.status}`}>{unit.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
                   <td>

@@ -3,6 +3,7 @@ import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
 import ImportPanel from '../components/ImportPanel';
+import SearchableSelect from '../components/SearchableSelect';
 
 const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '' };
 
@@ -142,10 +143,12 @@ export default function CreateSede() {
 
       <form onSubmit={handleSubmit} className="card-form">
         <label className="form-field">Empresa
-          <select className="form-select" value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} required>
-            <option value="">Selecione a empresa</option>
-            {companies.map((c) => (<option key={c.id} value={c.id}>{c.razao_social}</option>))}
-          </select>
+          <SearchableSelect
+            value={empresaId}
+            onChange={setEmpresaId}
+            placeholder="Digite para buscar a empresa..."
+            options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+          />
         </label>
 
         {empresaId && (

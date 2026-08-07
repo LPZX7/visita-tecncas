@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
+import SearchableSelect from '../components/SearchableSelect';
 
 const emptyForm = { empresa_id: '', unidade_id: '', modelo: '', numero_serie: '', local_instalacao: '', data_instalacao: '', garantia_ate: '' };
 
@@ -78,17 +79,25 @@ export default function Equipments() {
         <h3>{editingId ? 'Editar equipamento' : 'Novo equipamento'}</h3>
         {error && <div className="alert alert-error">{error}</div>}
         <label className="form-field">Empresa
-          <select className="form-select" value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value, unidade_id: '' })} required>
-            <option value="">Selecione</option>
-            {companies.map((company) => (<option key={company.id} value={company.id}>{company.razao_social}</option>))}
-          </select>
+          <SearchableSelect
+            value={form.empresa_id}
+            onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '' })}
+            placeholder="Digite para buscar a empresa..."
+            options={companies.map((company) => ({ value: company.id, label: company.razao_social, sublabel: company.cnpj }))}
+          />
         </label>
         {form.empresa_id && unitsForSelectedCompany.length > 0 && (
-          <label className="form-field">Unidade
-            <select className="form-select" value={form.unidade_id} onChange={(e) => setForm({ ...form, unidade_id: e.target.value })}>
-              <option value="">Sede principal (sem unidade específica)</option>
-              {unitsForSelectedCompany.map((unit) => (<option key={unit.id} value={unit.id}>{unit.tipo} — {unit.nome}</option>))}
-            </select>
+          <label className="form-field">Unidade (opcional — deixe em branco para sede principal)
+            <SearchableSelect
+              value={form.unidade_id}
+              onChange={(id) => setForm({ ...form, unidade_id: id })}
+              placeholder="Digite para buscar a filial..."
+              options={unitsForSelectedCompany.map((unit) => ({
+                value: unit.id,
+                label: `${unit.tipo} — ${unit.nome}`,
+                sublabel: [unit.endereco, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ')
+              }))}
+            />
           </label>
         )}
         <label className="form-field">Modelo<input className="form-input" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} required /></label>

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import api from '../api';
 import { getUser } from '../utils/auth';
 import MapLink from '../components/MapLink';
+import SearchableSelect from '../components/SearchableSelect';
 
 const STAFF_STATUSES = ['Aberta', 'Agendada', 'Em Atendimento', 'Concluída', 'Cancelada'];
 
@@ -138,12 +139,12 @@ export default function Requests() {
           {user?.role !== 'cliente' && (
             <label className="form-field">
               Empresa
-              <select className="form-select" value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} required>
-                <option value="">Selecione</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.razao_social}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={form.empresa_id}
+                onChange={(id) => setForm({ ...form, empresa_id: id })}
+                placeholder="Digite para buscar a empresa..."
+                options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+              />
             </label>
           )}
           <label className="form-field">
