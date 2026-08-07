@@ -537,6 +537,16 @@ a:hover {
   z-index: 40;
 }
 
+@media (max-width: 480px) {
+  .notif-dropdown {
+    position: fixed;
+    top: 66px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+}
+
 .notif-dropdown__header {
   padding: 14px 18px;
   font-weight: 700;
