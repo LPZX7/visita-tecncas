@@ -62,21 +62,15 @@ export default function ApproveBudget() {
 
                 <div className="detail-panel" style={{ marginBottom: 20 }}>
                   <div className="detail-grid">
-                    <div>
-                      <strong>Regra de cobrança</strong>
-                      <p>{data.regra} — {money(data.base_total)}</p>
-                    </div>
-                    <div>
-                      <strong>Mão de obra</strong>
-                      <p>{data.horas_trabalho}h × R$ 100,00 = {money(data.mao_obra_total)}</p>
-                    </div>
+                    {data.unidade && (
+                      <div>
+                        <strong>Unidade</strong>
+                        <p>{data.unidade}</p>
+                      </div>
+                    )}
                     <div>
                       <strong>Deslocamento</strong>
                       <p>{money(data.deslocamento)}</p>
-                    </div>
-                    <div>
-                      <strong>Urgência</strong>
-                      <p>{money(data.urgencia)}</p>
                     </div>
                   </div>
 

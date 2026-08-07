@@ -31,14 +31,14 @@ async function loadFromToken(req, res) {
   }
 
   const request = await db.getRequestById(budget.request_id);
-  const company = request ? await db.getCompanyById(request.empresa_id) : null;
-  const rule = await db.getPricingRuleById(budget.regra_cobranca_id);
+  const company = request ? await db.getCompanyById(budget.empresa_id || request.empresa_id) : null;
+  const unit = budget.unidade_id ? await db.getUnitById(budget.unidade_id) : null;
   const items = await Promise.all(budget.items.map(async (item) => ({
     ...item,
     peca: await db.getPartById(item.peca_id)
   })));
 
-  return { budget, request, company, rule, items };
+  return { budget, request, company, unit, items };
 }
 
 router.get('/:token', async (req, res, next) => {
@@ -48,15 +48,11 @@ router.get('/:token', async (req, res, next) => {
     res.json({
       status: data.budget.status,
       total: data.budget.total,
-      base_total: data.budget.base_total,
       pecas_total: data.budget.pecas_total,
-      mao_obra_total: data.budget.mao_obra_total,
       deslocamento: data.budget.deslocamento,
-      urgencia: data.budget.urgencia,
-      horas_trabalho: data.budget.horas_trabalho,
       items: data.items.map((item) => ({ nome: item.peca?.nome || 'Peça', quantidade: item.quantidade, valor_unitario: item.valor_unitario })),
       empresa: data.company?.razao_social || null,
-      regra: data.rule?.tipo || null,
+      unidade: data.unit ? `${data.unit.tipo} — ${data.unit.nome}` : null,
       chamado: data.request?.descricao || null
     });
   } catch (err) {

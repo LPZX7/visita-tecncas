@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { drawHeader, money } = require('./pdfHeader');
 
-function generateBudgetPdf({ budget, request, company, rule, items }) {
+function generateBudgetPdf({ budget, request, company, unit, items }) {
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
   drawHeader(doc, 'Orçamento de Serviço');
@@ -12,21 +12,15 @@ function generateBudgetPdf({ budget, request, company, rule, items }) {
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('CLIENTE');
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22').text(company?.razao_social || '—');
-  doc.moveDown(0.8);
-
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('REGRA DE COBRANÇA');
-  doc.font('Helvetica').fontSize(10).fillColor('#1B1E22').text(rule?.tipo || '—');
+  if (unit) doc.text(`${unit.tipo}: ${unit.nome}`);
   doc.moveDown(1);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('VALORES');
   doc.moveDown(0.3);
 
   const rows = [
-    ['Valor base (regra de cobrança)', money(budget.base_total)],
     ['Peças e materiais', money(budget.pecas_total)],
-    ['Mão de obra', money(budget.mao_obra_total)],
-    ['Deslocamento', money(budget.deslocamento)],
-    ['Urgência', money(budget.urgencia)]
+    ['Deslocamento', money(budget.deslocamento)]
   ];
 
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');

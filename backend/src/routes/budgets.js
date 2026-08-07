@@ -37,8 +37,8 @@ router.get('/:id/pdf', async (req, res, next) => {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
-    const company = request ? await db.getCompanyById(request.empresa_id) : null;
-    const rule = await db.getPricingRuleById(budget.regra_cobranca_id);
+    const company = request ? await db.getCompanyById(budget.empresa_id || request.empresa_id) : null;
+    const unit = budget.unidade_id ? await db.getUnitById(budget.unidade_id) : null;
     const items = await Promise.all(budget.items.map(async (item) => ({
       nome: (await db.getPartById(item.peca_id))?.nome || 'Peça',
       quantidade: item.quantidade,
@@ -48,7 +48,7 @@ router.get('/:id/pdf', async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="orcamento.pdf"');
 
-    const doc = generateBudgetPdf({ budget, request, company, rule, items });
+    const doc = generateBudgetPdf({ budget, request, company, unit, items });
     doc.pipe(res);
     doc.end();
   } catch (err) {
@@ -58,15 +58,10 @@ router.get('/:id/pdf', async (req, res, next) => {
 
 router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
   try {
-    const { request_id, regra_cobranca_id, items = [], deslocamento = 0, urgencia = 0, horas_trabalho = 0 } = req.body;
+    const { request_id, empresa_id, unidade_id, items = [], deslocamento = 0 } = req.body;
     const draft_by = req.user.sub;
-    if (!request_id || !regra_cobranca_id) {
+    if (!request_id || !empresa_id) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
-    }
-
-    const rule = (await db.getPricingRules()).find((item) => item.id === regra_cobranca_id);
-    if (!rule) {
-      return res.status(400).json({ error: 'Regra de cobrança inválida' });
     }
 
     const request = (await db.getRequests()).find((req) => req.id === request_id);
@@ -75,25 +70,23 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
     }
 
     const partsTotal = items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0);
-    const laborTotal = horas_trabalho * 100;
     const deslocamentoTotal = Number(deslocamento) || 0;
-    const urgenciaTotal = Number(urgencia) || 0;
-    const baseTotal = Number(rule.valor_base) || 0;
 
-    const total = baseTotal + partsTotal + laborTotal + deslocamentoTotal + urgenciaTotal;
+    const total = partsTotal + deslocamentoTotal;
 
     const budget = {
       request_id,
       draft_by,
-      regra_cobranca_id,
-      base_total: baseTotal,
+      empresa_id,
+      unidade_id: unidade_id || null,
+      base_total: 0,
       pecas_total: partsTotal,
-      mao_obra_total: laborTotal,
+      mao_obra_total: 0,
       total,
       status: 'Rascunho',
       deslocamento: deslocamentoTotal,
-      urgencia: urgenciaTotal,
-      horas_trabalho: Number(horas_trabalho) || 0
+      urgencia: 0,
+      horas_trabalho: 0
     };
 
     const created = await db.createBudget(budget, items);

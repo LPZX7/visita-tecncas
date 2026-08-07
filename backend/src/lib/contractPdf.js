@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { drawHeader, money } = require('./pdfHeader');
 
-function generateContractPdf({ contract, budget, request, company }) {
+function generateContractPdf({ contract, budget, request, company, unit }) {
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
   drawHeader(doc, 'Contrato de Prestação de Serviços de Manutenção Técnica');
@@ -18,6 +18,7 @@ function generateContractPdf({ contract, budget, request, company }) {
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
   doc.text(company.razao_social || '—');
   if (company.cnpj) doc.text(`CNPJ: ${company.cnpj}`);
+  if (unit) doc.text(`${unit.tipo}: ${unit.nome}`);
   if (company.endereco) doc.text(company.endereco);
   doc.moveDown(1);
 
@@ -30,11 +31,8 @@ function generateContractPdf({ contract, budget, request, company }) {
   doc.moveDown(0.3);
 
   const rows = [
-    ['Valor base (regra de cobrança)', money(budget.base_total)],
     ['Peças e materiais', money(budget.pecas_total)],
-    ['Mão de obra', money(budget.mao_obra_total)],
-    ['Deslocamento', money(budget.deslocamento)],
-    ['Urgência', money(budget.urgencia)]
+    ['Deslocamento', money(budget.deslocamento)]
   ];
 
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');

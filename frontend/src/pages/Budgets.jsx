@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useState } from 'react';
 import api from '../api';
 import { getUser } from '../utils/auth';
+import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { request_id: '', regra_cobranca_id: '', deslocamento: '', urgencia: '', horas_trabalho: '' };
+const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '' };
 
 const STATUS_BADGE = {
   'Rascunho': 'badge-rascunho',
@@ -19,9 +20,9 @@ export default function Budgets() {
   const user = getUser();
   const [budgets, setBudgets] = useState([]);
   const [requests, setRequests] = useState([]);
-  const [rules, setRules] = useState([]);
   const [parts, setParts] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [items, setItems] = useState([]);
@@ -35,9 +36,9 @@ export default function Budgets() {
   const load = () => {
     api.get('/budgets').then((res) => setBudgets(res.data));
     api.get('/requests').then((res) => setRequests(res.data)).catch(() => {});
-    api.get('/rules').then((res) => setRules(res.data)).catch(() => {});
     api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
     api.get('/companies').then((res) => setCompanies(res.data)).catch(() => {});
+    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
     api.get('/contracts').then((res) => setContracts(res.data)).catch(() => {});
   };
 
@@ -50,12 +51,12 @@ export default function Budgets() {
     const req = requestFor(id);
     return req ? `${req.descricao} (${req.status})` : id;
   };
-  const companyForRequest = (id) => {
-    const req = requestFor(id);
-    return req ? companies.find((c) => c.id === req.empresa_id) : null;
-  };
-  const ruleName = (id) => rules.find((r) => r.id === id)?.tipo || '—';
+  const companyFor = (budget) => companies.find((c) => c.id === (budget.empresa_id || requestFor(budget.request_id)?.empresa_id)) || null;
+  const unitFor = (budget) => units.find((u) => u.id === budget.unidade_id) || null;
   const partName = (id) => parts.find((p) => p.id === id)?.nome || id;
+
+  const unitsForSelectedCompany = units.filter((u) => u.empresa_id === form.empresa_id);
+  const requestsForSelectedCompany = requests.filter((r) => r.empresa_id === form.empresa_id);
 
   const addItem = () => {
     const part = parts.find((p) => p.id === itemDraft.peca_id);
@@ -71,14 +72,21 @@ export default function Budgets() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!form.empresa_id) {
+      setError('Selecione uma empresa.');
+      return;
+    }
+    if (!form.request_id) {
+      setError('Selecione uma solicitação.');
+      return;
+    }
     try {
       await api.post('/budgets', {
         request_id: form.request_id,
-        regra_cobranca_id: form.regra_cobranca_id,
+        empresa_id: form.empresa_id,
+        unidade_id: form.unidade_id || null,
         items,
-        deslocamento: Number(form.deslocamento) || 0,
-        urgencia: Number(form.urgencia) || 0,
-        horas_trabalho: Number(form.horas_trabalho) || 0
+        deslocamento: Number(form.deslocamento) || 0
       });
       setForm(emptyForm);
       setItems([]);
@@ -122,19 +130,43 @@ export default function Budgets() {
       {canCreate && (
         <form onSubmit={handleSubmit} className="card-form">
           <h3>Novo orçamento</h3>
+
+          <label className="form-field">
+            Empresa
+            <SearchableSelect
+              value={form.empresa_id}
+              onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', request_id: '' })}
+              placeholder="Pesquise uma empresa..."
+              options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+            />
+          </label>
+
+          {form.empresa_id && unitsForSelectedCompany.length > 0 && (
+            <label className="form-field">
+              Filial / Sede (opcional)
+              <SearchableSelect
+                value={form.unidade_id}
+                onChange={(id) => setForm({ ...form, unidade_id: id })}
+                placeholder="Digite para buscar a filial ou sede..."
+                options={unitsForSelectedCompany.map((u) => ({
+                  value: u.id,
+                  label: `${u.tipo} — ${u.nome}`,
+                  sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                }))}
+              />
+            </label>
+          )}
+
           <label className="form-field">
             Solicitação
-            <select className="form-select" value={form.request_id} onChange={(e) => setForm({ ...form, request_id: e.target.value })} required>
-              <option value="">Selecione</option>
-              {requests.map((req) => (<option key={req.id} value={req.id}>{req.descricao} — {req.status}</option>))}
-            </select>
-          </label>
-          <label className="form-field">
-            Regra de cobrança
-            <select className="form-select" value={form.regra_cobranca_id} onChange={(e) => setForm({ ...form, regra_cobranca_id: e.target.value })} required>
-              <option value="">Selecione</option>
-              {rules.map((rule) => (<option key={rule.id} value={rule.id}>{rule.tipo} — R$ {Number(rule.valor_base).toFixed(2)}</option>))}
-            </select>
+            <SearchableSelect
+              value={form.request_id}
+              onChange={(id) => setForm({ ...form, request_id: id })}
+              placeholder={form.empresa_id ? 'Digite para buscar a solicitação...' : 'Selecione uma empresa primeiro'}
+              disabled={!form.empresa_id}
+              emptyMessage="Nenhuma solicitação para esta empresa."
+              options={requestsForSelectedCompany.map((req) => ({ value: req.id, label: req.descricao, sublabel: req.status }))}
+            />
           </label>
 
           <div className="item-row">
@@ -163,9 +195,7 @@ export default function Budgets() {
             </ul>
           )}
 
-          <label className="form-field">Horas de trabalho<input className="form-input" type="number" step="0.5" value={form.horas_trabalho} onChange={(e) => setForm({ ...form, horas_trabalho: e.target.value })} /></label>
           <label className="form-field">Deslocamento (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
-          <label className="form-field">Urgência (R$)<input className="form-input" type="number" step="0.01" value={form.urgencia} onChange={(e) => setForm({ ...form, urgencia: e.target.value })} /></label>
 
           <button type="submit" className="btn btn-primary">Criar orçamento</button>
         </form>
@@ -175,6 +205,7 @@ export default function Budgets() {
         <thead>
           <tr>
             <th>Solicitação</th>
+            <th>Empresa</th>
             <th>Status</th>
             <th>Itens</th>
             <th>Total</th>
@@ -185,11 +216,13 @@ export default function Budgets() {
         <tbody>
           {budgets.map((budget) => {
             const isOpen = !!expanded[budget.id];
-            const comp = companyForRequest(budget.request_id);
+            const comp = companyFor(budget);
+            const unit = unitFor(budget);
             return (
               <Fragment key={budget.id}>
                 <tr>
                   <td>{requestLabel(budget.request_id)}</td>
+                  <td>{comp?.razao_social || '—'}</td>
                   <td><span className={`badge ${STATUS_BADGE[budget.status] || ''}`}>{budget.status}</span></td>
                   <td>{budget.items?.length || 0} item(ns)</td>
                   <td>{money(budget.total)}</td>
@@ -225,28 +258,22 @@ export default function Budgets() {
                 </tr>
                 {isOpen && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="detail-panel">
                         <div className="detail-grid">
                           <div>
                             <strong>Empresa</strong>
                             <p>{comp?.razao_social || '—'}</p>
                           </div>
-                          <div>
-                            <strong>Regra de cobrança</strong>
-                            <p>{ruleName(budget.regra_cobranca_id)} — {money(budget.base_total)}</p>
-                          </div>
-                          <div>
-                            <strong>Mão de obra</strong>
-                            <p>{budget.horas_trabalho}h × R$ 100,00 = {money(budget.mao_obra_total)}</p>
-                          </div>
+                          {unit && (
+                            <div>
+                              <strong>{unit.tipo}</strong>
+                              <p>{unit.nome}</p>
+                            </div>
+                          )}
                           <div>
                             <strong>Deslocamento</strong>
                             <p>{money(budget.deslocamento)}</p>
-                          </div>
-                          <div>
-                            <strong>Urgência</strong>
-                            <p>{money(budget.urgencia)}</p>
                           </div>
                         </div>
 
@@ -263,7 +290,7 @@ export default function Budgets() {
 
                         <div className="detail-report">
                           <strong>Total</strong>
-                          <p>{money(budget.total)} ({money(budget.base_total)} base + {money(budget.pecas_total)} peças + {money(budget.mao_obra_total)} mão de obra + {money(budget.deslocamento)} deslocamento + {money(budget.urgencia)} urgência)</p>
+                          <p>{money(budget.total)} ({money(budget.pecas_total)} peças + {money(budget.deslocamento)} deslocamento)</p>
                         </div>
                       </div>
                     </td>

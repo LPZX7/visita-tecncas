@@ -24,7 +24,8 @@ async function loadContractBundle(id) {
   const budget = await db.getBudgetById(contract.orcamento_id);
   const request = await db.getRequestById(contract.request_id);
   const company = await db.getCompanyById(contract.empresa_id);
-  return { contract, budget, request, company };
+  const unit = budget?.unidade_id ? await db.getUnitById(budget.unidade_id) : null;
+  return { contract, budget, request, company, unit };
 }
 
 router.get('/:id', async (req, res, next) => {

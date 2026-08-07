@@ -136,6 +136,10 @@ const SCHEMA_SQL = `
     atualizado_em TEXT
   );
 
+  ALTER TABLE budgets ALTER COLUMN regra_cobranca_id DROP NOT NULL;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS empresa_id TEXT REFERENCES empresas(id);
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
+
   CREATE TABLE IF NOT EXISTS orcamento_itens (
     id TEXT PRIMARY KEY,
     orcamento_id TEXT NOT NULL REFERENCES budgets(id),
@@ -529,6 +533,8 @@ async function createBudget(budget, items = []) {
     request_id: budget.request_id,
     draft_by: budget.draft_by,
     regra_cobranca_id: budget.regra_cobranca_id,
+    empresa_id: budget.empresa_id,
+    unidade_id: budget.unidade_id,
     base_total: budget.base_total || 0,
     pecas_total: budget.pecas_total || 0,
     mao_obra_total: budget.mao_obra_total || 0,
@@ -541,9 +547,9 @@ async function createBudget(budget, items = []) {
     atualizado_em: now()
   });
   await pool.query(
-    `INSERT INTO budgets (id, request_id, draft_by, regra_cobranca_id, base_total, pecas_total, mao_obra_total, total, status, deslocamento, urgencia, horas_trabalho, criado_em, atualizado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-    [row.id, row.request_id, row.draft_by, row.regra_cobranca_id, row.base_total, row.pecas_total, row.mao_obra_total, row.total, row.status, row.deslocamento, row.urgencia, row.horas_trabalho, row.criado_em, row.atualizado_em]
+    `INSERT INTO budgets (id, request_id, draft_by, regra_cobranca_id, empresa_id, unidade_id, base_total, pecas_total, mao_obra_total, total, status, deslocamento, urgencia, horas_trabalho, criado_em, atualizado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+    [row.id, row.request_id, row.draft_by, row.regra_cobranca_id, row.empresa_id, row.unidade_id, row.base_total, row.pecas_total, row.mao_obra_total, row.total, row.status, row.deslocamento, row.urgencia, row.horas_trabalho, row.criado_em, row.atualizado_em]
   );
 
   for (const item of items) {
