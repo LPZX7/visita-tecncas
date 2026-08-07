@@ -6,7 +6,8 @@ import AuthLayout from '../components/AuthLayout';
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
-  const [error, setError] = useState('');
+  const expired = new URLSearchParams(window.location.search).get('expired') === '1';
+  const [error, setError] = useState(expired ? 'Sua sessão expirou. Faça login novamente.' : '');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
