@@ -8,6 +8,7 @@ const emptyForm = { razao_social: '', nome_fantasia: '', cnpj: '', inscricao_est
 export default function Companies() {
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
@@ -15,17 +16,29 @@ export default function Companies() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
 
+  const addressForCompany = (companyId) => {
+    const companyUnits = units.filter((u) => u.empresa_id === companyId);
+    const unit = companyUnits.find((u) => u.tipo === 'Sede') || companyUnits[0];
+    if (!unit) return '';
+    return [unit.endereco, unit.numero, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ');
+  };
+
   const filteredCompanies = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return companies;
     return companies.filter((c) =>
       c.razao_social.toLowerCase().includes(q) ||
       (c.nome_fantasia || '').toLowerCase().includes(q) ||
-      (c.cnpj || '').toLowerCase().includes(q)
+      (c.cnpj || '').toLowerCase().includes(q) ||
+      addressForCompany(c.id).toLowerCase().includes(q)
     );
-  }, [companies, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companies, units, search]);
 
-  const load = () => api.get('/companies').then((res) => setCompanies(res.data));
+  const load = () => {
+    api.get('/companies').then((res) => setCompanies(res.data));
+    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
+  };
 
   useEffect(() => {
     load();
@@ -184,6 +197,7 @@ export default function Companies() {
           <tr>
             <th>Razão social</th>
             <th>CNPJ</th>
+            <th>Endereço</th>
             <th>Inscrição estadual</th>
             <th>Status</th>
             <th></th>
@@ -191,12 +205,13 @@ export default function Companies() {
         </thead>
         <tbody>
           {filteredCompanies.length === 0 ? (
-            <tr><td colSpan={5} className="section-text">Nenhuma empresa encontrada para "{search}".</td></tr>
+            <tr><td colSpan={6} className="section-text">Nenhuma empresa encontrada para "{search}".</td></tr>
           ) : (
             filteredCompanies.map((company) => (
               <tr key={company.id}>
                 <td>{company.razao_social}</td>
                 <td>{company.cnpj}</td>
+                <td>{addressForCompany(company.id) || '—'}</td>
                 <td>{company.inscricao_estadual || '—'}</td>
                 <td><span className={`badge badge-${company.status}`}>{company.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
                 <td>
