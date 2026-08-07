@@ -232,9 +232,17 @@ export default function CreateFilial() {
         />
       </div>
 
-      {empresaId && !showForm && (
+      {!showForm && (
         <div className="row-actions" style={{ marginBottom: 20 }}>
-          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Filial</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={openCreate}
+            disabled={!empresaId}
+            title={!empresaId ? 'Selecione uma empresa para cadastrar uma filial' : undefined}
+          >
+            + Criar Filial
+          </button>
         </div>
       )}
 
