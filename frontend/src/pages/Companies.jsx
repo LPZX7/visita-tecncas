@@ -10,6 +10,7 @@ export default function Companies() {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   const load = () => api.get('/companies').then((res) => setCompanies(res.data));
 
@@ -36,9 +37,18 @@ export default function Companies() {
       await load();
       setForm(emptyForm);
       setEditingId(null);
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar empresa');
     }
+  };
+
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setSuccess('');
+    setShowForm(true);
   };
 
   const handleEdit = (company) => {
@@ -54,11 +64,13 @@ export default function Companies() {
       telefone: company.telefone || '',
       status: company.status || 'ativo'
     });
+    setShowForm(true);
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setShowForm(false);
   };
 
   const handleDelete = async (id) => {
@@ -104,27 +116,38 @@ export default function Companies() {
     <div>
       <h2 className="page-title">Cadastrar Empresa</h2>
 
-      <form onSubmit={handleSubmit} className="card-form">
-        <h3>{editingId ? 'Editar empresa' : 'Nova empresa'}</h3>
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
-        <label className="form-field">Razão Social<input className="form-input" value={form.razao_social} onChange={(e) => setForm({ ...form, razao_social: e.target.value })} required /></label>
-        <label className="form-field">Nome Fantasia<input className="form-input" value={form.nome_fantasia} onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })} /></label>
-        <label className="form-field">CNPJ<input className="form-input" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} required /></label>
-        <label className="form-field">Inscrição Estadual<input className="form-input" value={form.inscricao_estadual} onChange={(e) => setForm({ ...form, inscricao_estadual: e.target.value })} /></label>
-        <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-        <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
-        <label className="form-field">Status
-          <select className="form-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-            <option value="ativo">Ativa</option>
-            <option value="inativo">Inativa</option>
-          </select>
-        </label>
-        <div className="row-actions">
-          <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar empresa'}</button>
-          {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
+      {!showForm && (
+        <div className="row-actions" style={{ marginBottom: 20 }}>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Empresa</button>
         </div>
-      </form>
+      )}
+
+      {error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
+      {success && !showForm && <div className="alert alert-success" style={{ maxWidth: 720, marginBottom: 20 }}>{success}</div>}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="card-form">
+          <h3>{editingId ? 'Editar empresa' : 'Nova empresa'}</h3>
+          {error && <div className="alert alert-error">{error}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
+          <label className="form-field">Razão Social<input className="form-input" value={form.razao_social} onChange={(e) => setForm({ ...form, razao_social: e.target.value })} required /></label>
+          <label className="form-field">Nome Fantasia<input className="form-input" value={form.nome_fantasia} onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })} /></label>
+          <label className="form-field">CNPJ<input className="form-input" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} required /></label>
+          <label className="form-field">Inscrição Estadual<input className="form-input" value={form.inscricao_estadual} onChange={(e) => setForm({ ...form, inscricao_estadual: e.target.value })} /></label>
+          <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
+          <label className="form-field">Status
+            <select className="form-select" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+              <option value="ativo">Ativa</option>
+              <option value="inativo">Inativa</option>
+            </select>
+          </label>
+          <div className="row-actions">
+            <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar empresa'}</button>
+            <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       <ImportPanel
         title="Importar empresas em massa"

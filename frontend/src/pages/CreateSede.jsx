@@ -16,6 +16,7 @@ export default function CreateSede() {
   const [success, setSuccess] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     api.get('/companies').then((res) => setCompanies(res.data));
@@ -27,6 +28,7 @@ export default function CreateSede() {
   useEffect(() => {
     setError('');
     setSuccess('');
+    setShowForm(false);
     if (sedeExistente) {
       setEditingId(sedeExistente.id);
       setForm({
@@ -46,6 +48,16 @@ export default function CreateSede() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
+
+  const openForm = () => {
+    setError('');
+    setSuccess('');
+    setShowForm(true);
+  };
+
+  const handleCancel = () => {
+    setShowForm(false);
+  };
 
   const handleCepBlur = async () => {
     if (!form.cep) return;
@@ -85,6 +97,7 @@ export default function CreateSede() {
       }
       const res = await api.get('/units');
       setUnits(res.data);
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar sede');
     }
@@ -141,40 +154,66 @@ export default function CreateSede() {
         onImport={handleImport}
       />
 
-      <form onSubmit={handleSubmit} className="card-form">
-        <label className="form-field">Empresa
+      <div className="panel-card" style={{ maxWidth: 720, marginBottom: 20 }}>
+        <h3>Empresa</h3>
+        <label className="form-field">
           <SearchableSelect
             value={empresaId}
             onChange={setEmpresaId}
-            placeholder="Digite para buscar a empresa..."
+            placeholder="Pesquise uma empresa..."
             options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
           />
         </label>
+      </div>
 
-        {empresaId && (
-          <>
-            {sedeExistente && (
-              <div className="alert alert-info">Esta empresa já possui uma sede cadastrada. Os dados abaixo foram carregados para edição.</div>
-            )}
-            {error && <div className="alert alert-error">{error}</div>}
-            {success && <div className="alert alert-success">{success}</div>}
-
-            <label className="form-field">Nome da Sede<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
-            <label className="form-field">CEP{cepLoading && ' (buscando...)'}<input className="form-input" value={form.cep} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={handleCepBlur} placeholder="00000-000" /></label>
-            <label className="form-field">Endereço<input className="form-input" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} /></label>
-            <label className="form-field">Número<input className="form-input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></label>
-            <label className="form-field">Cidade<input className="form-input" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></label>
-            <label className="form-field">Estado<input className="form-input" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} placeholder="UF" /></label>
-            <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
-            <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
-            <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-
-            <div className="row-actions">
-              <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar sede'}</button>
+      {empresaId && !showForm && (
+        sedeExistente ? (
+          <div className="panel-card" style={{ maxWidth: 720, marginBottom: 20 }}>
+            <div className="row-actions" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+              <h3 style={{ margin: 0 }}>{sedeExistente.nome}</h3>
+              <button type="button" className="btn btn-outline btn-sm" onClick={openForm}>Editar Sede</button>
             </div>
-          </>
-        )}
-      </form>
+            <p className="section-text" style={{ margin: '8px 0 0' }}>
+              {[sedeExistente.endereco, sedeExistente.numero].filter(Boolean).join(', ') || 'Endereço não informado'}
+              {sedeExistente.cidade ? ` — ${sedeExistente.cidade}/${sedeExistente.estado || ''}` : ''}
+            </p>
+            {(sedeExistente.responsavel || sedeExistente.telefone || sedeExistente.email) && (
+              <p className="section-text" style={{ margin: '4px 0 0' }}>
+                {[sedeExistente.responsavel, sedeExistente.telefone, sedeExistente.email].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="row-actions" style={{ marginBottom: 20 }}>
+            <button type="button" className="btn btn-primary" onClick={openForm}>+ Criar Sede</button>
+          </div>
+        )
+      )}
+
+      {empresaId && error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
+      {empresaId && success && !showForm && <div className="alert alert-success" style={{ maxWidth: 720, marginBottom: 20 }}>{success}</div>}
+
+      {empresaId && showForm && (
+        <form onSubmit={handleSubmit} className="card-form">
+          {error && <div className="alert alert-error">{error}</div>}
+          {success && <div className="alert alert-success">{success}</div>}
+
+          <label className="form-field">Nome da Sede<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
+          <label className="form-field">CEP{cepLoading && ' (buscando...)'}<input className="form-input" value={form.cep} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={handleCepBlur} placeholder="00000-000" /></label>
+          <label className="form-field">Endereço<input className="form-input" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} /></label>
+          <label className="form-field">Número<input className="form-input" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></label>
+          <label className="form-field">Cidade<input className="form-input" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} /></label>
+          <label className="form-field">Estado<input className="form-input" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} placeholder="UF" /></label>
+          <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
+          <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
+          <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+
+          <div className="row-actions">
+            <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar sede'}</button>
+            <button type="button" className="btn btn-outline" onClick={handleCancel}>Cancelar</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

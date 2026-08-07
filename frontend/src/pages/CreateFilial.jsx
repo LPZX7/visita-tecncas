@@ -19,6 +19,7 @@ export default function CreateFilial() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const load = () => {
     api.get('/companies').then((res) => setCompanies(res.data));
@@ -70,9 +71,18 @@ export default function CreateFilial() {
       await load();
       setForm(emptyForm);
       setEditingId(null);
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar filial');
     }
+  };
+
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setSuccess('');
+    setShowForm(true);
   };
 
   const handleEdit = (unit) => {
@@ -95,11 +105,13 @@ export default function CreateFilial() {
       email: unit.email || '',
       status: unit.status || 'ativo'
     });
+    setShowForm(true);
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setShowForm(false);
   };
 
   const handleDelete = async (id) => {
@@ -164,7 +176,7 @@ export default function CreateFilial() {
           <label className="form-field">
             <SearchableSelect
               value={empresaId}
-              onChange={(id) => { setEmpresaId(id); setEditingId(null); setForm(emptyForm); }}
+              onChange={(id) => { setEmpresaId(id); setEditingId(null); setForm(emptyForm); setShowForm(false); }}
               placeholder="Pesquise uma empresa..."
               options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
             />
@@ -195,7 +207,16 @@ export default function CreateFilial() {
         />
       </div>
 
-      {empresaId && (
+      {empresaId && !showForm && (
+        <div className="row-actions" style={{ marginBottom: 20 }}>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Filial</button>
+        </div>
+      )}
+
+      {empresaId && error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
+      {empresaId && success && !showForm && <div className="alert alert-success" style={{ maxWidth: 720, marginBottom: 20 }}>{success}</div>}
+
+      {empresaId && showForm && (
         <form onSubmit={handleSubmit} className="card-form">
           {error && <div className="alert alert-error">{error}</div>}
           {success && <div className="alert alert-success">{success}</div>}
@@ -222,7 +243,7 @@ export default function CreateFilial() {
 
           <div className="row-actions">
             <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar filial'}</button>
-            {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
+            <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>
           </div>
         </form>
       )}
