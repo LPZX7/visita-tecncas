@@ -3,6 +3,7 @@ const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
 const { sendMail } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
+const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -12,15 +13,8 @@ router.get('/', async (req, res, next) => {
     const user = req.user;
     const requests = await db.getRequests();
     if (user.role === 'cliente') {
-      let list = requests.filter((item) => item.empresa_id === user.empresa_id);
-      if (user.unidade_id) {
-        const equipments = await db.getEquipments();
-        list = list.filter((item) => {
-          const equipment = equipments.find((e) => e.id === item.equipamento_id);
-          return !equipment?.unidade_id || equipment.unidade_id === user.unidade_id;
-        });
-      }
-      return res.json(list);
+      const equipments = await db.getEquipments();
+      return res.json(scopeRequestsForClient(requests, equipments, user));
     }
     res.json(requests);
   } catch (err) {
@@ -48,7 +42,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     if (!equipment || equipment.empresa_id !== empresa_id) {
       return res.status(400).json({ error: 'Equipamento inválido para esta empresa' });
     }
-    if (req.user.role === 'cliente' && req.user.unidade_id && equipment.unidade_id && equipment.unidade_id !== req.user.unidade_id) {
+    if (req.user.role === 'cliente' && !isEquipmentAllowedForClient(equipment, req.user)) {
       return res.status(400).json({ error: 'Equipamento inválido para sua filial/sede' });
     }
 

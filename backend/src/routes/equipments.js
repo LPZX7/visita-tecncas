@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
+const { scopeEquipmentsForClient } = require('../lib/scoping');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -9,11 +10,7 @@ router.get('/', async (req, res, next) => {
   try {
     const equipments = await db.getEquipments();
     if (req.user.role === 'cliente') {
-      let list = equipments.filter((e) => e.empresa_id === req.user.empresa_id);
-      if (req.user.unidade_id) {
-        list = list.filter((e) => !e.unidade_id || e.unidade_id === req.user.unidade_id);
-      }
-      return res.json(list);
+      return res.json(scopeEquipmentsForClient(equipments, req.user));
     }
     res.json(equipments);
   } catch (err) {

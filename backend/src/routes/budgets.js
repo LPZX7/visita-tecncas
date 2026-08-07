@@ -4,6 +4,7 @@ const { verifyToken, requireRole } = require('../lib/auth');
 const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { signApprovalToken } = require('../lib/approvalToken');
 const { generateBudgetPdf } = require('../lib/budgetPdf');
+const { calculateBudgetTotal } = require('../lib/pricing');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
@@ -69,10 +70,7 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       return res.status(400).json({ error: 'Solicitação inválida' });
     }
 
-    const partsTotal = items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0);
-    const deslocamentoTotal = Number(deslocamento) || 0;
-
-    const total = partsTotal + deslocamentoTotal;
+    const { pecasTotal: partsTotal, deslocamentoTotal, total } = calculateBudgetTotal({ items, deslocamento });
 
     const budget = {
       request_id,
