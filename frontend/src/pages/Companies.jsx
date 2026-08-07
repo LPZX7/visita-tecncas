@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import ImportPanel from '../components/ImportPanel';
 
@@ -11,6 +11,17 @@ export default function Companies() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredCompanies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return companies;
+    return companies.filter((c) =>
+      c.razao_social.toLowerCase().includes(q) ||
+      (c.nome_fantasia || '').toLowerCase().includes(q) ||
+      (c.cnpj || '').toLowerCase().includes(q)
+    );
+  }, [companies, search]);
 
   const load = () => api.get('/companies').then((res) => setCompanies(res.data));
 
@@ -157,6 +168,15 @@ export default function Companies() {
         onImport={handleImport}
       />
 
+      <div className="list-controls" style={{ marginBottom: 12 }}>
+        <input
+          className="form-input search-input"
+          placeholder="Pesquisar empresa..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       <table className="data-table">
         <thead>
           <tr>
@@ -168,20 +188,24 @@ export default function Companies() {
           </tr>
         </thead>
         <tbody>
-          {companies.map((company) => (
-            <tr key={company.id}>
-              <td>{company.razao_social}</td>
-              <td>{company.cnpj}</td>
-              <td>{company.inscricao_estadual || '—'}</td>
-              <td><span className={`badge badge-${company.status}`}>{company.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
-              <td>
-                <div className="row-actions">
-                  <button className="btn btn-outline btn-sm" onClick={() => handleEdit(company)}>Editar</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(company.id)}>Excluir</button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {filteredCompanies.length === 0 ? (
+            <tr><td colSpan={5} className="section-text">Nenhuma empresa encontrada para "{search}".</td></tr>
+          ) : (
+            filteredCompanies.map((company) => (
+              <tr key={company.id}>
+                <td>{company.razao_social}</td>
+                <td>{company.cnpj}</td>
+                <td>{company.inscricao_estadual || '—'}</td>
+                <td><span className={`badge badge-${company.status}`}>{company.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
+                <td>
+                  <div className="row-actions">
+                    <button className="btn btn-outline btn-sm" onClick={() => handleEdit(company)}>Editar</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(company.id)}>Excluir</button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>

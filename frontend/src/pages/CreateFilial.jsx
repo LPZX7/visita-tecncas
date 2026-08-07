@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
@@ -20,6 +20,7 @@ export default function CreateFilial() {
   const [success, setSuccess] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = () => {
     api.get('/companies').then((res) => setCompanies(res.data));
@@ -31,6 +32,18 @@ export default function CreateFilial() {
   }, []);
 
   const filiaisDaEmpresa = units.filter((u) => u.empresa_id === empresaId && u.tipo === 'Filial');
+
+  const filteredFiliais = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return filiaisDaEmpresa;
+    return filiaisDaEmpresa.filter((u) =>
+      u.nome.toLowerCase().includes(q) ||
+      (u.codigo || '').toLowerCase().includes(q) ||
+      (u.endereco || '').toLowerCase().includes(q) ||
+      (u.cidade || '').toLowerCase().includes(q)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [units, empresaId, search]);
 
   const handleCepBlur = async () => {
     if (!form.cep) return;
@@ -176,7 +189,7 @@ export default function CreateFilial() {
           <label className="form-field">
             <SearchableSelect
               value={empresaId}
-              onChange={(id) => { setEmpresaId(id); setEditingId(null); setForm(emptyForm); setShowForm(false); }}
+              onChange={(id) => { setEmpresaId(id); setEditingId(null); setForm(emptyForm); setShowForm(false); setSearch(''); }}
               placeholder="Pesquise uma empresa..."
               options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
             />
@@ -248,6 +261,17 @@ export default function CreateFilial() {
         </form>
       )}
 
+      {empresaId && filiaisDaEmpresa.length > 0 && (
+        <div className="list-controls" style={{ marginBottom: 12 }}>
+          <input
+            className="form-input search-input"
+            placeholder="Pesquisar filial..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
       {empresaId && (
         <table className="data-table">
           <thead>
@@ -263,8 +287,10 @@ export default function CreateFilial() {
           <tbody>
             {filiaisDaEmpresa.length === 0 ? (
               <tr><td colSpan={6} className="section-text">Nenhuma filial cadastrada para esta empresa ainda.</td></tr>
+            ) : filteredFiliais.length === 0 ? (
+              <tr><td colSpan={6} className="section-text">Nenhuma filial encontrada para "{search}".</td></tr>
             ) : (
-              filiaisDaEmpresa.map((unit) => (
+              filteredFiliais.map((unit) => (
                 <tr key={unit.id}>
                   <td>{unit.nome}</td>
                   <td>{unit.codigo || '—'}</td>
