@@ -10,6 +10,7 @@ function signToken(user) {
       sub: user.id,
       role: user.role,
       empresa_id: user.empresa_id || null,
+      unidade_id: user.unidade_id || null,
       name: user.nome,
       email: user.email
     },

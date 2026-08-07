@@ -40,7 +40,7 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    const { ativo, role, empresa_id } = req.body;
+    const { ativo, role, empresa_id, unidade_id } = req.body;
     const patch = {};
 
     if (ativo !== undefined) {
@@ -63,6 +63,16 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
         return res.status(400).json({ error: 'Empresa inválida' });
       }
       patch.empresa_id = empresa_id || null;
+    }
+    if (unidade_id !== undefined) {
+      if (unidade_id) {
+        const unit = await db.getUnitById(unidade_id);
+        const effectiveEmpresaId = 'empresa_id' in patch ? patch.empresa_id : user.empresa_id;
+        if (!unit || unit.empresa_id !== effectiveEmpresaId) {
+          return res.status(400).json({ error: 'Filial/sede inválida para esta empresa' });
+        }
+      }
+      patch.unidade_id = unidade_id || null;
     }
 
     if (Object.keys(patch).length === 0) {

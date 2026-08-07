@@ -58,6 +58,8 @@ const SCHEMA_SQL = `
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
   CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_sede_unica ON unidades(empresa_id) WHERE tipo = 'Sede';
 
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
+
   ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
   ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
 
@@ -259,11 +261,11 @@ async function findUserByEmail(email) {
   return toUser(rows[0] || null);
 }
 
-async function createUser({ nome, email, senha_hash, role, empresa_id = null, ativo = true }) {
-  const user = { id: uuid(), nome, email, senha_hash, role, empresa_id, ativo: ativo ? 1 : 0, criado_em: now() };
+async function createUser({ nome, email, senha_hash, role, empresa_id = null, unidade_id = null, ativo = true }) {
+  const user = { id: uuid(), nome, email, senha_hash, role, empresa_id, unidade_id, ativo: ativo ? 1 : 0, criado_em: now() };
   await pool.query(
-    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-    [user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.ativo, user.criado_em]
+    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, unidade_id, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+    [user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.unidade_id, user.ativo, user.criado_em]
   );
   return toUser(user);
 }
@@ -509,6 +511,10 @@ async function updateRequest(id, patch) {
   return getRequestById(id);
 }
 
+async function deleteRequest(id) {
+  return safeDelete('requests', id);
+}
+
 // ---------- budgets ----------
 
 async function attachItems(budget) {
@@ -682,6 +688,7 @@ module.exports = {
   getRequestById,
   createRequest,
   updateRequest,
+  deleteRequest,
   getBudgets,
   getBudgetById,
   createBudget,

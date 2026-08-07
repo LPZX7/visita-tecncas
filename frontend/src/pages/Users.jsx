@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { getUser } from '../utils/auth';
+import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { nome: '', email: '', senha: '', role: 'cliente', empresa_id: '' };
+const emptyForm = { nome: '', email: '', senha: '', role: 'cliente', empresa_id: '', unidade_id: '' };
 
 const ROLE_LABEL = {
   cliente: 'Cliente',
@@ -16,14 +17,16 @@ export default function Users() {
   const isGestor = currentUser?.role === 'gestor';
   const [users, setUsers] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '' });
+  const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '', unidade_id: '' });
 
   const load = () => {
     api.get('/users').then((res) => setUsers(res.data));
     api.get('/companies').then((res) => setCompanies(res.data)).catch(() => {});
+    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
   };
 
   useEffect(() => {
@@ -31,12 +34,17 @@ export default function Users() {
   }, []);
 
   const companyName = (id) => companies.find((c) => c.id === id)?.razao_social || '—';
+  const unitName = (id) => {
+    const unit = units.find((u) => u.id === id);
+    return unit ? `${unit.tipo} — ${unit.nome}` : '—';
+  };
+  const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     try {
-      await api.post('/auth/register', { ...form, empresa_id: form.empresa_id || null });
+      await api.post('/auth/register', { ...form, empresa_id: form.empresa_id || null, unidade_id: form.unidade_id || null });
       setForm(emptyForm);
       load();
     } catch (err) {
@@ -55,13 +63,13 @@ export default function Users() {
 
   const startEdit = (user) => {
     setEditingId(user.id);
-    setEditDraft({ role: user.role, empresa_id: user.empresa_id || '' });
+    setEditDraft({ role: user.role, empresa_id: user.empresa_id || '', unidade_id: user.unidade_id || '' });
   };
 
   const saveEdit = async (user) => {
     setError('');
     try {
-      const payload = { empresa_id: editDraft.empresa_id || null };
+      const payload = { empresa_id: editDraft.empresa_id || null, unidade_id: editDraft.unidade_id || null };
       if (isGestor) payload.role = editDraft.role;
       await api.patch(`/users/${user.id}`, payload);
       setEditingId(null);
@@ -94,12 +102,32 @@ export default function Users() {
           <p className="section-text">Como analista, você só pode cadastrar usuários do tipo <strong>Cliente</strong>. Técnicos, analistas e gestores são cadastrados pelo gestor.</p>
         )}
         {(isGestor ? form.role === 'cliente' : true) && (
-          <label className="form-field">Empresa
-            <select className="form-select" value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} required>
-              <option value="">Selecione</option>
-              {companies.map((company) => (<option key={company.id} value={company.id}>{company.razao_social}</option>))}
-            </select>
-          </label>
+          <>
+            <label className="form-field">
+              Empresa
+              <SearchableSelect
+                value={form.empresa_id}
+                onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '' })}
+                placeholder="Pesquise uma empresa..."
+                options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+              />
+            </label>
+            {form.empresa_id && unitsForCompany(form.empresa_id).length > 0 && (
+              <label className="form-field">
+                Filial / Sede (opcional)
+                <SearchableSelect
+                  value={form.unidade_id}
+                  onChange={(id) => setForm({ ...form, unidade_id: id })}
+                  placeholder="Digite para buscar a filial ou sede..."
+                  options={unitsForCompany(form.empresa_id).map((u) => ({
+                    value: u.id,
+                    label: `${u.tipo} — ${u.nome}`,
+                    sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                  }))}
+                />
+              </label>
+            )}
+          </>
         )}
         <button type="submit" className="btn btn-primary">Criar usuário</button>
       </form>
@@ -111,6 +139,7 @@ export default function Users() {
             <th>Email</th>
             <th>Perfil</th>
             <th>Empresa</th>
+            <th>Filial / Sede</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -134,12 +163,22 @@ export default function Users() {
               </td>
               <td>
                 {editingId === user.id ? (
-                  <select className="form-select" value={editDraft.empresa_id} onChange={(e) => setEditDraft({ ...editDraft, empresa_id: e.target.value })}>
+                  <select className="form-select" value={editDraft.empresa_id} onChange={(e) => setEditDraft({ ...editDraft, empresa_id: e.target.value, unidade_id: '' })}>
                     <option value="">Sem empresa</option>
                     {companies.map((company) => (<option key={company.id} value={company.id}>{company.razao_social}</option>))}
                   </select>
                 ) : (
                   user.empresa_id ? companyName(user.empresa_id) : '—'
+                )}
+              </td>
+              <td>
+                {editingId === user.id ? (
+                  <select className="form-select" value={editDraft.unidade_id} onChange={(e) => setEditDraft({ ...editDraft, unidade_id: e.target.value })} disabled={!editDraft.empresa_id}>
+                    <option value="">Sem filial/sede</option>
+                    {unitsForCompany(editDraft.empresa_id).map((unit) => (<option key={unit.id} value={unit.id}>{unit.tipo} — {unit.nome}</option>))}
+                  </select>
+                ) : (
+                  user.unidade_id ? unitName(user.unidade_id) : '—'
                 )}
               </td>
               <td><span className={`badge ${user.ativo ? 'badge-ativo' : 'badge-inativo'}`}>{user.ativo ? 'Ativo' : 'Inativo'}</span></td>

@@ -12,7 +12,15 @@ router.get('/', async (req, res, next) => {
     const user = req.user;
     const requests = await db.getRequests();
     if (user.role === 'cliente') {
-      return res.json(requests.filter((item) => item.empresa_id === user.empresa_id));
+      let list = requests.filter((item) => item.empresa_id === user.empresa_id);
+      if (user.unidade_id) {
+        const equipments = await db.getEquipments();
+        list = list.filter((item) => {
+          const equipment = equipments.find((e) => e.id === item.equipamento_id);
+          return !equipment?.unidade_id || equipment.unidade_id === user.unidade_id;
+        });
+      }
+      return res.json(list);
     }
     res.json(requests);
   } catch (err) {
@@ -39,6 +47,9 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     const equipment = await db.getEquipmentById(equipamento_id);
     if (!equipment || equipment.empresa_id !== empresa_id) {
       return res.status(400).json({ error: 'Equipamento inválido para esta empresa' });
+    }
+    if (req.user.role === 'cliente' && req.user.unidade_id && equipment.unidade_id && equipment.unidade_id !== req.user.unidade_id) {
+      return res.status(400).json({ error: 'Equipamento inválido para sua filial/sede' });
     }
 
     const request = {
@@ -154,6 +165,21 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const result = await db.deleteRequest(req.params.id);
+    if (result.blocked) {
+      return res.status(409).json({ error: 'Não é possível excluir: existem orçamentos ou contratos vinculados a este chamado' });
+    }
+    if (!result.deleted) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

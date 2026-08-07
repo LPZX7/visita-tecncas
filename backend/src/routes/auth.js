@@ -40,7 +40,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const token = signToken(user);
-    res.json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id } });
+    res.json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id } });
   } catch (err) {
     next(err);
   }
@@ -52,7 +52,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
-    res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, ativo: user.ativo });
+    res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id, ativo: user.ativo });
   } catch (err) {
     next(err);
   }
@@ -60,7 +60,7 @@ router.get('/me', verifyToken, async (req, res, next) => {
 
 router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { nome, email, senha, role, empresa_id, ativo = true } = req.body;
+    const { nome, email, senha, role, empresa_id, unidade_id, ativo = true } = req.body;
     if (!nome || !email || !senha || !role) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
@@ -73,8 +73,15 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
+    if (unidade_id) {
+      const unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== empresa_id) {
+        return res.status(400).json({ error: 'Filial/sede inválida para esta empresa' });
+      }
+    }
+
     const senha_hash = await hashPassword(senha);
-    const user = await db.createUser({ nome, email, senha_hash, role, empresa_id: empresa_id || null, ativo });
+    const user = await db.createUser({ nome, email, senha_hash, role, empresa_id: empresa_id || null, unidade_id: unidade_id || null, ativo });
     const { senha_hash: _omit, ...safeUser } = user;
     res.status(201).json(safeUser);
   } catch (err) {
@@ -99,7 +106,7 @@ router.post('/signup', accountLimiter, async (req, res, next) => {
     const user = await db.createUser({ nome, email, senha_hash, role: 'cliente', empresa_id: null, ativo: true });
 
     const token = signToken(user);
-    res.status(201).json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id } });
+    res.status(201).json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id } });
   } catch (err) {
     next(err);
   }

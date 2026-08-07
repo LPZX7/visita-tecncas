@@ -27,6 +27,7 @@ export default function Requests() {
   const user = getUser();
   const [requests, setRequests] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [form, setForm] = useState({ empresa_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
@@ -39,10 +40,12 @@ export default function Requests() {
   const canCreate = ['cliente', 'analista', 'gestor'].includes(user?.role) && !isClienteSemEmpresa;
   const canManage = ['analista', 'gestor'].includes(user?.role);
   const isTech = user?.role === 'tecnico';
+  const isGestor = user?.role === 'gestor';
 
   const load = () => {
     api.get('/requests').then((res) => setRequests(res.data));
     api.get('/companies').then((res) => setCompanies(res.data)).catch(() => {});
+    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
     api.get('/equipments').then((res) => setEquipments(res.data)).catch(() => {});
     if (canManage) {
       api.get('/users').then((res) => setTechnicians(res.data.filter((u) => u.role === 'tecnico'))).catch(() => {});
@@ -55,8 +58,13 @@ export default function Requests() {
   }, []);
 
   const company = (id) => companies.find((c) => c.id === id);
+  const unit = (id) => units.find((u) => u.id === id);
   const equipment = (id) => equipments.find((e) => e.id === id);
   const companyName = (id) => company(id)?.razao_social || '—';
+  const unitLabel = (id) => {
+    const u = unit(id);
+    return u ? `${u.tipo} — ${u.nome}` : null;
+  };
   const equipmentLabel = (id) => {
     const eq = equipment(id);
     return eq ? `${eq.modelo} — ${eq.numero_serie}` : '—';
@@ -97,6 +105,17 @@ export default function Requests() {
 
   const toggleExpanded = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  const handleDelete = async (req) => {
+    if (!window.confirm('Excluir este chamado? Esta ação não pode ser desfeita.')) return;
+    setError('');
+    try {
+      await api.delete(`/requests/${req.id}`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao excluir chamado');
+    }
+  };
+
   const handleCheckin = async (req) => {
     setError('');
     try {
@@ -136,6 +155,12 @@ export default function Requests() {
       {canCreate && (
         <form onSubmit={handleSubmit} className="card-form">
           <h3>Abrir novo chamado</h3>
+          {user?.role === 'cliente' && (
+            <p className="section-text">
+              Abrindo chamado para <strong>{companyName(user.empresa_id)}</strong>
+              {unitLabel(user.unidade_id) && <> — <strong>{unitLabel(user.unidade_id)}</strong></>}
+            </p>
+          )}
           {user?.role !== 'cliente' && (
             <label className="form-field">
               Empresa
@@ -220,6 +245,7 @@ export default function Requests() {
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>
                         <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)}>Salvar</button>
+                        {isGestor && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(req)}>Excluir</button>}
                       </div>
                     </td>
                   )}

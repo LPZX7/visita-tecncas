@@ -9,7 +9,11 @@ router.get('/', async (req, res, next) => {
   try {
     const equipments = await db.getEquipments();
     if (req.user.role === 'cliente') {
-      return res.json(equipments.filter((e) => e.empresa_id === req.user.empresa_id));
+      let list = equipments.filter((e) => e.empresa_id === req.user.empresa_id);
+      if (req.user.unidade_id) {
+        list = list.filter((e) => !e.unidade_id || e.unidade_id === req.user.unidade_id);
+      }
+      return res.json(list);
     }
     res.json(equipments);
   } catch (err) {
@@ -17,7 +21,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
+router.post('/', requireRole('gestor'), async (req, res, next) => {
   try {
     const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
     if (!empresa_id || !modelo || !numero_serie) {
@@ -30,7 +34,7 @@ router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   }
 });
 
-router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => {
+router.put('/:id', requireRole('gestor'), async (req, res, next) => {
   try {
     const existing = await db.getEquipmentById(req.params.id);
     if (!existing) {
