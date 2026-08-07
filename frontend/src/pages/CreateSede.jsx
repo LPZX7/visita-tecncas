@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
@@ -17,18 +17,40 @@ export default function CreateSede() {
   const [cepLoading, setCepLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const preselectedRef = useRef(false);
+  const autoOpenNextRef = useRef(false);
 
   useEffect(() => {
-    api.get('/companies').then((res) => setCompanies(res.data));
-    api.get('/units').then((res) => setUnits(res.data));
+    Promise.all([api.get('/companies'), api.get('/units')]).then(([companiesRes, unitsRes]) => {
+      setCompanies(companiesRes.data);
+      setUnits(unitsRes.data);
+      setDataLoaded(true);
+    });
   }, []);
+
+  useEffect(() => {
+    if (preselectedRef.current || !dataLoaded) return;
+    preselectedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const preselect = params.get('empresa_id');
+    if (preselect && companies.some((c) => c.id === preselect)) {
+      if (params.get('criar') === '1') autoOpenNextRef.current = true;
+      setEmpresaId(preselect);
+    }
+  }, [dataLoaded, companies]);
 
   const sedeExistente = units.find((u) => u.empresa_id === empresaId && u.tipo === 'Sede');
 
   useEffect(() => {
     setError('');
     setSuccess('');
-    setShowForm(false);
+    if (autoOpenNextRef.current) {
+      setShowForm(true);
+      autoOpenNextRef.current = false;
+    } else {
+      setShowForm(false);
+    }
     if (sedeExistente) {
       setEditingId(sedeExistente.id);
       setForm({

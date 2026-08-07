@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
@@ -21,6 +21,7 @@ export default function CreateFilial() {
   const [cepLoading, setCepLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const preselectedRef = useRef(false);
 
   const load = () => {
     api.get('/companies').then((res) => setCompanies(res.data));
@@ -30,6 +31,17 @@ export default function CreateFilial() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (preselectedRef.current || companies.length === 0) return;
+    preselectedRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const preselect = params.get('empresa_id');
+    if (preselect && companies.some((c) => c.id === preselect)) {
+      setEmpresaId(preselect);
+      if (params.get('criar') === '1') setShowForm(true);
+    }
+  }, [companies]);
 
   const filiaisDaEmpresa = units.filter((u) => u.empresa_id === empresaId && u.tipo === 'Filial');
 

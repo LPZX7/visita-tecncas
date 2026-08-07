@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import ImportPanel from '../components/ImportPanel';
 
 const emptyForm = { razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '', email: '', telefone: '', status: 'ativo' };
 
 export default function Companies() {
+  const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
@@ -199,6 +201,8 @@ export default function Companies() {
                 <td><span className={`badge badge-${company.status}`}>{company.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
                 <td>
                   <div className="row-actions">
+                    <button className="btn btn-outline btn-sm" onClick={() => navigate(`/companies/sede?empresa_id=${company.id}&criar=1`)}>Cadastrar Sede</button>
+                    <button className="btn btn-outline btn-sm" onClick={() => navigate(`/companies/filial?empresa_id=${company.id}&criar=1`)}>Cadastrar Filial</button>
                     <button className="btn btn-outline btn-sm" onClick={() => handleEdit(company)}>Editar</button>
                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(company.id)}>Excluir</button>
                   </div>
