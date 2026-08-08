@@ -7,6 +7,7 @@ const { signResetToken, verifyResetToken } = require('../lib/resetToken');
 const { sendMail, actionEmailHtml } = require('../lib/mailer');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
+const MIN_SENHA_LENGTH = 8;
 
 const router = express.Router();
 
@@ -64,6 +65,9 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
     if (!nome || !email || !senha || !role) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
+    if (senha.length < MIN_SENHA_LENGTH) {
+      return res.status(400).json({ error: `A senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
+    }
 
     if (req.user.role === 'analista' && role !== 'cliente') {
       return res.status(403).json({ error: 'Analistas só podem cadastrar usuários do tipo Cliente. Peça a um gestor para cadastrar técnicos, analistas ou gestores.' });
@@ -95,8 +99,8 @@ router.post('/signup', accountLimiter, async (req, res, next) => {
     if (!nome || !email || !senha) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    if (senha.length < 6) {
-      return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    if (senha.length < MIN_SENHA_LENGTH) {
+      return res.status(400).json({ error: `A senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
     }
     if (await db.findUserByEmail(email)) {
       return res.status(400).json({ error: 'Email já cadastrado' });
@@ -146,8 +150,8 @@ router.post('/reset-password', accountLimiter, async (req, res, next) => {
     if (!token || !senha) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
-    if (senha.length < 6) {
-      return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    if (senha.length < MIN_SENHA_LENGTH) {
+      return res.status(400).json({ error: `A senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
     }
 
     let payload;

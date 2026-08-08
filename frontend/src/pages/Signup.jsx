@@ -13,8 +13,8 @@ export default function Signup() {
     e.preventDefault();
     setError('');
 
-    if (form.senha.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres.');
+    if (form.senha.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres.');
       return;
     }
     if (form.senha !== form.confirmarSenha) {
@@ -76,7 +76,7 @@ export default function Signup() {
             onChange={(e) => setForm({ ...form, senha: e.target.value })}
             placeholder="Mínimo 6 caracteres"
             required
-            minLength={6}
+            minLength={8}
           />
         </div>
 
@@ -90,7 +90,7 @@ export default function Signup() {
             onChange={(e) => setForm({ ...form, confirmarSenha: e.target.value })}
             placeholder="Repita a senha"
             required
-            minLength={6}
+            minLength={8}
           />
         </div>
 

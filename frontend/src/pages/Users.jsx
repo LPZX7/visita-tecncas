@@ -88,7 +88,7 @@ export default function Users() {
         {error && <div className="alert alert-error">{error}</div>}
         <label className="form-field">Nome<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
         <label className="form-field">Email<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
-        <label className="form-field">Senha<input className="form-input" type="password" value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} required minLength={6} /></label>
+        <label className="form-field">Senha<input className="form-input" type="password" value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} required minLength={8} /></label>
         {isGestor ? (
           <label className="form-field">Perfil
             <select className="form-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>

@@ -91,7 +91,6 @@ export default function App() {
       empresaGroup,
       { to: '/equipments', label: 'Equipamentos' },
       { to: '/parts', label: 'Peças' },
-      { to: '/rules', label: 'Regras' },
       { to: '/users', label: 'Usuários' }
     ];
     return [{ to: '/login', label: 'Login' }];
