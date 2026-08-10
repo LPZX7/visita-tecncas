@@ -71,6 +71,12 @@ export default function Requests() {
   };
   const technicianName = (id) => technicians.find((t) => t.id === id)?.nome || (id ? id : 'Não atribuído');
 
+  // Para cliente, o backend já devolve só o equipamento dele. Para a equipe,
+  // a lista só faz sentido depois de escolher a empresa.
+  const equipmentsForForm = user?.role === 'cliente'
+    ? equipments
+    : equipments.filter((eq) => eq.empresa_id === form.empresa_id);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     await api.post('/requests', form);
@@ -166,7 +172,7 @@ export default function Requests() {
               Empresa
               <SearchableSelect
                 value={form.empresa_id}
-                onChange={(id) => setForm({ ...form, empresa_id: id })}
+                onChange={(id) => setForm({ ...form, empresa_id: id, equipamento_id: '' })}
                 placeholder="Digite para buscar a empresa..."
                 options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
               />
@@ -174,9 +180,15 @@ export default function Requests() {
           )}
           <label className="form-field">
             Equipamento
-            <select className="form-select" value={form.equipamento_id} onChange={(e) => setForm({ ...form, equipamento_id: e.target.value })} required>
-              <option value="">Selecione</option>
-              {equipments.map((eq) => (
+            <select
+              className="form-select"
+              value={form.equipamento_id}
+              onChange={(e) => setForm({ ...form, equipamento_id: e.target.value })}
+              required
+              disabled={user?.role !== 'cliente' && !form.empresa_id}
+            >
+              <option value="">{user?.role !== 'cliente' && !form.empresa_id ? 'Selecione uma empresa primeiro' : 'Selecione'}</option>
+              {equipmentsForForm.map((eq) => (
                 <option key={eq.id} value={eq.id}>{eq.modelo} — {eq.numero_serie}</option>
               ))}
             </select>
