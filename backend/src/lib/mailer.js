@@ -1,7 +1,19 @@
-const { RESEND_API_KEY, RESEND_FROM, FRONTEND_URL } = process.env;
+const nodemailer = require('nodemailer');
 
-const from = RESEND_FROM || 'onboarding@resend.dev';
+const { RESEND_API_KEY, RESEND_FROM, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, FRONTEND_URL } = process.env;
+
+const from = SMTP_FROM || RESEND_FROM || 'onboarding@resend.dev';
 const LOGO_URL = `${FRONTEND_URL || 'https://visitas-tecnicas.onrender.com'}/mirontec-logo.jpg`;
+
+let smtpTransport = null;
+if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
+  smtpTransport = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT) || 465,
+    secure: Number(SMTP_PORT) !== 587,
+    auth: { user: SMTP_USER, pass: SMTP_PASS }
+  });
+}
 
 function actionEmailHtml({ title, message, buttonLabel, buttonUrl, footnote }) {
   return `
@@ -23,11 +35,18 @@ function actionEmailHtml({ title, message, buttonLabel, buttonUrl, footnote }) {
   </div>`;
 }
 
-async function sendMail({ to, subject, text, html }) {
-  if (!to) return;
+async function sendViaSmtp({ to, subject, text, html }) {
+  try {
+    const info = await smtpTransport.sendMail({ from, to, subject, text, ...(html ? { html } : {}) });
+    console.log(`[mailer] Email enviado via SMTP — id: ${info.messageId}`);
+  } catch (err) {
+    console.error('[mailer] Falha ao enviar email via SMTP:', err.message);
+  }
+}
 
+async function sendViaResend({ to, subject, text, html }) {
   if (!RESEND_API_KEY) {
-    console.warn(`[mailer] RESEND_API_KEY não configurada — email não enviado: "${subject}" para ${to}`);
+    console.warn(`[mailer] Nenhum provedor de email configurado — email não enviado: "${subject}" para ${to}`);
     return;
   }
 
@@ -38,7 +57,7 @@ async function sendMail({ to, subject, text, html }) {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ from, to, subject, text, ...(html ? { html } : {}) })
+      body: JSON.stringify({ from: RESEND_FROM || from, to, subject, text, ...(html ? { html } : {}) })
     });
 
     const data = await res.json();
@@ -50,6 +69,15 @@ async function sendMail({ to, subject, text, html }) {
   } catch (err) {
     console.error('[mailer] Falha ao enviar email:', err.message);
   }
+}
+
+async function sendMail({ to, subject, text, html }) {
+  if (!to) return;
+
+  if (smtpTransport) {
+    return sendViaSmtp({ to, subject, text, html });
+  }
+  return sendViaResend({ to, subject, text, html });
 }
 
 module.exports = { sendMail, actionEmailHtml };
