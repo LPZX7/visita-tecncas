@@ -29,7 +29,10 @@ router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
     if (!(await db.getCompanyById(empresa_id))) {
       return res.status(400).json({ error: 'Empresa inválida' });
     }
-    const unit = await db.createUnit({ empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao: valor_deslocamento_padrao !== undefined && valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null });
+    const unit = await db.createUnit({
+      empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status,
+      valor_deslocamento_padrao: req.user.role === 'gestor' && valor_deslocamento_padrao !== undefined && valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null
+    });
     res.status(201).json(unit);
   } catch (err) {
     if (err.code === '23505') {
@@ -52,7 +55,7 @@ router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => 
     const patch = { nome, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel };
     if (tipo) patch.tipo = tipo;
     if (status !== undefined) patch.status = status;
-    if (valor_deslocamento_padrao !== undefined) {
+    if (valor_deslocamento_padrao !== undefined && req.user.role === 'gestor') {
       patch.valor_deslocamento_padrao = valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null;
     }
     const updated = await db.updateUnit(req.params.id, patch);

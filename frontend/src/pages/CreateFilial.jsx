@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../api';
 import { fetchAddressByCep } from '../utils/cep';
 import { normalizeDoc } from '../utils/csv';
+import { getUser } from '../utils/auth';
 import ImportPanel from '../components/ImportPanel';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -11,6 +12,8 @@ const emptyForm = {
 };
 
 export default function CreateFilial() {
+  const user = getUser();
+  const isGestor = user?.role === 'gestor';
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
   const [empresaId, setEmpresaId] = useState('');
@@ -274,10 +277,12 @@ export default function CreateFilial() {
               <option value="inativo">Inativa</option>
             </select>
           </label>
-          <label className="form-field">
-            Valor padrão de deslocamento (R$)
-            <input className="form-input" type="number" step="0.01" min="0" value={form.valor_deslocamento_padrao} onChange={(e) => setForm({ ...form, valor_deslocamento_padrao: e.target.value })} placeholder="Ex: pedágio + gasolina ida e volta" />
-          </label>
+          {isGestor && (
+            <label className="form-field">
+              Valor de deslocamento (R$)
+              <input className="form-input" type="number" step="0.01" min="0" value={form.valor_deslocamento_padrao} onChange={(e) => setForm({ ...form, valor_deslocamento_padrao: e.target.value })} />
+            </label>
+          )}
 
           <div className="row-actions">
             <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar filial'}</button>
@@ -305,16 +310,16 @@ export default function CreateFilial() {
               <th>Código</th>
               <th>Endereço</th>
               <th>Cidade/UF</th>
-              <th>Deslocamento padrão</th>
+              {isGestor && <th>Deslocamento</th>}
               <th>Status</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {filiaisDaEmpresa.length === 0 ? (
-              <tr><td colSpan={7} className="section-text">Nenhuma filial cadastrada para esta empresa ainda.</td></tr>
+              <tr><td colSpan={isGestor ? 7 : 6} className="section-text">Nenhuma filial cadastrada para esta empresa ainda.</td></tr>
             ) : filteredFiliais.length === 0 ? (
-              <tr><td colSpan={7} className="section-text">Nenhuma filial encontrada para "{search}".</td></tr>
+              <tr><td colSpan={isGestor ? 7 : 6} className="section-text">Nenhuma filial encontrada para "{search}".</td></tr>
             ) : (
               filteredFiliais.map((unit) => (
                 <tr key={unit.id}>
@@ -322,7 +327,7 @@ export default function CreateFilial() {
                   <td>{unit.codigo || '—'}</td>
                   <td>{[unit.endereco, unit.numero].filter(Boolean).join(', ') || '—'}</td>
                   <td>{unit.cidade ? `${unit.cidade}/${unit.estado || ''}` : '—'}</td>
-                  <td>{unit.valor_deslocamento_padrao != null ? `R$ ${Number(unit.valor_deslocamento_padrao).toFixed(2)}` : '—'}</td>
+                  {isGestor && <td>{unit.valor_deslocamento_padrao != null ? `R$ ${Number(unit.valor_deslocamento_padrao).toFixed(2)}` : '—'}</td>}
                   <td><span className={`badge badge-${unit.status}`}>{unit.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
                   <td>
                     <div className="row-actions">
