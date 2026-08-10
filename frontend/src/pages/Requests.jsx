@@ -30,7 +30,7 @@ export default function Requests() {
   const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
-  const [form, setForm] = useState({ empresa_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
+  const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
   const [drafts, setDrafts] = useState({});
   const [expanded, setExpanded] = useState({});
   const [reportDrafts, setReportDrafts] = useState({});
@@ -71,11 +71,18 @@ export default function Requests() {
   };
   const technicianName = (id) => technicians.find((t) => t.id === id)?.nome || (id ? id : 'Não atribuído');
 
+  const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
+
   // Para cliente, o backend já devolve só o equipamento dele. Para a equipe,
-  // a lista só faz sentido depois de escolher a empresa.
+  // a lista só faz sentido depois de escolher a empresa (e, se houver filial
+  // selecionada, filtra também por ela — mostrando o que é da filial + o compartilhado).
   const equipmentsForForm = user?.role === 'cliente'
     ? equipments
-    : equipments.filter((eq) => eq.empresa_id === form.empresa_id);
+    : equipments.filter((eq) => {
+        if (eq.empresa_id !== form.empresa_id) return false;
+        if (!form.unidade_id) return true;
+        return !eq.unidade_id || eq.unidade_id === form.unidade_id;
+      });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -168,15 +175,32 @@ export default function Requests() {
             </p>
           )}
           {user?.role !== 'cliente' && (
-            <label className="form-field">
-              Empresa
-              <SearchableSelect
-                value={form.empresa_id}
-                onChange={(id) => setForm({ ...form, empresa_id: id, equipamento_id: '' })}
-                placeholder="Digite para buscar a empresa..."
-                options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
-              />
-            </label>
+            <>
+              <label className="form-field">
+                Empresa
+                <SearchableSelect
+                  value={form.empresa_id}
+                  onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', equipamento_id: '' })}
+                  placeholder="Digite para buscar a empresa..."
+                  options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+                />
+              </label>
+              {form.empresa_id && unitsForCompany(form.empresa_id).length > 0 && (
+                <label className="form-field">
+                  Filial / Sede
+                  <SearchableSelect
+                    value={form.unidade_id}
+                    onChange={(id) => setForm({ ...form, unidade_id: id, equipamento_id: '' })}
+                    placeholder="Digite para buscar a filial ou sede..."
+                    options={unitsForCompany(form.empresa_id).map((u) => ({
+                      value: u.id,
+                      label: `${u.tipo} — ${u.nome}`,
+                      sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                    }))}
+                  />
+                </label>
+              )}
+            </>
           )}
           <label className="form-field">
             Equipamento
