@@ -11,6 +11,7 @@ import Equipments from './Equipments';
 import Parts from './Parts';
 import Rules from './Rules';
 import Users from './Users';
+import Profile from './Profile';
 import Contracts from './Contracts';
 import ApproveBudget from './ApproveBudget';
 import NotificationBell from '../components/NotificationBell';
@@ -252,6 +253,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'cliente']}>
                 <Contracts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perfil"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico', 'cliente']}>
+                <Profile />
               </ProtectedRoute>
             }
           />

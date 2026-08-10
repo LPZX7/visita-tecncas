@@ -41,7 +41,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const token = signToken(user);
-    res.json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id } });
+    res.json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id, avatar: user.avatar || null } });
   } catch (err) {
     next(err);
   }
@@ -53,7 +53,58 @@ router.get('/me', verifyToken, async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
-    res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id, ativo: user.ativo });
+    res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id, ativo: user.ativo, avatar: user.avatar || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const MAX_AVATAR_LENGTH = 400 * 1024; // ~300KB de imagem em base64
+
+router.patch('/me', verifyToken, async (req, res, next) => {
+  try {
+    const user = await db.getUserById(req.user.sub);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const { nome, senha_atual, senha_nova, avatar } = req.body;
+    const patch = {};
+
+    if (nome !== undefined) {
+      if (!nome.trim()) {
+        return res.status(400).json({ error: 'O nome não pode ficar vazio' });
+      }
+      patch.nome = nome.trim();
+    }
+
+    if (avatar !== undefined) {
+      if (avatar && avatar.length > MAX_AVATAR_LENGTH) {
+        return res.status(400).json({ error: 'Imagem muito grande. Escolha uma foto menor.' });
+      }
+      patch.avatar = avatar || null;
+    }
+
+    if (senha_nova) {
+      if (!senha_atual) {
+        return res.status(400).json({ error: 'Informe a senha atual para definir uma nova senha' });
+      }
+      const valid = await comparePassword(senha_atual, user.senha_hash);
+      if (!valid) {
+        return res.status(400).json({ error: 'Senha atual incorreta' });
+      }
+      if (senha_nova.length < MIN_SENHA_LENGTH) {
+        return res.status(400).json({ error: `A nova senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
+      }
+      patch.senha_hash = await hashPassword(senha_nova);
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    const updated = await db.updateUser(user.id, patch);
+    res.json({ id: updated.id, nome: updated.nome, email: updated.email, role: updated.role, empresa_id: updated.empresa_id, unidade_id: updated.unidade_id, ativo: updated.ativo, avatar: updated.avatar || null });
   } catch (err) {
     next(err);
   }

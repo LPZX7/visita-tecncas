@@ -28,6 +28,7 @@ export default function Budgets() {
   const [items, setItems] = useState([]);
   const [itemDraft, setItemDraft] = useState({ peca_id: '', quantidade: 1 });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [expanded, setExpanded] = useState({});
 
   const canCreate = ['tecnico', 'analista', 'gestor'].includes(user?.role);
@@ -72,6 +73,7 @@ export default function Budgets() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     if (!form.empresa_id) {
       setError('Selecione uma empresa.');
       return;
@@ -90,7 +92,10 @@ export default function Budgets() {
       });
       setForm(emptyForm);
       setItems([]);
+      setItemDraft({ peca_id: '', quantidade: 1 });
+      setSuccess('Orçamento criado com sucesso!');
       load();
+      setTimeout(() => setSuccess(''), 4000);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao criar orçamento');
     }
@@ -126,6 +131,7 @@ export default function Budgets() {
     <div>
       <h2 className="page-title">Orçamentos</h2>
       {error && <div className="alert alert-error">{error}</div>}
+      {success && <div className="alert alert-success">{success}</div>}
 
       {canCreate && (
         <form onSubmit={handleSubmit} className="card-form">

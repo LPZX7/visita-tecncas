@@ -273,6 +273,13 @@ a:hover {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.sidebar__user:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .sidebar__avatar {
@@ -286,6 +293,10 @@ a:hover {
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.sidebar__avatar--photo {
+  object-fit: cover;
 }
 
 .sidebar__user-info {

@@ -133,15 +133,19 @@ export default function Sidebar({ links, user, onLogout }) {
           </svg>
         </button>
 
-        <div className="sidebar__user">
-          <span className="sidebar__avatar">{initials}</span>
+        <NavLink to="/perfil" className="sidebar__user" data-tooltip="Meu perfil">
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" className="sidebar__avatar sidebar__avatar--photo" />
+          ) : (
+            <span className="sidebar__avatar">{initials}</span>
+          )}
           {!collapsed && (
             <div className="sidebar__user-info">
               <strong>{user?.nome}</strong>
               <span>{roleLabel}</span>
             </div>
           )}
-        </div>
+        </NavLink>
 
         <button type="button" className="sidebar__logout" onClick={onLogout} data-tooltip="Sair">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

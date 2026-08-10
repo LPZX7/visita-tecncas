@@ -60,6 +60,7 @@ const SCHEMA_SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_sede_unica ON unidades(empresa_id) WHERE tipo = 'Sede';
 
   ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
 
   ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
   ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
