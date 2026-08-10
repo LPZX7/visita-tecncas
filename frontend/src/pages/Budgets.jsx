@@ -148,10 +148,12 @@ export default function Budgets() {
                 value={form.unidade_id}
                 onChange={(id) => {
                   const unit = unitsForSelectedCompany.find((u) => u.id === id);
+                  const TAXA_MOTORISTA = 100;
+                  const base = unit?.valor_deslocamento_padrao != null ? Number(unit.valor_deslocamento_padrao) : 0;
                   setForm({
                     ...form,
                     unidade_id: id,
-                    deslocamento: unit?.valor_deslocamento_padrao != null ? String(unit.valor_deslocamento_padrao) : form.deslocamento
+                    deslocamento: String(base + TAXA_MOTORISTA)
                   });
                 }}
                 placeholder="Digite para buscar a filial ou sede..."
