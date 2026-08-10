@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser } from '../utils/auth';
 import MapLink from '../components/MapLink';
@@ -28,6 +29,7 @@ function formatDateTime(value) {
 
 export default function Requests() {
   const user = getUser();
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
@@ -367,6 +369,13 @@ export default function Requests() {
                           <div className="detail-report">
                             <strong>Relatório da visita</strong>
                             <p>{req.relatorio_visita}</p>
+                          </div>
+                        )}
+                        {req.status === 'Concluída' && (user?.role === 'cliente' || canManage) && (
+                          <div className="row-actions" style={{ marginTop: 12 }}>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/visitas/${req.id}/termo`)}>
+                              Termo de conclusão da visita
+                            </button>
                           </div>
                         )}
                       </div>

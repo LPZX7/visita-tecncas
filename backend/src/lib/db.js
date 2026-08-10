@@ -173,6 +173,26 @@ const SCHEMA_SQL = `
     criado_em TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS visita_aceites (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE REFERENCES requests(id),
+    contrato_id TEXT REFERENCES contratos(id),
+    nome_aceitante TEXT NOT NULL,
+    documento_aceitante TEXT,
+    cargo_aceitante TEXT,
+    email_aceitante TEXT,
+    telefone_aceitante TEXT,
+    ip TEXT,
+    user_agent TEXT,
+    hash_documento TEXT NOT NULL,
+    codigo_validacao TEXT NOT NULL UNIQUE,
+    versao_termo TEXT NOT NULL,
+    snapshot TEXT NOT NULL,
+    criado_em TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_visita_aceites_codigo ON visita_aceites(codigo_validacao);
+
   CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
     user_id TEXT,
@@ -666,6 +686,32 @@ async function markNotificationsRead(empresa_id) {
   await pool.query('UPDATE notificacoes SET lida = 1 WHERE empresa_id = $1', [empresa_id]);
 }
 
+// ---------- termo de conclusão / aceite de visita ----------
+
+async function getVisitaAceiteByRequestId(request_id) {
+  const { rows } = await pool.query('SELECT * FROM visita_aceites WHERE request_id = $1', [request_id]);
+  return rows[0] || null;
+}
+
+async function getVisitaAceiteByCodigo(codigo) {
+  const { rows } = await pool.query('SELECT * FROM visita_aceites WHERE codigo_validacao = $1', [codigo]);
+  return rows[0] || null;
+}
+
+async function createVisitaAceite(data) {
+  const row = {
+    id: uuid(),
+    ...data,
+    criado_em: now()
+  };
+  await pool.query(
+    `INSERT INTO visita_aceites (id, request_id, contrato_id, nome_aceitante, documento_aceitante, cargo_aceitante, email_aceitante, telefone_aceitante, ip, user_agent, hash_documento, codigo_validacao, versao_termo, snapshot, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    [row.id, row.request_id, row.contrato_id || null, row.nome_aceitante, row.documento_aceitante || null, row.cargo_aceitante || null, row.email_aceitante || null, row.telefone_aceitante || null, row.ip || null, row.user_agent || null, row.hash_documento, row.codigo_validacao, row.versao_termo, row.snapshot, row.criado_em]
+  );
+  return row;
+}
+
 // ---------- audit log ----------
 
 async function logAudit({ user, acao, entidade, entidade_id, detalhes }) {
@@ -749,5 +795,8 @@ module.exports = {
   createNotification,
   markNotificationsRead,
   logAudit,
-  getAuditLog
+  getAuditLog,
+  getVisitaAceiteByRequestId,
+  getVisitaAceiteByCodigo,
+  createVisitaAceite
 };

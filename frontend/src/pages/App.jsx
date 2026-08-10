@@ -15,6 +15,8 @@ import Profile from './Profile';
 import AuditLog from './AuditLog';
 import Contracts from './Contracts';
 import ApproveBudget from './ApproveBudget';
+import TermoConclusao from './TermoConclusao';
+import ValidarTermo from './ValidarTermo';
 import NotificationBell from '../components/NotificationBell';
 import Sidebar from '../components/Sidebar';
 import Signup from './Signup';
@@ -101,7 +103,7 @@ export default function App() {
 
   const links = linksForRole(user?.role);
 
-  const isPublicStandaloneRoute = /^\/(aprovar-orcamento|cadastro|esqueci-senha|redefinir-senha)(\/|$)/.test(window.location.pathname);
+  const isPublicStandaloneRoute = /^\/(aprovar-orcamento|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
   if (isPublicStandaloneRoute) {
     return (
       <Routes>
@@ -109,6 +111,7 @@ export default function App() {
         <Route path="/cadastro" element={<Signup />} />
         <Route path="/esqueci-senha" element={<ForgotPassword />} />
         <Route path="/redefinir-senha/:token" element={<ResetPassword />} />
+        <Route path="/validar/:codigo" element={<ValidarTermo />} />
       </Routes>
     );
   }
@@ -255,6 +258,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'cliente']}>
                 <Contracts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/visitas/:id/termo"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista', 'cliente']}>
+                <TermoConclusao />
               </ProtectedRoute>
             }
           />
