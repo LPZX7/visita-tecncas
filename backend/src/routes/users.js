@@ -75,6 +75,16 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
       patch.unidade_id = unidade_id || null;
     }
 
+    const effectiveRole = 'role' in patch ? patch.role : user.role;
+    const effectiveEmpresaId = 'empresa_id' in patch ? patch.empresa_id : user.empresa_id;
+    const effectiveUnidadeId = 'unidade_id' in patch ? patch.unidade_id : user.unidade_id;
+    if (effectiveRole === 'cliente' && effectiveEmpresaId && !effectiveUnidadeId) {
+      const empresaUnits = await db.getUnits(effectiveEmpresaId);
+      if (empresaUnits.length > 1) {
+        return res.status(400).json({ error: 'Esta empresa tem mais de uma filial/sede — selecione qual delas o cliente pertence.' });
+      }
+    }
+
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'Nenhum campo para atualizar' });
     }

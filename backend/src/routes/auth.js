@@ -84,6 +84,13 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
       }
     }
 
+    if (role === 'cliente' && empresa_id && !unidade_id) {
+      const empresaUnits = await db.getUnits(empresa_id);
+      if (empresaUnits.length > 1) {
+        return res.status(400).json({ error: 'Esta empresa tem mais de uma filial/sede — selecione qual delas o cliente pertence.' });
+      }
+    }
+
     const senha_hash = await hashPassword(senha);
     const user = await db.createUser({ nome, email, senha_hash, role, empresa_id: empresa_id || null, unidade_id: unidade_id || null, ativo });
     const { senha_hash: _omit, ...safeUser } = user;

@@ -43,6 +43,10 @@ export default function Users() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (form.role === 'cliente' && form.empresa_id && !form.unidade_id && unitsForCompany(form.empresa_id).length > 1) {
+      setError('Esta empresa tem mais de uma filial/sede — selecione qual delas o cliente pertence.');
+      return;
+    }
     try {
       await api.post('/auth/register', { ...form, empresa_id: form.empresa_id || null, unidade_id: form.unidade_id || null });
       setForm(emptyForm);
@@ -68,6 +72,11 @@ export default function Users() {
 
   const saveEdit = async (user) => {
     setError('');
+    const effectiveRole = isGestor ? editDraft.role : user.role;
+    if (effectiveRole === 'cliente' && editDraft.empresa_id && !editDraft.unidade_id && unitsForCompany(editDraft.empresa_id).length > 1) {
+      setError('Esta empresa tem mais de uma filial/sede — selecione qual delas o cliente pertence.');
+      return;
+    }
     try {
       const payload = { empresa_id: editDraft.empresa_id || null, unidade_id: editDraft.unidade_id || null };
       if (isGestor) payload.role = editDraft.role;
@@ -114,7 +123,7 @@ export default function Users() {
             </label>
             {form.empresa_id && unitsForCompany(form.empresa_id).length > 0 && (
               <label className="form-field">
-                Filial / Sede (opcional)
+                Filial / Sede {unitsForCompany(form.empresa_id).length > 1 ? '(obrigatório — a empresa tem mais de uma)' : '(opcional)'}
                 <SearchableSelect
                   value={form.unidade_id}
                   onChange={(id) => setForm({ ...form, unidade_id: id })}
