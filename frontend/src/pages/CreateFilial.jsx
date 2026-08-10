@@ -8,7 +8,7 @@ import SearchableSelect from '../components/SearchableSelect';
 
 const emptyForm = {
   nome: '', codigo: '', cnpj: '', cep: '', endereco: '', numero: '', complemento: '', bairro: '',
-  cidade: '', estado: '', responsavel: '', telefone: '', email: '', status: 'ativo', valor_deslocamento_padrao: ''
+  cidade: '', estado: '', responsavel: '', telefone: '', email: '', status: 'ativo'
 };
 
 export default function CreateFilial() {
@@ -131,8 +131,7 @@ export default function CreateFilial() {
       responsavel: unit.responsavel || '',
       telefone: unit.telefone || '',
       email: unit.email || '',
-      status: unit.status || 'ativo',
-      valor_deslocamento_padrao: unit.valor_deslocamento_padrao ?? ''
+      status: unit.status || 'ativo'
     });
     setShowForm(true);
   };
@@ -277,13 +276,6 @@ export default function CreateFilial() {
               <option value="inativo">Inativa</option>
             </select>
           </label>
-          {isGestor && (
-            <label className="form-field">
-              Valor de deslocamento (R$)
-              <input className="form-input" type="number" step="0.01" min="0" value={form.valor_deslocamento_padrao} onChange={(e) => setForm({ ...form, valor_deslocamento_padrao: e.target.value })} />
-            </label>
-          )}
-
           <div className="row-actions">
             <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar filial'}</button>
             <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>

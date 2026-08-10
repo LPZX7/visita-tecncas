@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
+const { calculateValorDeslocamento } = require('../lib/deslocamento');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -16,7 +17,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao } = req.body;
+    const { empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status } = req.body;
     if (!empresa_id) {
       return res.status(400).json({ error: 'Selecione uma empresa' });
     }
@@ -29,9 +30,10 @@ router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
     if (!(await db.getCompanyById(empresa_id))) {
       return res.status(400).json({ error: 'Empresa inválida' });
     }
+    const valor_deslocamento_padrao = await calculateValorDeslocamento({ endereco, numero, bairro, cidade, estado });
     const unit = await db.createUnit({
       empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status,
-      valor_deslocamento_padrao: req.user.role === 'gestor' && valor_deslocamento_padrao !== undefined && valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null
+      valor_deslocamento_padrao
     });
     res.status(201).json(unit);
   } catch (err) {
@@ -48,15 +50,16 @@ router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => 
     if (!existing) {
       return res.status(404).json({ error: 'Unidade não encontrada' });
     }
-    const { nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao } = req.body;
+    const { nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status } = req.body;
     if (!nome) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
     const patch = { nome, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel };
     if (tipo) patch.tipo = tipo;
     if (status !== undefined) patch.status = status;
-    if (valor_deslocamento_padrao !== undefined && req.user.role === 'gestor') {
-      patch.valor_deslocamento_padrao = valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null;
+    const enderecoMudou = endereco !== existing.endereco || numero !== existing.numero || bairro !== existing.bairro || cidade !== existing.cidade || estado !== existing.estado;
+    if (enderecoMudou) {
+      patch.valor_deslocamento_padrao = await calculateValorDeslocamento({ endereco, numero, bairro, cidade, estado });
     }
     const updated = await db.updateUnit(req.params.id, patch);
     res.json(updated);

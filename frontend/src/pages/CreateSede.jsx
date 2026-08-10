@@ -6,7 +6,7 @@ import { getUser } from '../utils/auth';
 import ImportPanel from '../components/ImportPanel';
 import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '', valor_deslocamento_padrao: '' };
+const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '' };
 
 export default function CreateSede() {
   const user = getUser();
@@ -65,8 +65,7 @@ export default function CreateSede() {
         estado: sedeExistente.estado || '',
         responsavel: sedeExistente.responsavel || '',
         telefone: sedeExistente.telefone || '',
-        email: sedeExistente.email || '',
-        valor_deslocamento_padrao: sedeExistente.valor_deslocamento_padrao ?? ''
+        email: sedeExistente.email || ''
       });
     } else {
       setEditingId(null);
@@ -238,12 +237,6 @@ export default function CreateSede() {
           <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
           <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
           <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-          {isGestor && (
-            <label className="form-field">
-              Valor de deslocamento (R$)
-              <input className="form-input" type="number" step="0.01" min="0" value={form.valor_deslocamento_padrao} onChange={(e) => setForm({ ...form, valor_deslocamento_padrao: e.target.value })} />
-            </label>
-          )}
 
           <div className="row-actions">
             <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar sede'}</button>
