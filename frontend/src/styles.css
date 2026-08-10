@@ -870,6 +870,16 @@ a:hover {
   font-size: 1.5rem !important;
 }
 
+.metric-card__sublabel {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  color: #94a3b8 !important;
+}
+
 .metric-card span {
   color: #64748b;
   font-size: 0.85rem;
@@ -1763,6 +1773,19 @@ a:hover {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 12px 30px rgba(27, 30, 34, 0.05);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.pagination__info {
+  font-size: 0.85rem;
+  color: var(--texto-secundario, #64748b);
 }
 
 .data-table th,

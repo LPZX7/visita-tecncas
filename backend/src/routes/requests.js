@@ -166,6 +166,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
 router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
   try {
+    const existing = await db.getRequestById(req.params.id);
     const result = await db.deleteRequest(req.params.id);
     if (result.blocked) {
       return res.status(409).json({ error: 'Não é possível excluir: existem orçamentos ou contratos vinculados a este chamado' });
@@ -173,6 +174,13 @@ router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
     if (!result.deleted) {
       return res.status(404).json({ error: 'Solicitação não encontrada' });
     }
+    await db.logAudit({
+      user: req.user,
+      acao: 'chamado_excluido',
+      entidade: 'request',
+      entidade_id: req.params.id,
+      detalhes: existing ? `Chamado #${existing.numero} — ${existing.descricao}` : null
+    });
     res.status(204).end();
   } catch (err) {
     next(err);

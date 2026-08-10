@@ -30,7 +30,8 @@ const ICON_BY_PATH = {
   '/equipments': 'equipments',
   '/parts': 'parts',
   '/rules': 'rules',
-  '/users': 'users'
+  '/users': 'users',
+  '/auditoria': 'rules'
 };
 
 function Icon({ name }) {

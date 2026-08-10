@@ -69,6 +69,13 @@ async function respond(req, res, status, successMessage) {
   }
 
   const updated = await db.updateBudget(data.budget.id, { status });
+  await db.logAudit({
+    user: { nome: `${data.company?.razao_social || 'Cliente'} (via link de aprovação por email)` },
+    acao: `orcamento_${status.toLowerCase()}`,
+    entidade: 'budget',
+    entidade_id: updated.id,
+    detalhes: `Orçamento de R$ ${Number(updated.total).toFixed(2)} — aprovado/rejeitado sem login, via link enviado por email`
+  });
 
   let contract = null;
   if (status === 'Aprovado') {

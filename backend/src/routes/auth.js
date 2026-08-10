@@ -144,6 +144,13 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
 
     const senha_hash = await hashPassword(senha);
     const user = await db.createUser({ nome, email, senha_hash, role, empresa_id: empresa_id || null, unidade_id: unidade_id || null, ativo });
+    await db.logAudit({
+      user: req.user,
+      acao: 'usuario_criado',
+      entidade: 'user',
+      entidade_id: user.id,
+      detalhes: `${user.nome} (${user.email}) — perfil ${role}`
+    });
     const { senha_hash: _omit, ...safeUser } = user;
     res.status(201).json(safeUser);
   } catch (err) {

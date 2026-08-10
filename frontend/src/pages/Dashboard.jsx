@@ -195,7 +195,12 @@ export default function Dashboard() {
   const orcamentosPendentes = budgets.filter((b) => b.status === 'Enviado');
   const meusChamados = requests;
 
-  const faturamentoAprovado = budgets.filter((b) => b.status === 'Aprovado').reduce((sum, b) => sum + Number(b.total || 0), 0);
+  const orcamentosAprovados = budgets.filter((b) => b.status === 'Aprovado');
+  const faturamentoAprovado = orcamentosAprovados.reduce((sum, b) => sum + Number(b.total || 0), 0);
+  const ticketMedio = orcamentosAprovados.length > 0 ? faturamentoAprovado / orcamentosAprovados.length : 0;
+  const currentMonthKey = today.slice(0, 7);
+  const aprovadosEsteMes = orcamentosAprovados.filter((b) => (b.atualizado_em || b.criado_em || '').slice(0, 7) === currentMonthKey);
+  const faturamentoEsteMes = aprovadosEsteMes.reduce((sum, b) => sum + Number(b.total || 0), 0);
   const chamadosPorStatus = groupedStatusCounts(requests);
   const orcamentosPorStatus = countBy(budgets, 'status', BUDGET_STATUS_COLOR);
   const tendenciaChamados = last14DaysTrend(requests);
@@ -641,6 +646,21 @@ export default function Dashboard() {
             {tendenciaFaturamento.some((v) => v > 0) && (
               <div className="metric-card__spark"><Sparkline data={tendenciaFaturamento} color="var(--verde)" /></div>
             )}
+          </div>
+          <div className="metric-card" style={{ '--stagger': 6 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--verde"><MetricIcon name="cash" /></span>
+              <span className="metric-card__label">Faturamento este mês</span>
+            </div>
+            <strong>R$ {faturamentoEsteMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            <span className="metric-card__sublabel">{aprovadosEsteMes.length} orçamento{aprovadosEsteMes.length === 1 ? '' : 's'} aprovado{aprovadosEsteMes.length === 1 ? '' : 's'}</span>
+          </div>
+          <div className="metric-card" style={{ '--stagger': 7 }}>
+            <div className="metric-card__top">
+              <span className="metric-card__icon metric-card__icon--azul"><MetricIcon name="cash" /></span>
+              <span className="metric-card__label">Ticket médio aprovado</span>
+            </div>
+            <strong>R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </div>
         </div>
       )}

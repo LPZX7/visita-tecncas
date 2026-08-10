@@ -11,6 +11,7 @@ const budgetsRouter = require('./budgets');
 const publicBudgetsRouter = require('./publicBudgets');
 const contractsRouter = require('./contracts');
 const notificationsRouter = require('./notifications');
+const auditRouter = require('./audit');
 
 const router = express.Router();
 router.use('/auth', authRouter);
@@ -25,5 +26,6 @@ router.use('/budgets', budgetsRouter);
 router.use('/public/budgets', publicBudgetsRouter);
 router.use('/contracts', contractsRouter);
 router.use('/notifications', notificationsRouter);
+router.use('/audit', auditRouter);
 
 module.exports = router;

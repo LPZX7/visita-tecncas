@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import ImportPanel from '../components/ImportPanel';
+import Pagination from '../components/Pagination';
 
 const emptyForm = { razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '', email: '', telefone: '', status: 'ativo' };
+const PAGE_SIZE = 25;
 
 export default function Companies() {
   const navigate = useNavigate();
@@ -15,6 +17,7 @@ export default function Companies() {
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const addressForCompany = (companyId) => {
     const companyUnits = units.filter((u) => u.empresa_id === companyId);
@@ -34,6 +37,13 @@ export default function Companies() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, units, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCompanies.length / PAGE_SIZE));
+  const pageItems = filteredCompanies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const load = () => {
     api.get('/companies').then((res) => setCompanies(res.data));
@@ -207,7 +217,7 @@ export default function Companies() {
           {filteredCompanies.length === 0 ? (
             <tr><td colSpan={6} className="section-text">Nenhuma empresa encontrada para "{search}".</td></tr>
           ) : (
-            filteredCompanies.map((company) => (
+            pageItems.map((company) => (
               <tr key={company.id}>
                 <td>{company.razao_social}</td>
                 <td>{company.cnpj}</td>
@@ -227,6 +237,7 @@ export default function Companies() {
           )}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

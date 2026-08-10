@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api';
 import SearchableSelect from '../components/SearchableSelect';
+import Pagination from '../components/Pagination';
 
 const emptyForm = { empresa_id: '', unidade_id: '', modelo: '', numero_serie: '', local_instalacao: '', data_instalacao: '', garantia_ate: '' };
+const PAGE_SIZE = 25;
 
 export default function Equipments() {
   const [equipments, setEquipments] = useState([]);
@@ -11,6 +13,8 @@ export default function Equipments() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const load = () => {
     api.get('/equipments').then((res) => setEquipments(res.data));
@@ -22,9 +26,28 @@ export default function Equipments() {
     load();
   }, []);
 
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
   const companyName = (id) => companies.find((c) => c.id === id)?.razao_social || '—';
   const unitName = (id) => units.find((u) => u.id === id)?.nome || null;
   const unitsForSelectedCompany = units.filter((u) => u.empresa_id === form.empresa_id && u.status !== 'inativo');
+
+  const filteredEquipments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return equipments;
+    return equipments.filter((eq) =>
+      eq.modelo.toLowerCase().includes(q) ||
+      eq.numero_serie.toLowerCase().includes(q) ||
+      companyName(eq.empresa_id).toLowerCase().includes(q) ||
+      (eq.local_instalacao || '').toLowerCase().includes(q)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipments, companies, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEquipments.length / PAGE_SIZE));
+  const pageItems = filteredEquipments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -111,6 +134,15 @@ export default function Equipments() {
         </div>
       </form>
 
+      <div className="list-controls" style={{ marginTop: 20 }}>
+        <input
+          className="form-input search-input"
+          placeholder="Pesquisar por modelo, série, empresa ou local..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       <table className="data-table">
         <thead>
           <tr>
@@ -123,23 +155,28 @@ export default function Equipments() {
           </tr>
         </thead>
         <tbody>
-          {equipments.map((equipment) => (
-            <tr key={equipment.id}>
-              <td>{equipment.modelo}</td>
-              <td>{equipment.numero_serie}</td>
-              <td>{companyName(equipment.empresa_id)}</td>
-              <td>{unitName(equipment.unidade_id) || '—'}</td>
-              <td>{equipment.local_instalacao}</td>
-              <td>
-                <div className="row-actions">
-                  <button className="btn btn-outline btn-sm" onClick={() => handleEdit(equipment)}>Editar</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(equipment.id)}>Excluir</button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {pageItems.length === 0 ? (
+            <tr><td colSpan={6} className="section-text">Nenhum equipamento encontrado.</td></tr>
+          ) : (
+            pageItems.map((equipment) => (
+              <tr key={equipment.id}>
+                <td>{equipment.modelo}</td>
+                <td>{equipment.numero_serie}</td>
+                <td>{companyName(equipment.empresa_id)}</td>
+                <td>{unitName(equipment.unidade_id) || '—'}</td>
+                <td>{equipment.local_instalacao}</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="btn btn-outline btn-sm" onClick={() => handleEdit(equipment)}>Editar</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(equipment.id)}>Excluir</button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={totalPages} onChange={setPage} />
     </div>
   );
 }

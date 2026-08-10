@@ -12,6 +12,7 @@ import Parts from './Parts';
 import Rules from './Rules';
 import Users from './Users';
 import Profile from './Profile';
+import AuditLog from './AuditLog';
 import Contracts from './Contracts';
 import ApproveBudget from './ApproveBudget';
 import NotificationBell from '../components/NotificationBell';
@@ -92,7 +93,8 @@ export default function App() {
       empresaGroup,
       { to: '/equipments', label: 'Equipamentos' },
       { to: '/parts', label: 'Peças' },
-      { to: '/users', label: 'Usuários' }
+      { to: '/users', label: 'Usuários' },
+      { to: '/auditoria', label: 'Auditoria' }
     ];
     return [{ to: '/login', label: 'Login' }];
   };
@@ -253,6 +255,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'cliente']}>
                 <Contracts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/auditoria"
+            element={
+              <ProtectedRoute allowedRoles={['gestor']}>
+                <AuditLog />
               </ProtectedRoute>
             }
           />

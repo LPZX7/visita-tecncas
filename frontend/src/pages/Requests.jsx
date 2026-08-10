@@ -3,6 +3,9 @@ import api from '../api';
 import { getUser } from '../utils/auth';
 import MapLink from '../components/MapLink';
 import SearchableSelect from '../components/SearchableSelect';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 25;
 
 const STAFF_STATUSES = ['Aberta', 'Agendada', 'Em Atendimento', 'Concluída', 'Cancelada'];
 
@@ -35,6 +38,7 @@ export default function Requests() {
   const [expanded, setExpanded] = useState({});
   const [reportDrafts, setReportDrafts] = useState({});
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
 
   const isClienteSemEmpresa = user?.role === 'cliente' && !user?.empresa_id;
   const canCreate = ['cliente', 'analista', 'gestor'].includes(user?.role) && !isClienteSemEmpresa;
@@ -265,7 +269,7 @@ export default function Requests() {
           </tr>
         </thead>
         <tbody>
-          {requests.map((req) => {
+          {requests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((req) => {
             const draft = draftFor(req);
             const isMine = req.assigned_technician === user?.id;
             const isOpen = !!expanded[req.id];
@@ -374,6 +378,7 @@ export default function Requests() {
           })}
         </tbody>
       </table>
+      <Pagination page={page} totalPages={Math.max(1, Math.ceil(requests.length / PAGE_SIZE))} onChange={setPage} />
     </div>
   );
 }

@@ -90,6 +90,20 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
     }
 
     const updated = await db.updateUser(req.params.id, patch);
+
+    if ('ativo' in patch || 'role' in patch) {
+      const mudancas = [];
+      if ('ativo' in patch) mudancas.push(patch.ativo ? 'ativado' : 'desativado');
+      if ('role' in patch) mudancas.push(`perfil alterado para ${patch.role}`);
+      await db.logAudit({
+        user: req.user,
+        acao: 'usuario_alterado',
+        entidade: 'user',
+        entidade_id: updated.id,
+        detalhes: `${updated.nome} (${updated.email}) — ${mudancas.join(', ')}`
+      });
+    }
+
     res.json(sanitize(updated));
   } catch (err) {
     next(err);

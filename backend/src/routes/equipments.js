@@ -50,6 +50,7 @@ router.put('/:id', requireRole('gestor'), async (req, res, next) => {
 
 router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
   try {
+    const existing = await db.getEquipmentById(req.params.id);
     const result = await db.deleteEquipment(req.params.id);
     if (result.blocked) {
       return res.status(409).json({ error: 'Não é possível excluir: existem chamados vinculados a este equipamento' });
@@ -57,6 +58,13 @@ router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
     if (!result.deleted) {
       return res.status(404).json({ error: 'Equipamento não encontrado' });
     }
+    await db.logAudit({
+      user: req.user,
+      acao: 'equipamento_excluido',
+      entidade: 'equipment',
+      entidade_id: req.params.id,
+      detalhes: existing ? `${existing.modelo} — Série ${existing.numero_serie}` : null
+    });
     res.status(204).end();
   } catch (err) {
     next(err);

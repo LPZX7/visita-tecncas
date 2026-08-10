@@ -128,6 +128,13 @@ router.patch('/:id/status', async (req, res, next) => {
     }
 
     const updated = await db.updateBudget(budget.id, { status });
+    await db.logAudit({
+      user: req.user,
+      acao: `orcamento_${status.toLowerCase()}`,
+      entidade: 'budget',
+      entidade_id: updated.id,
+      detalhes: `Orçamento de R$ ${updated.total.toFixed(2)} — status alterado para ${status}`
+    });
 
     const request = (await db.getRequests()).find((item) => item.id === updated.request_id);
 

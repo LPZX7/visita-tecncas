@@ -173,6 +173,18 @@ const SCHEMA_SQL = `
     criado_em TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    user_nome TEXT,
+    acao TEXT NOT NULL,
+    entidade TEXT NOT NULL,
+    entidade_id TEXT,
+    detalhes TEXT,
+    criado_em TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_audit_log_criado_em ON audit_log(criado_em DESC);
   CREATE INDEX IF NOT EXISTS idx_unidades_empresa ON unidades(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_equipamentos_empresa ON equipamentos(empresa_id);
   CREATE INDEX IF NOT EXISTS idx_requests_empresa ON requests(empresa_id);
@@ -654,6 +666,40 @@ async function markNotificationsRead(empresa_id) {
   await pool.query('UPDATE notificacoes SET lida = 1 WHERE empresa_id = $1', [empresa_id]);
 }
 
+// ---------- audit log ----------
+
+async function logAudit({ user, acao, entidade, entidade_id, detalhes }) {
+  try {
+    const row = {
+      id: uuid(),
+      user_id: user?.sub || user?.id || null,
+      user_nome: user?.nome || user?.name || null,
+      acao,
+      entidade,
+      entidade_id: entidade_id || null,
+      detalhes: detalhes || null,
+      criado_em: now()
+    };
+    await pool.query(
+      `INSERT INTO audit_log (id, user_id, user_nome, acao, entidade, entidade_id, detalhes, criado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [row.id, row.user_id, row.user_nome, row.acao, row.entidade, row.entidade_id, row.detalhes, row.criado_em]
+    );
+  } catch (err) {
+    console.error('[audit] Falha ao registrar log:', err.message);
+  }
+}
+
+async function getAuditLog({ page = 1, pageSize = 50 } = {}) {
+  const offset = (page - 1) * pageSize;
+  const { rows } = await pool.query(
+    'SELECT * FROM audit_log ORDER BY criado_em DESC LIMIT $1 OFFSET $2',
+    [pageSize, offset]
+  );
+  const { rows: countRows } = await pool.query('SELECT COUNT(*) FROM audit_log');
+  return { items: rows, total: Number(countRows[0].count) };
+}
+
 module.exports = {
   initDb,
   getUsers,
@@ -701,5 +747,7 @@ module.exports = {
   createContractForBudget,
   getNotifications,
   createNotification,
-  markNotificationsRead
+  markNotificationsRead,
+  logAudit,
+  getAuditLog
 };
