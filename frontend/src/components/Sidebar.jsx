@@ -31,7 +31,8 @@ const ICON_BY_PATH = {
   '/parts': 'parts',
   '/rules': 'rules',
   '/users': 'users',
-  '/auditoria': 'rules'
+  '/auditoria': 'rules',
+  '/milvus-import': 'requests'
 };
 
 function Icon({ name }) {

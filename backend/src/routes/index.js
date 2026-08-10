@@ -13,6 +13,7 @@ const contractsRouter = require('./contracts');
 const notificationsRouter = require('./notifications');
 const auditRouter = require('./audit');
 const publicValidationRouter = require('./publicValidation');
+const milvusImportRouter = require('./milvusImport');
 
 const router = express.Router();
 router.use('/auth', authRouter);
@@ -29,5 +30,6 @@ router.use('/contracts', contractsRouter);
 router.use('/notifications', notificationsRouter);
 router.use('/audit', auditRouter);
 router.use('/public/validar', publicValidationRouter);
+router.use('/milvus-import', milvusImportRouter);
 
 module.exports = router;

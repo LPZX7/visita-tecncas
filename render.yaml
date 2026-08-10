@@ -35,3 +35,5 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: MILVUS_API_TOKEN
+        sync: false

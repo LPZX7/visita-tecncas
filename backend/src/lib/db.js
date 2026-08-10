@@ -173,6 +173,25 @@ const SCHEMA_SQL = `
     criado_em TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS milvus_chamados_pendentes (
+    id TEXT PRIMARY KEY,
+    milvus_codigo TEXT NOT NULL UNIQUE,
+    milvus_id TEXT,
+    assunto TEXT,
+    descricao TEXT,
+    cliente_nome TEXT,
+    cliente_email TEXT,
+    cliente_telefone TEXT,
+    cliente_contato TEXT,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    request_id TEXT REFERENCES requests(id),
+    raw_json TEXT,
+    criado_em TEXT NOT NULL,
+    atualizado_em TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_milvus_pendentes_status ON milvus_chamados_pendentes(status);
+
   CREATE TABLE IF NOT EXISTS visita_aceites (
     id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL UNIQUE REFERENCES requests(id),
@@ -686,6 +705,46 @@ async function markNotificationsRead(empresa_id) {
   await pool.query('UPDATE notificacoes SET lida = 1 WHERE empresa_id = $1', [empresa_id]);
 }
 
+// ---------- integração Milvus ----------
+
+async function getMilvusPendentesByCodigos(codigos) {
+  if (!codigos.length) return [];
+  const { rows } = await pool.query('SELECT milvus_codigo FROM milvus_chamados_pendentes WHERE milvus_codigo = ANY($1)', [codigos]);
+  return rows.map((r) => r.milvus_codigo);
+}
+
+async function createMilvusPendente(data) {
+  const row = {
+    id: uuid(),
+    ...data,
+    status: 'pendente',
+    criado_em: now()
+  };
+  await pool.query(
+    `INSERT INTO milvus_chamados_pendentes (id, milvus_codigo, milvus_id, assunto, descricao, cliente_nome, cliente_email, cliente_telefone, cliente_contato, status, raw_json, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [row.id, row.milvus_codigo, row.milvus_id || null, row.assunto || null, row.descricao || null, row.cliente_nome || null, row.cliente_email || null, row.cliente_telefone || null, row.cliente_contato || null, row.status, row.raw_json, row.criado_em]
+  );
+  return row;
+}
+
+async function getMilvusPendentes(status) {
+  const { rows } = status
+    ? await pool.query('SELECT * FROM milvus_chamados_pendentes WHERE status = $1 ORDER BY criado_em DESC', [status])
+    : await pool.query('SELECT * FROM milvus_chamados_pendentes ORDER BY criado_em DESC');
+  return rows;
+}
+
+async function getMilvusPendenteById(id) {
+  const { rows } = await pool.query('SELECT * FROM milvus_chamados_pendentes WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
+async function updateMilvusPendente(id, patch) {
+  await updateRow('milvus_chamados_pendentes', id, patch);
+  return getMilvusPendenteById(id);
+}
+
 // ---------- termo de conclusão / aceite de visita ----------
 
 async function getVisitaAceiteByRequestId(request_id) {
@@ -798,5 +857,10 @@ module.exports = {
   getAuditLog,
   getVisitaAceiteByRequestId,
   getVisitaAceiteByCodigo,
-  createVisitaAceite
+  createVisitaAceite,
+  getMilvusPendentesByCodigos,
+  createMilvusPendente,
+  getMilvusPendentes,
+  getMilvusPendenteById,
+  updateMilvusPendente
 };
