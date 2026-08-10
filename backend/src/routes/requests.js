@@ -6,6 +6,7 @@ const { sendMail } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
+const { pushChamadoToMilvus } = require('../lib/milvusSync');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -75,6 +76,11 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       titulo: `Chamado #${created.numero} aberto`,
       mensagem: created.descricao,
       link: '/requests'
+    });
+
+    pushChamadoToMilvus(created, company, {
+      email: req.user.email || company?.email,
+      contato: req.user.name
     });
 
     res.status(201).json(created);

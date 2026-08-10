@@ -64,6 +64,7 @@ const SCHEMA_SQL = `
 
   ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
   ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
+  ALTER TABLE empresas ADD COLUMN IF NOT EXISTS milvus_cliente_token TEXT;
 
   CREATE TABLE IF NOT EXISTS equipamentos (
     id TEXT PRIMARY KEY,
@@ -122,6 +123,8 @@ const SCHEMA_SQL = `
     atualizado_em TEXT,
     concluded_at TEXT
   );
+
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
 
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,

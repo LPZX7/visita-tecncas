@@ -1,5 +1,5 @@
 const db = require('./db');
-const { listarChamadosVisitaTecnica } = require('./milvus');
+const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado } = require('./milvus');
 
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
@@ -30,4 +30,41 @@ async function syncMilvusChamados() {
   return { encontrados: lista.length, novos };
 }
 
-module.exports = { syncMilvusChamados };
+async function pushChamadoToMilvus(request, company, opts = {}) {
+  if (!process.env.MILVUS_API_TOKEN) return;
+  if (!company?.cnpj) {
+    console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível espelhar o chamado #${request.numero} no Milvus`);
+    return;
+  }
+
+  try {
+    let clienteToken = company.milvus_cliente_token;
+    if (!clienteToken) {
+      const cliente = await buscarClientePorDocumento(company.cnpj);
+      if (!cliente) {
+        console.warn(`[milvus] Cliente com CNPJ ${company.cnpj} (${company.razao_social}) não encontrado no Milvus — chamado #${request.numero} não foi espelhado`);
+        return;
+      }
+      clienteToken = cliente.token;
+      await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
+    }
+
+    const codigo = await criarChamado({
+      clienteToken,
+      assunto: `Chamado #${request.numero} — ${request.descricao}`.slice(0, 180),
+      descricao: `Aberto via sistema Mirontec.\n\nDescrição: ${request.descricao}\nUrgência: ${request.urgencia}\nEndereço: ${request.endereco || 'não informado'}`,
+      email: opts.email,
+      telefone: opts.telefone,
+      contato: opts.contato
+    });
+
+    if (codigo) {
+      await db.updateRequest(request.id, { milvus_codigo: codigo });
+      console.log(`[milvus] Chamado #${request.numero} espelhado no Milvus como ticket #${codigo}`);
+    }
+  } catch (err) {
+    console.error(`[milvus] Falha ao espelhar chamado #${request.numero} no Milvus:`, err.message);
+  }
+}
+
+module.exports = { syncMilvusChamados, pushChamadoToMilvus };

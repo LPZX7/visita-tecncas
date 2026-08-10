@@ -41,4 +41,52 @@ async function listarChamadosVisitaTecnica() {
   throw lastErr;
 }
 
-module.exports = { listarChamadosVisitaTecnica, CATEGORIA_VISITA_TECNICA };
+const CATEGORIA_ID_VISITA_TECNICA = 689789;
+const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'Catraca';
+
+function onlyDigits(str) {
+  return (str || '').replace(/\D/g, '');
+}
+
+async function buscarClientePorDocumento(cnpjCpf) {
+  const token = getToken();
+  if (!token || !cnpjCpf) return null;
+
+  const documento = onlyDigits(cnpjCpf);
+  const res = await fetch(`${BASE_URL}/cliente/busca?documento=${documento}&status=3`, {
+    headers: { Authorization: token }
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data.lista && data.lista[0]) || null;
+}
+
+async function criarChamado({ clienteToken, assunto, descricao, email, telefone, contato }) {
+  const token = getToken();
+  if (!token) return null;
+
+  const res = await fetch(`${BASE_URL}/chamado/criar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      cliente_id: clienteToken,
+      chamado_assunto: assunto,
+      chamado_descricao: descricao,
+      chamado_email: email || 'contato@mirontec.com.br',
+      chamado_telefone: telefone || '',
+      chamado_contato: contato || 'Sistema Mirontec',
+      chamado_categoria_primaria: CATEGORIA_PRIMARIA_VISITA_TECNICA,
+      chamado_categoria_secundaria: CATEGORIA_VISITA_TECNICA,
+      categoria_id: CATEGORIA_ID_VISITA_TECNICA
+    })
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Milvus criarChamado falhou (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return text.trim().replace(/^"|"$/g, '');
+}
+
+module.exports = { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, CATEGORIA_VISITA_TECNICA };
