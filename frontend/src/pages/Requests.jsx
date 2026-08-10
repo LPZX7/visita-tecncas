@@ -57,6 +57,13 @@ export default function Requests() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (user?.role !== 'cliente' || !user?.empresa_id || form.endereco || (companies.length === 0 && units.length === 0)) return;
+    const address = addressFor(user.empresa_id, user.unidade_id);
+    if (address) setForm((f) => ({ ...f, endereco: address }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companies, units]);
+
   const company = (id) => companies.find((c) => c.id === id);
   const unit = (id) => units.find((u) => u.id === id);
   const equipment = (id) => equipments.find((e) => e.id === id);
@@ -73,6 +80,13 @@ export default function Requests() {
 
   const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
 
+  const addressFor = (empresaId, unidadeId) => {
+    const u = unidadeId ? unit(unidadeId) : null;
+    if (u) return [u.endereco, u.numero, u.bairro, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ');
+    const c = company(empresaId);
+    return c?.endereco || '';
+  };
+
   // Para cliente, o backend já devolve só o equipamento dele. Para a equipe,
   // a lista só faz sentido depois de escolher a empresa (e, se houver filial
   // selecionada, filtra também por ela — mostrando o que é da filial + o compartilhado).
@@ -87,7 +101,8 @@ export default function Requests() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     await api.post('/requests', form);
-    setForm({ empresa_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
+    const resetEndereco = user?.role === 'cliente' ? addressFor(user.empresa_id, user.unidade_id) : '';
+    setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal' });
     load();
   };
 
@@ -180,7 +195,7 @@ export default function Requests() {
                 Empresa
                 <SearchableSelect
                   value={form.empresa_id}
-                  onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', equipamento_id: '' })}
+                  onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, '') })}
                   placeholder="Digite para buscar a empresa..."
                   options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
                 />
@@ -190,7 +205,7 @@ export default function Requests() {
                   Filial / Sede
                   <SearchableSelect
                     value={form.unidade_id}
-                    onChange={(id) => setForm({ ...form, unidade_id: id, equipamento_id: '' })}
+                    onChange={(id) => setForm({ ...form, unidade_id: id, equipamento_id: '', endereco: addressFor(form.empresa_id, id) })}
                     placeholder="Digite para buscar a filial ou sede..."
                     options={unitsForCompany(form.empresa_id).map((u) => ({
                       value: u.id,

@@ -56,6 +56,7 @@ const SCHEMA_SQL = `
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS estado TEXT;
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS email TEXT;
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS valor_deslocamento_padrao REAL;
   CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_sede_unica ON unidades(empresa_id) WHERE tipo = 'Sede';
 
   ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
@@ -336,9 +337,9 @@ async function createUnit(unit) {
     criado_em: now()
   });
   await pool.query(
-    `INSERT INTO unidades (id, empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-    [row.id, row.empresa_id, row.nome, row.tipo, row.codigo, row.cnpj, row.cep, row.endereco, row.numero, row.complemento, row.bairro, row.cidade, row.estado, row.responsavel, row.telefone, row.email, row.status, row.criado_em]
+    `INSERT INTO unidades (id, empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status, valor_deslocamento_padrao, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    [row.id, row.empresa_id, row.nome, row.tipo, row.codigo, row.cnpj, row.cep, row.endereco, row.numero, row.complemento, row.bairro, row.cidade, row.estado, row.responsavel, row.telefone, row.email, row.status, row.valor_deslocamento_padrao ?? null, row.criado_em]
   );
   return getUnitById(row.id);
 }

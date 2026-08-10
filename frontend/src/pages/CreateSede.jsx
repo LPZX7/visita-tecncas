@@ -5,7 +5,7 @@ import { normalizeDoc } from '../utils/csv';
 import ImportPanel from '../components/ImportPanel';
 import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '' };
+const emptyForm = { nome: '', cep: '', endereco: '', numero: '', cidade: '', estado: '', responsavel: '', telefone: '', email: '', valor_deslocamento_padrao: '' };
 
 export default function CreateSede() {
   const [companies, setCompanies] = useState([]);
@@ -62,7 +62,8 @@ export default function CreateSede() {
         estado: sedeExistente.estado || '',
         responsavel: sedeExistente.responsavel || '',
         telefone: sedeExistente.telefone || '',
-        email: sedeExistente.email || ''
+        email: sedeExistente.email || '',
+        valor_deslocamento_padrao: sedeExistente.valor_deslocamento_padrao ?? ''
       });
     } else {
       setEditingId(null);
@@ -204,6 +205,11 @@ export default function CreateSede() {
                 {[sedeExistente.responsavel, sedeExistente.telefone, sedeExistente.email].filter(Boolean).join(' · ')}
               </p>
             )}
+            {sedeExistente.valor_deslocamento_padrao != null && (
+              <p className="section-text" style={{ margin: '4px 0 0' }}>
+                Deslocamento padrão: R$ {Number(sedeExistente.valor_deslocamento_padrao).toFixed(2)}
+              </p>
+            )}
           </div>
         ) : (
           <div className="row-actions" style={{ marginBottom: 20 }}>
@@ -229,6 +235,10 @@ export default function CreateSede() {
           <label className="form-field">Responsável<input className="form-input" value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} /></label>
           <label className="form-field">Telefone<input className="form-input" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></label>
           <label className="form-field">E-mail<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
+          <label className="form-field">
+            Valor padrão de deslocamento (R$)
+            <input className="form-input" type="number" step="0.01" min="0" value={form.valor_deslocamento_padrao} onChange={(e) => setForm({ ...form, valor_deslocamento_padrao: e.target.value })} placeholder="Ex: pedágio + gasolina ida e volta" />
+          </label>
 
           <div className="row-actions">
             <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar sede'}</button>

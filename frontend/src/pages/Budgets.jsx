@@ -146,7 +146,14 @@ export default function Budgets() {
               Filial / Sede (opcional)
               <SearchableSelect
                 value={form.unidade_id}
-                onChange={(id) => setForm({ ...form, unidade_id: id })}
+                onChange={(id) => {
+                  const unit = unitsForSelectedCompany.find((u) => u.id === id);
+                  setForm({
+                    ...form,
+                    unidade_id: id,
+                    deslocamento: unit?.valor_deslocamento_padrao != null ? String(unit.valor_deslocamento_padrao) : form.deslocamento
+                  });
+                }}
                 placeholder="Digite para buscar a filial ou sede..."
                 options={unitsForSelectedCompany.map((u) => ({
                   value: u.id,

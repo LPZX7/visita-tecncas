@@ -16,7 +16,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status } = req.body;
+    const { empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao } = req.body;
     if (!empresa_id) {
       return res.status(400).json({ error: 'Selecione uma empresa' });
     }
@@ -29,7 +29,7 @@ router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
     if (!(await db.getCompanyById(empresa_id))) {
       return res.status(400).json({ error: 'Empresa inválida' });
     }
-    const unit = await db.createUnit({ empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status });
+    const unit = await db.createUnit({ empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao: valor_deslocamento_padrao !== undefined && valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null });
     res.status(201).json(unit);
   } catch (err) {
     if (err.code === '23505') {
@@ -45,13 +45,16 @@ router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => 
     if (!existing) {
       return res.status(404).json({ error: 'Unidade não encontrada' });
     }
-    const { nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status } = req.body;
+    const { nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel, status, valor_deslocamento_padrao } = req.body;
     if (!nome) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
     const patch = { nome, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, telefone, email, responsavel };
     if (tipo) patch.tipo = tipo;
     if (status !== undefined) patch.status = status;
+    if (valor_deslocamento_padrao !== undefined) {
+      patch.valor_deslocamento_padrao = valor_deslocamento_padrao !== '' ? Number(valor_deslocamento_padrao) : null;
+    }
     const updated = await db.updateUnit(req.params.id, patch);
     res.json(updated);
   } catch (err) {
