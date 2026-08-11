@@ -65,17 +65,19 @@ export default function MilvusImport() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('pendente');
 
-  const load = () => {
-    api.get('/milvus-import').then((res) => setPendentes(res.data)).catch(() => {});
+  const load = (status = statusFilter) => {
+    api.get('/milvus-import', { params: { status } }).then((res) => setPendentes(res.data)).catch(() => {});
     api.get('/companies').then((res) => setCompanies(res.data)).catch(() => {});
     api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
     api.get('/equipments').then((res) => setEquipments(res.data)).catch(() => {});
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    load(statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
 
   const draftFor = (id) => drafts[id] || { empresa_id: '', unidade_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '' };
   const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftFor(id), ...patch, _auto: false } }));
@@ -186,16 +188,25 @@ export default function MilvusImport() {
         <button type="button" className="btn btn-outline" onClick={sync} disabled={syncing}>
           {syncing ? 'Sincronizando...' : 'Sincronizar agora'}
         </button>
+        <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ maxWidth: 220 }}>
+          <option value="pendente">Pendentes</option>
+          <option value="importado">Importados</option>
+          <option value="ignorado">Ignorados</option>
+          <option value="todos">Todos</option>
+        </select>
       </div>
 
       {pendentes.length === 0 ? (
-        <p className="section-text">Nenhum ticket pendente de importação.</p>
+        <p className="section-text">Nenhum ticket com esse status.</p>
       ) : (
         pendentes.map((p) => {
           const draft = draftFor(p.id);
           return (
             <div key={p.id} className="panel-card" style={{ maxWidth: 720, marginBottom: 16 }}>
-              <h3>{p.assunto || `Ticket Milvus #${p.milvus_codigo}`}</h3>
+              <h3>
+                {p.assunto || `Ticket Milvus #${p.milvus_codigo}`}
+                {statusFilter === 'todos' && <span className={`badge ${p.status === 'importado' ? 'badge-aprovado' : p.status === 'ignorado' ? 'badge-rejeitado' : 'badge-enviado'}`} style={{ marginLeft: 8 }}>{p.status}</span>}
+              </h3>
               <dl className="info-list">
                 <div><dt>Código Milvus</dt><dd>#{p.milvus_codigo}</dd></div>
                 <div><dt>Cliente</dt><dd>{p.cliente_nome || '—'}</dd></div>
@@ -204,68 +215,75 @@ export default function MilvusImport() {
                 <div><dt>Recebido em</dt><dd>{formatDateTime(p.criado_em)}</dd></div>
               </dl>
               {p.descricao && <p className="section-text">{p.descricao}</p>}
-              {draft._auto && (
+              {p.status !== 'pendente' && (
+                <p className="section-text detail-muted">Este ticket já foi {p.status} — não pode ser importado de novo.</p>
+              )}
+              {p.status === 'pendente' && draft._auto && (
                 <p className="section-text" style={{ color: 'var(--verde, #1e8e5a)' }}>
                   Solicitante, equipamento e endereço pré-preenchidos automaticamente a partir do ticket — confira antes de importar.
                 </p>
               )}
 
-              <label className="form-field">
-                Solicitante
-                <SearchableSelect
-                  value={draft.empresa_id}
-                  onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, '') })}
-                  placeholder="Digite para buscar a empresa..."
-                  options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
-                />
-              </label>
-              {draft.empresa_id && unitsForCompany(draft.empresa_id).length > 0 && (
-                <label className="form-field">
-                  Unidade de Negócio
-                  <SearchableSelect
-                    value={draft.unidade_id}
-                    onChange={(id) => setDraft(p.id, { unidade_id: id, equipamento_id: '', endereco: addressFor(draft.empresa_id, id) })}
-                    placeholder="Digite para buscar a filial ou sede..."
-                    emptyMessage="Nenhuma unidade cadastrada para esta empresa."
-                    options={unitsForCompany(draft.empresa_id).map((u) => ({
-                      value: u.id,
-                      label: `${u.tipo} — ${u.nome}`,
-                      sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
-                    }))}
-                  />
-                </label>
-              )}
-              <label className="form-field">
-                Equipamento
-                <select
-                  className="form-select"
-                  value={draft.equipamento_id}
-                  onChange={(e) => setDraft(p.id, { equipamento_id: e.target.value })}
-                  disabled={!draft.empresa_id}
-                >
-                  <option value="">{draft.empresa_id ? 'Selecione' : 'Selecione uma empresa primeiro'}</option>
-                  {equipmentsForCompany(draft.empresa_id, draft.unidade_id).map((eq) => (
-                    <option key={eq.id} value={eq.id}>{eq.modelo} — {eq.numero_serie}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="form-field">
-                Endereço
-                <input className="form-input" value={draft.endereco} onChange={(e) => setDraft(p.id, { endereco: e.target.value })} />
-              </label>
-              <label className="form-field">
-                Urgência
-                <select className="form-select" value={draft.urgencia} onChange={(e) => setDraft(p.id, { urgencia: e.target.value })}>
-                  <option value="Normal">Normal</option>
-                  <option value="Alta">Alta</option>
-                  <option value="Urgente">Urgente</option>
-                </select>
-              </label>
+              {p.status === 'pendente' && (
+                <>
+                  <label className="form-field">
+                    Solicitante
+                    <SearchableSelect
+                      value={draft.empresa_id}
+                      onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, '') })}
+                      placeholder="Digite para buscar a empresa..."
+                      options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+                    />
+                  </label>
+                  {draft.empresa_id && unitsForCompany(draft.empresa_id).length > 0 && (
+                    <label className="form-field">
+                      Unidade de Negócio
+                      <SearchableSelect
+                        value={draft.unidade_id}
+                        onChange={(id) => setDraft(p.id, { unidade_id: id, equipamento_id: '', endereco: addressFor(draft.empresa_id, id) })}
+                        placeholder="Digite para buscar a filial ou sede..."
+                        emptyMessage="Nenhuma unidade cadastrada para esta empresa."
+                        options={unitsForCompany(draft.empresa_id).map((u) => ({
+                          value: u.id,
+                          label: `${u.tipo} — ${u.nome}`,
+                          sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                        }))}
+                      />
+                    </label>
+                  )}
+                  <label className="form-field">
+                    Equipamento
+                    <select
+                      className="form-select"
+                      value={draft.equipamento_id}
+                      onChange={(e) => setDraft(p.id, { equipamento_id: e.target.value })}
+                      disabled={!draft.empresa_id}
+                    >
+                      <option value="">{draft.empresa_id ? 'Selecione' : 'Selecione uma empresa primeiro'}</option>
+                      {equipmentsForCompany(draft.empresa_id, draft.unidade_id).map((eq) => (
+                        <option key={eq.id} value={eq.id}>{eq.modelo} — {eq.numero_serie}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="form-field">
+                    Endereço
+                    <input className="form-input" value={draft.endereco} onChange={(e) => setDraft(p.id, { endereco: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    Urgência
+                    <select className="form-select" value={draft.urgencia} onChange={(e) => setDraft(p.id, { urgencia: e.target.value })}>
+                      <option value="Normal">Normal</option>
+                      <option value="Alta">Alta</option>
+                      <option value="Urgente">Urgente</option>
+                    </select>
+                  </label>
 
-              <div className="row-actions" style={{ marginTop: 12 }}>
-                <button type="button" className="btn btn-primary" onClick={() => importar(p.id)}>Importar como chamado</button>
-                <button type="button" className="btn btn-outline" onClick={() => ignorar(p.id)}>Ignorar</button>
-              </div>
+                  <div className="row-actions" style={{ marginTop: 12 }}>
+                    <button type="button" className="btn btn-primary" onClick={() => importar(p.id)}>Importar como chamado</button>
+                    <button type="button" className="btn btn-outline" onClick={() => ignorar(p.id)}>Ignorar</button>
+                  </div>
+                </>
+              )}
             </div>
           );
         })
