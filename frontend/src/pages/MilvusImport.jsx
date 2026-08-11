@@ -148,8 +148,13 @@ export default function MilvusImport() {
       return;
     }
     try {
-      await api.post(`/milvus-import/${id}/importar`, draft);
-      setSuccess('Chamado importado com sucesso.');
+      const res = await api.post(`/milvus-import/${id}/importar`, draft);
+      const pecas = res.data.pecas_identificadas || [];
+      setSuccess(
+        pecas.length > 0
+          ? `Chamado importado e orçamento (rascunho) criado com: ${pecas.join(', ')}. Complete o motivo da troca e o valor da visita técnica em Orçamentos antes de enviar para aprovação.`
+          : 'Chamado importado e orçamento (rascunho) criado — nenhuma peça foi identificada automaticamente, adicione manualmente em Orçamentos antes de enviar.'
+      );
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao importar chamado');
