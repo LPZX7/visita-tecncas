@@ -1,7 +1,7 @@
 const SUPPORT_PHONE = '5511997488664';
 
 export default function WhatsAppButton() {
-  const link = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent('Olá! Preciso de suporte com o sistema Mirontec Service.')}`;
+  const link = `https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent('Olá, preciso de suporte.')}`;
   return (
     <a href={link} target="_blank" rel="noopener noreferrer" className="whatsapp-fab" aria-label="Falar com o suporte no WhatsApp">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
