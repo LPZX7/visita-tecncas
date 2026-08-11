@@ -1,6 +1,9 @@
 const nodemailer = require('nodemailer');
 
-const { RESEND_API_KEY, RESEND_FROM, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, FRONTEND_URL } = process.env;
+const {
+  RESEND_API_KEY, RESEND_FROM, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM, FRONTEND_URL,
+  GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_SENDER
+} = process.env;
 
 const from = SMTP_FROM || RESEND_FROM || 'onboarding@resend.dev';
 const LOGO_URL = `${FRONTEND_URL || 'https://visitas-tecnicas.onrender.com'}/mirontec-logo.jpg`;
@@ -33,6 +36,71 @@ function actionEmailHtml({ title, message, buttonLabel, buttonUrl, footnote }) {
       </div>
     </div>
   </div>`;
+}
+
+let gmailAccessToken = null;
+let gmailAccessTokenExpiry = 0;
+
+async function getGmailAccessToken() {
+  if (gmailAccessToken && Date.now() < gmailAccessTokenExpiry) return gmailAccessToken;
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GMAIL_CLIENT_ID,
+      client_secret: GMAIL_CLIENT_SECRET,
+      refresh_token: GMAIL_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Falha ao renovar token do Gmail (${res.status}): ${JSON.stringify(data)}`);
+  }
+
+  gmailAccessToken = data.access_token;
+  gmailAccessTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+  return gmailAccessToken;
+}
+
+function base64Url(str) {
+  return Buffer.from(str, 'utf-8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function sendViaGmailApi({ to, subject, text, html }) {
+  try {
+    const accessToken = await getGmailAccessToken();
+    const encodedSubject = `=?utf-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`;
+    const message = [
+      `From: Mirontec Service <${GMAIL_SENDER}>`,
+      `To: ${to}`,
+      `Subject: ${encodedSubject}`,
+      'MIME-Version: 1.0',
+      `Content-Type: ${html ? 'text/html' : 'text/plain'}; charset=utf-8`,
+      '',
+      html || text || ''
+    ].join('\r\n');
+
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ raw: base64Url(message) })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error(`[mailer] Falha ao enviar email via Gmail (${res.status}):`, JSON.stringify(data));
+      return;
+    }
+    console.log(`[mailer] Email enviado via Gmail — id: ${data.id}`);
+  } catch (err) {
+    console.error('[mailer] Falha ao enviar email via Gmail:', err.message);
+  }
 }
 
 async function sendViaSmtp({ to, subject, text, html }) {
@@ -74,6 +142,9 @@ async function sendViaResend({ to, subject, text, html }) {
 async function sendMail({ to, subject, text, html }) {
   if (!to) return;
 
+  if (GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN && GMAIL_SENDER) {
+    return sendViaGmailApi({ to, subject, text, html });
+  }
   if (smtpTransport) {
     return sendViaSmtp({ to, subject, text, html });
   }
