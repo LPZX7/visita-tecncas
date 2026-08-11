@@ -1,5 +1,5 @@
 const db = require('./db');
-const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado } = require('./milvus');
+const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado } = require('./milvus');
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 
 function isTicketVisitaTecnica(ticket) {
@@ -113,4 +113,36 @@ async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items
   }
 }
 
-module.exports = { syncMilvusChamados, pushChamadoToMilvus, pushVisitaTecnicaAprovadaToMilvus };
+// Depois que a visita técnica já foi aprovada e criada no Milvus (budget com
+// milvus_codigo), mantém aquele mesmo ticket atualizado conforme o
+// atendimento avança — check-in, check-out e conclusão. Não faz nada se o
+// chamado ainda não tiver orçamento aprovado com ticket no Milvus.
+async function syncRequestUpdateToMilvus(request, { tipo, technician }) {
+  if (!process.env.MILVUS_API_TOKEN) return;
+
+  try {
+    const budgets = await db.getBudgets();
+    const aprovado = budgets.find((b) => b.request_id === request.id && b.status === 'Aprovado' && b.milvus_codigo);
+    if (!aprovado) return;
+
+    if (tipo === 'checkin') {
+      await criarAcompanhamento({
+        ticketCodigo: aprovado.milvus_codigo,
+        descricao: `Check-in realizado${technician ? ` pelo técnico ${technician}` : ''} em ${new Date(request.hora_checkin).toLocaleString('pt-BR')}.`
+      });
+      console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${aprovado.milvus_codigo}`);
+    } else if (tipo === 'concluida') {
+      const relatorio = request.relatorio_visita || 'Sem relatório informado.';
+      await criarAcompanhamento({
+        ticketCodigo: aprovado.milvus_codigo,
+        descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\nRelatório da visita: ${relatorio}`
+      });
+      await finalizarChamado({ ticketCodigo: aprovado.milvus_codigo, servicoRealizado: relatorio });
+      console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${aprovado.milvus_codigo}`);
+    }
+  } catch (err) {
+    console.error(`[milvus] Falha ao sincronizar atualização do chamado #${request.numero}:`, err.message);
+  }
+}
+
+module.exports = { syncMilvusChamados, pushChamadoToMilvus, pushVisitaTecnicaAprovadaToMilvus, syncRequestUpdateToMilvus };

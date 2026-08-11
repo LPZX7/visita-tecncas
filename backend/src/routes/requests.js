@@ -7,6 +7,7 @@ const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
+const { syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -174,6 +175,12 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         mensagem: `Novo status: ${updated.status}`,
         link: '/requests'
       });
+
+      if (patch.status === 'Em Atendimento' && patch.hora_checkin) {
+        syncRequestUpdateToMilvus(updated, { tipo: 'checkin', technician: req.user.name });
+      } else if (patch.status === 'Concluída') {
+        syncRequestUpdateToMilvus(updated, { tipo: 'concluida' });
+      }
     }
 
     res.json(updated);

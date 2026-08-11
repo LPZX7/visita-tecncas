@@ -89,4 +89,43 @@ async function criarChamado({ clienteToken, assunto, descricao, email, telefone,
   return text.trim().replace(/^"|"$/g, '');
 }
 
-module.exports = { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, CATEGORIA_VISITA_TECNICA };
+async function criarAcompanhamento({ ticketCodigo, descricao, privado = false }) {
+  const token = getToken();
+  if (!token || !ticketCodigo) return;
+
+  const res = await fetch(`${BASE_URL}/chamado/acompanhamento/criar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      acompanhamento_ticket: String(ticketCodigo),
+      acompanhamento_descricao: descricao,
+      acompanhamento_privado: privado
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Milvus criarAcompanhamento falhou (${res.status}): ${text.slice(0, 200)}`);
+  }
+}
+
+async function finalizarChamado({ ticketCodigo, servicoRealizado }) {
+  const token = getToken();
+  if (!token || !ticketCodigo) return;
+
+  const res = await fetch(`${BASE_URL}/chamado/finalizar`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      chamado_codigo: String(ticketCodigo),
+      chamado_servico_realizado: servicoRealizado || ''
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Milvus finalizarChamado falhou (${res.status}): ${text.slice(0, 200)}`);
+  }
+}
+
+module.exports = { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado, CATEGORIA_VISITA_TECNICA };
