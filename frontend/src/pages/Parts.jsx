@@ -8,6 +8,7 @@ export default function Parts() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   const load = () => api.get('/parts').then((res) => setParts(res.data));
 
@@ -28,13 +29,22 @@ export default function Parts() {
       await load();
       setForm(emptyForm);
       setEditingId(null);
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar peça');
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setShowForm(true);
+  };
+
   const handleEdit = (part) => {
     setEditingId(part.id);
+    setError('');
     setForm({
       codigo: part.codigo || '',
       nome: part.nome || '',
@@ -43,11 +53,13 @@ export default function Parts() {
       estoque: String(part.estoque ?? ''),
       fornecedor: part.fornecedor || ''
     });
+    setShowForm(true);
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setShowForm(false);
   };
 
   const handleDelete = async (id) => {
@@ -64,20 +76,30 @@ export default function Parts() {
     <div>
       <h2 className="page-title">Catálogo de Peças</h2>
 
-      <form onSubmit={handleSubmit} className="card-form">
-        <h3>{editingId ? 'Editar peça' : 'Nova peça'}</h3>
-        {error && <div className="alert alert-error">{error}</div>}
-        <label className="form-field">Código<input className="form-input" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} required /></label>
-        <label className="form-field">Nome<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
-        <label className="form-field">Categoria<input className="form-input" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} required /></label>
-        <label className="form-field">Preço unitário<input className="form-input" type="number" step="0.01" value={form.preco_unitario} onChange={(e) => setForm({ ...form, preco_unitario: e.target.value })} required /></label>
-        <label className="form-field">Estoque<input className="form-input" type="number" value={form.estoque} onChange={(e) => setForm({ ...form, estoque: e.target.value })} /></label>
-        <label className="form-field">Fornecedor<input className="form-input" value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} /></label>
-        <div className="row-actions">
-          <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Criar peça'}</button>
-          {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
+      {!showForm && (
+        <div className="row-actions" style={{ marginBottom: 20 }}>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Peça</button>
         </div>
-      </form>
+      )}
+
+      {error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="card-form">
+          <h3>{editingId ? 'Editar peça' : 'Nova peça'}</h3>
+          {error && <div className="alert alert-error">{error}</div>}
+          <label className="form-field">Código<input className="form-input" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} required /></label>
+          <label className="form-field">Nome<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
+          <label className="form-field">Categoria<input className="form-input" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} required /></label>
+          <label className="form-field">Preço unitário<input className="form-input" type="number" step="0.01" value={form.preco_unitario} onChange={(e) => setForm({ ...form, preco_unitario: e.target.value })} required /></label>
+          <label className="form-field">Estoque<input className="form-input" type="number" value={form.estoque} onChange={(e) => setForm({ ...form, estoque: e.target.value })} /></label>
+          <label className="form-field">Fornecedor<input className="form-input" value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} /></label>
+          <div className="row-actions">
+            <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Criar peça'}</button>
+            <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       <table className="data-table">
         <thead>

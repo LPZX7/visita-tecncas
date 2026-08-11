@@ -15,6 +15,7 @@ export default function Equipments() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [showForm, setShowForm] = useState(false);
 
   const load = () => {
     api.get('/equipments').then((res) => setEquipments(res.data));
@@ -61,13 +62,22 @@ export default function Equipments() {
       await load();
       setForm(emptyForm);
       setEditingId(null);
+      setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar equipamento');
     }
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setShowForm(true);
+  };
+
   const handleEdit = (equipment) => {
     setEditingId(equipment.id);
+    setError('');
     setForm({
       empresa_id: equipment.empresa_id || '',
       unidade_id: equipment.unidade_id || '',
@@ -77,11 +87,13 @@ export default function Equipments() {
       data_instalacao: equipment.data_instalacao || '',
       garantia_ate: equipment.garantia_ate || ''
     });
+    setShowForm(true);
   };
 
   const handleCancelEdit = () => {
     setEditingId(null);
     setForm(emptyForm);
+    setShowForm(false);
   };
 
   const handleDelete = async (id) => {
@@ -98,41 +110,51 @@ export default function Equipments() {
     <div>
       <h2 className="page-title">Equipamentos</h2>
 
-      <form onSubmit={handleSubmit} className="card-form">
-        <h3>{editingId ? 'Editar equipamento' : 'Novo equipamento'}</h3>
-        {error && <div className="alert alert-error">{error}</div>}
-        <label className="form-field">Empresa
-          <SearchableSelect
-            value={form.empresa_id}
-            onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '' })}
-            placeholder="Digite para buscar a empresa..."
-            options={companies.map((company) => ({ value: company.id, label: company.razao_social, sublabel: company.cnpj }))}
-          />
-        </label>
-        {form.empresa_id && unitsForSelectedCompany.length > 0 && (
-          <label className="form-field">Unidade (opcional — deixe em branco para sede principal)
+      {!showForm && (
+        <div className="row-actions" style={{ marginBottom: 20 }}>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Equipamento</button>
+        </div>
+      )}
+
+      {error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="card-form">
+          <h3>{editingId ? 'Editar equipamento' : 'Novo equipamento'}</h3>
+          {error && <div className="alert alert-error">{error}</div>}
+          <label className="form-field">Empresa
             <SearchableSelect
-              value={form.unidade_id}
-              onChange={(id) => setForm({ ...form, unidade_id: id })}
-              placeholder="Digite para buscar a filial..."
-              options={unitsForSelectedCompany.map((unit) => ({
-                value: unit.id,
-                label: `${unit.tipo} — ${unit.nome}`,
-                sublabel: [unit.endereco, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ')
-              }))}
+              value={form.empresa_id}
+              onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '' })}
+              placeholder="Digite para buscar a empresa..."
+              options={companies.map((company) => ({ value: company.id, label: company.razao_social, sublabel: company.cnpj }))}
             />
           </label>
-        )}
-        <label className="form-field">Modelo<input className="form-input" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} required /></label>
-        <label className="form-field">Número de série<input className="form-input" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} required /></label>
-        <label className="form-field">Local instalação<input className="form-input" value={form.local_instalacao} onChange={(e) => setForm({ ...form, local_instalacao: e.target.value })} /></label>
-        <label className="form-field">Data instalação<input className="form-input" type="date" value={form.data_instalacao} onChange={(e) => setForm({ ...form, data_instalacao: e.target.value })} /></label>
-        <label className="form-field">Garantia até<input className="form-input" type="date" value={form.garantia_ate} onChange={(e) => setForm({ ...form, garantia_ate: e.target.value })} /></label>
-        <div className="row-actions">
-          <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Criar equipamento'}</button>
-          {editingId && <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>}
-        </div>
-      </form>
+          {form.empresa_id && unitsForSelectedCompany.length > 0 && (
+            <label className="form-field">Unidade (opcional — deixe em branco para sede principal)
+              <SearchableSelect
+                value={form.unidade_id}
+                onChange={(id) => setForm({ ...form, unidade_id: id })}
+                placeholder="Digite para buscar a filial..."
+                options={unitsForSelectedCompany.map((unit) => ({
+                  value: unit.id,
+                  label: `${unit.tipo} — ${unit.nome}`,
+                  sublabel: [unit.endereco, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ')
+                }))}
+              />
+            </label>
+          )}
+          <label className="form-field">Modelo<input className="form-input" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} required /></label>
+          <label className="form-field">Número de série<input className="form-input" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} required /></label>
+          <label className="form-field">Local instalação<input className="form-input" value={form.local_instalacao} onChange={(e) => setForm({ ...form, local_instalacao: e.target.value })} /></label>
+          <label className="form-field">Data instalação<input className="form-input" type="date" value={form.data_instalacao} onChange={(e) => setForm({ ...form, data_instalacao: e.target.value })} /></label>
+          <label className="form-field">Garantia até<input className="form-input" type="date" value={form.garantia_ate} onChange={(e) => setForm({ ...form, garantia_ate: e.target.value })} /></label>
+          <div className="row-actions">
+            <button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Criar equipamento'}</button>
+            <button type="button" className="btn btn-outline" onClick={handleCancelEdit}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       <div className="list-controls" style={{ marginTop: 20 }}>
         <input
