@@ -35,6 +35,8 @@ export default function Requests() {
   const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [budgets, setBudgets] = useState([]);
+  const [parts, setParts] = useState([]);
   const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
   const [drafts, setDrafts] = useState({});
   const [expanded, setExpanded] = useState({});
@@ -56,6 +58,10 @@ export default function Requests() {
     api.get('/equipments').then((res) => setEquipments(res.data)).catch(() => {});
     if (canManage) {
       api.get('/users').then((res) => setTechnicians(res.data.filter((u) => u.role === 'tecnico'))).catch(() => {});
+    }
+    if (isTech) {
+      api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
+      api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
     }
   };
 
@@ -84,6 +90,8 @@ export default function Requests() {
     return eq ? `${eq.modelo} — ${eq.numero_serie}` : '—';
   };
   const technicianName = (id) => technicians.find((t) => t.id === id)?.nome || (id ? id : 'Não atribuído');
+  const partName = (id) => parts.find((p) => p.id === id)?.nome || 'Peça';
+  const approvedBudgetFor = (requestId) => budgets.find((b) => b.request_id === requestId && b.status === 'Aprovado');
 
   const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
 
@@ -408,6 +416,16 @@ export default function Requests() {
                             <p>{formatDateTime(req.hora_checkout)}</p>
                           </div>
                         </div>
+                        {isTech && approvedBudgetFor(req.id) && (
+                          <div className="detail-report">
+                            <strong>Peça e serviço aprovados pelo cliente</strong>
+                            <p>
+                              Peça: {approvedBudgetFor(req.id).items?.map((item) => partName(item.peca_id)).join(', ') || 'não informado'}
+                            </p>
+                            {approvedBudgetFor(req.id).motivo_troca && <p>Motivo da troca: {approvedBudgetFor(req.id).motivo_troca}</p>}
+                            {approvedBudgetFor(req.id).observacoes_tecnicas && <p>Informações relevantes: {approvedBudgetFor(req.id).observacoes_tecnicas}</p>}
+                          </div>
+                        )}
                         {user?.role === 'cliente' && !req.aprovacao_cliente && (
                           <div className="detail-report">
                             <strong>Autorizar esta visita</strong>
