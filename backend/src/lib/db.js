@@ -125,6 +125,8 @@ const SCHEMA_SQL = `
   );
 
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cliente TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS data_aprovacao_cliente TEXT;
 
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,

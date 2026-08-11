@@ -14,4 +14,16 @@ function verifyApprovalToken(token) {
   return payload;
 }
 
-module.exports = { signApprovalToken, verifyApprovalToken };
+function signVisitApprovalToken(requestId) {
+  return jwt.sign({ requestId, purpose: 'visit-approval' }, JWT_SECRET, { expiresIn: '14d' });
+}
+
+function verifyVisitApprovalToken(token) {
+  const payload = jwt.verify(token, JWT_SECRET);
+  if (payload.purpose !== 'visit-approval' || !payload.requestId) {
+    throw new Error('Token inválido');
+  }
+  return payload;
+}
+
+module.exports = { signApprovalToken, verifyApprovalToken, signVisitApprovalToken, verifyVisitApprovalToken };

@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
 const { syncMilvusChamados } = require('../lib/milvusSync');
+const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -58,6 +59,9 @@ router.post('/:id/importar', async (req, res, next) => {
     });
 
     await db.updateMilvusPendente(pendente.id, { status: 'importado', request_id: request.id });
+
+    const company = await db.getCompanyById(empresa_id);
+    sendVisitApprovalEmail(request, company);
 
     await db.logAudit({
       user: req.user,

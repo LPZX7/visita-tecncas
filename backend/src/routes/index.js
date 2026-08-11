@@ -14,6 +14,7 @@ const notificationsRouter = require('./notifications');
 const auditRouter = require('./audit');
 const publicValidationRouter = require('./publicValidation');
 const milvusImportRouter = require('./milvusImport');
+const publicVisitsRouter = require('./publicVisits');
 
 const router = express.Router();
 router.use('/auth', authRouter);
@@ -31,5 +32,6 @@ router.use('/notifications', notificationsRouter);
 router.use('/audit', auditRouter);
 router.use('/public/validar', publicValidationRouter);
 router.use('/milvus-import', milvusImportRouter);
+router.use('/public/visitas', publicVisitsRouter);
 
 module.exports = router;

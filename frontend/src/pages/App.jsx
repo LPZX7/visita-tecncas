@@ -16,6 +16,7 @@ import AuditLog from './AuditLog';
 import MilvusImport from './MilvusImport';
 import Contracts from './Contracts';
 import ApproveBudget from './ApproveBudget';
+import ApproveVisit from './ApproveVisit';
 import TermoConclusao from './TermoConclusao';
 import ValidarTermo from './ValidarTermo';
 import NotificationBell from '../components/NotificationBell';
@@ -106,11 +107,12 @@ export default function App() {
 
   const links = linksForRole(user?.role);
 
-  const isPublicStandaloneRoute = /^\/(aprovar-orcamento|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
+  const isPublicStandaloneRoute = /^\/(aprovar-orcamento|aprovar-visita|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
   if (isPublicStandaloneRoute) {
     return (
       <Routes>
         <Route path="/aprovar-orcamento/:token" element={<ApproveBudget />} />
+        <Route path="/aprovar-visita/:token" element={<ApproveVisit />} />
         <Route path="/cadastro" element={<Signup />} />
         <Route path="/esqueci-senha" element={<ForgotPassword />} />
         <Route path="/redefinir-senha/:token" element={<ResetPassword />} />

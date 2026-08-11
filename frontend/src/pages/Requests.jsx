@@ -349,6 +349,14 @@ export default function Requests() {
                             <p>{req.urgencia}</p>
                           </div>
                           <div>
+                            <strong>Aprovação do cliente</strong>
+                            <p>
+                              {req.aprovacao_cliente === 'aprovado' && <span className="badge badge-aprovado">Aprovada</span>}
+                              {req.aprovacao_cliente === 'recusado' && <span className="badge badge-rejeitado">Recusada</span>}
+                              {!req.aprovacao_cliente && <span className="badge badge-enviado">Aguardando</span>}
+                            </p>
+                          </div>
+                          <div>
                             <strong>Aberto em</strong>
                             <p>{formatDateTime(req.criado_em)}</p>
                           </div>
