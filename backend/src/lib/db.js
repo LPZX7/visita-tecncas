@@ -336,11 +336,36 @@ async function seedMirontecCatracas() {
   }
 }
 
+// Contato da unidade Escola Viva (Cucinare) — duas pessoas solicitam
+// chamados por essa unidade, então ficam combinadas no único campo de
+// responsável/email/telefone que a unidade tem. Não sobrescreve se a
+// unidade já tiver um responsável preenchido (edição manual tem prioridade).
+async function seedEscolaVivaContato() {
+  const { rows: empresaRows } = await pool.query(
+    "SELECT id FROM empresas WHERE lower(razao_social) LIKE '%cucinare%' OR lower(nome_fantasia) LIKE '%cucinare%' LIMIT 1"
+  );
+  const empresaId = empresaRows[0]?.id;
+  if (!empresaId) return;
+
+  const { rows: unitRows } = await pool.query(
+    "SELECT id, responsavel FROM unidades WHERE empresa_id = $1 AND lower(nome) LIKE '%escola viva%' LIMIT 1",
+    [empresaId]
+  );
+  const unit = unitRows[0];
+  if (!unit || unit.responsavel) return;
+
+  await pool.query(
+    'UPDATE unidades SET responsavel = $1, email = $2, telefone = $3, atualizado_em = $4 WHERE id = $5',
+    ['Cristiane / Fabiana', 'escolaviva@quitanda.com,gimi2@cucinare.com.br', '(11) 97058-7835 / (11) 95425-6056', now(), unit.id]
+  );
+}
+
 async function initDb() {
   await pool.query(SCHEMA_SQL);
   await seedDefaultAdmin();
   await seedCatracaParts();
   await seedMirontecCatracas();
+  await seedEscolaVivaContato();
 }
 
 // ---------- generic partial-update helper ----------

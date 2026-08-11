@@ -33,7 +33,8 @@ function matchUnit(pendente, unitsOfCompany) {
   const emails = norm(pendente.cliente_email).split(',').map((e) => e.trim()).filter(Boolean);
   const nome = norm(pendente.cliente_nome);
   const candidates = unitsOfCompany.filter((u) => {
-    if (emails.length && u.email && emails.includes(norm(u.email))) return true;
+    const unitEmails = norm(u.email).split(',').map((e) => e.trim()).filter(Boolean);
+    if (emails.length && unitEmails.some((ue) => emails.includes(ue))) return true;
     const unome = norm(u.nome);
     return unome && (nome.includes(unome) || unome.includes(nome));
   });
