@@ -170,11 +170,12 @@ router.patch('/:id/status', async (req, res, next) => {
 
     if (status === 'Enviado' && request) {
       const company = await db.getCompanyById(request.empresa_id);
-      if (company?.email) {
+      const emailDestino = request.solicitante_email || company?.email;
+      if (emailDestino) {
         const token = signApprovalToken(updated.id);
         const link = `${FRONTEND_URL}/aprovar-orcamento/${token}`;
         sendMail({
-          to: company.email,
+          to: emailDestino,
           subject: 'Novo orçamento disponível para aprovação',
           text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login:\n${link}\n\nEste link expira em 14 dias.`,
           html: actionEmailHtml({
@@ -216,9 +217,10 @@ router.patch('/:id/status', async (req, res, next) => {
       }
 
       const company = request ? await db.getCompanyById(request.empresa_id) : null;
-      if (company?.email) {
+      const emailContrato = request?.solicitante_email || company?.email;
+      if (emailContrato) {
         sendMail({
-          to: company.email,
+          to: emailContrato,
           subject: `Contrato ${contract.numero} gerado`,
           text: `Seu orçamento foi aprovado e o contrato ${contract.numero} foi gerado automaticamente.\n\nVocê pode acessá-lo e baixar o PDF pelo portal Mirontec, na seção Contratos.`
         });

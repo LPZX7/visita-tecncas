@@ -127,6 +127,7 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cliente TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS data_aprovacao_cliente TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS solicitante_email TEXT;
 
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,
@@ -639,14 +640,15 @@ async function createRequest(request) {
     avaliacao: null,
     avaliacao_comentario: null,
     aberto_por: request.aberto_por,
+    solicitante_email: request.solicitante_email || null,
     criado_em: now(),
     atualizado_em: now(),
     concluded_at: null
   });
   await pool.query(
-    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, criado_em, atualizado_em, concluded_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.criado_em, row.atualizado_em, row.concluded_at]
+    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, criado_em, atualizado_em, concluded_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.criado_em, row.atualizado_em, row.concluded_at]
   );
   return getRequestById(row.id);
 }

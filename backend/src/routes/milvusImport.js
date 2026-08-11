@@ -55,7 +55,8 @@ router.post('/:id/importar', async (req, res, next) => {
       descricao,
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
-      aberto_por: req.user.sub
+      aberto_por: req.user.sub,
+      solicitante_email: pendente.cliente_email || null
     });
 
     await db.updateMilvusPendente(pendente.id, { status: 'importado', request_id: request.id });
