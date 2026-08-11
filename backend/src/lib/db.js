@@ -158,6 +158,9 @@ const SCHEMA_SQL = `
   ALTER TABLE budgets ADD COLUMN IF NOT EXISTS aprovado_em TEXT;
   ALTER TABLE budgets ADD COLUMN IF NOT EXISTS autorizado_por TEXT;
   ALTER TABLE budgets ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS aprovacao_nome TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS aprovacao_cpf TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS aprovacao_telefone TEXT;
 
   CREATE TABLE IF NOT EXISTS orcamento_itens (
     id TEXT PRIMARY KEY,

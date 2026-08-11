@@ -137,6 +137,18 @@ router.patch('/:id/status', async (req, res, next) => {
       if (budget.status !== 'Enviado' || !['Aprovado', 'Rejeitado'].includes(status)) {
         return res.status(400).json({ error: 'Transição de status não permitida' });
       }
+      if (status === 'Aprovado') {
+        const { nome, cpf, telefone } = req.body;
+        if (!nome || !String(nome).trim()) {
+          return res.status(400).json({ error: 'Informe o nome de quem está autorizando o orçamento' });
+        }
+        if (!cpf || !String(cpf).trim()) {
+          return res.status(400).json({ error: 'Informe o CPF de quem está autorizando o orçamento' });
+        }
+        if (!telefone || !String(telefone).trim()) {
+          return res.status(400).json({ error: 'Informe o telefone de quem está autorizando o orçamento' });
+        }
+      }
     } else if (['tecnico', 'analista', 'gestor'].includes(req.user.role)) {
       // A equipe só pode enviar o orçamento para o cliente — a aprovação/rejeição
       // exige uma ação explícita do próprio cliente (portal ou link de email).
@@ -154,6 +166,9 @@ router.patch('/:id/status', async (req, res, next) => {
     const patch = { status };
     if (status === 'Aprovado') {
       patch.autorizado_por = 'Cliente via portal (usuário logado)';
+      patch.aprovacao_nome = String(req.body.nome).trim();
+      patch.aprovacao_cpf = String(req.body.cpf).trim();
+      patch.aprovacao_telefone = String(req.body.telefone).trim();
     }
     const updated = await db.updateBudget(budget.id, patch);
     await db.logAudit({
@@ -175,10 +190,10 @@ router.patch('/:id/status', async (req, res, next) => {
         sendMail({
           to: emailDestino,
           subject: 'Novo orçamento disponível para aprovação',
-          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login:\n${link}\n\nEste link expira em 14 dias.`,
+          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e faça login na sua conta para aprovar ou rejeitar:\n${link}\n\nEste link expira em 14 dias.`,
           html: actionEmailHtml({
             title: 'Orçamento disponível para aprovação',
-            message: `Um orçamento no valor de <strong>R$ ${updated.total.toFixed(2)}</strong> está disponível para sua aprovação. Veja os detalhes e aprove ou rejeite diretamente, sem precisar fazer login.`,
+            message: `Um orçamento no valor de <strong>R$ ${updated.total.toFixed(2)}</strong> está disponível para sua aprovação. Veja os detalhes e faça login na sua conta para aprovar ou rejeitar.`,
             buttonLabel: 'Ver orçamento',
             buttonUrl: link,
             footnote: 'Este link expira em 14 dias.'

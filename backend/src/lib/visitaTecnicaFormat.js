@@ -32,7 +32,10 @@ function buildRealizado(items) {
 function buildMilvusPayload({ budget, items, request }) {
   const descricao = buildDescricao({ budget, items, request });
   const realizado = buildRealizado(items);
-  const autorizacao = `AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça. (${budget.autorizado_por || 'autorização registrada'} em ${new Date(budget.aprovado_em || Date.now()).toLocaleString('pt-BR')})`;
+  const quemAutorizou = budget.aprovacao_nome
+    ? `${budget.aprovacao_nome} (CPF ${budget.aprovacao_cpf || 'não informado'}, tel ${budget.aprovacao_telefone || 'não informado'})`
+    : (budget.autorizado_por || 'autorização registrada');
+  const autorizacao = `AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça. Autorizado por ${quemAutorizou} em ${new Date(budget.aprovado_em || Date.now()).toLocaleString('pt-BR')}.`;
 
   return {
     assunto: TITULO_VISITA_TECNICA,

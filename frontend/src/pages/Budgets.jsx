@@ -44,6 +44,7 @@ export default function Budgets() {
   const [success, setSuccess] = useState('');
   const [expanded, setExpanded] = useState({});
   const [itemsAutoFilled, setItemsAutoFilled] = useState(false);
+  const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
 
   const canCreate = ['tecnico', 'analista', 'gestor'].includes(user?.role);
   const isStaff = ['tecnico', 'analista', 'gestor'].includes(user?.role);
@@ -144,14 +145,26 @@ export default function Budgets() {
     }
   };
 
-  const changeStatus = async (budget, status) => {
+  const changeStatus = async (budget, status, extra = {}) => {
     setError('');
     try {
-      await api.patch(`/budgets/${budget.id}/status`, { status });
+      await api.patch(`/budgets/${budget.id}/status`, { status, ...extra });
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao atualizar orçamento');
     }
+  };
+
+  const aprovacaoDraftFor = (id) => aprovacaoDrafts[id] || { nome: '', cpf: '', telefone: '' };
+  const setAprovacaoDraft = (id, patch) => setAprovacaoDrafts((prev) => ({ ...prev, [id]: { ...aprovacaoDraftFor(id), ...patch } }));
+
+  const handleAutorizarOrcamento = (budget) => {
+    const draft = aprovacaoDraftFor(budget.id);
+    if (!draft.nome.trim() || !draft.cpf.trim() || !draft.telefone.trim()) {
+      setError('Preencha nome, CPF e telefone para autorizar o orçamento.');
+      return;
+    }
+    changeStatus(budget, 'Aprovado', draft);
   };
 
   const isOwnCompanyBudget = (budget) => {
@@ -331,7 +344,7 @@ export default function Budgets() {
                       )}
                       {user?.role === 'cliente' && budget.status === 'Enviado' && isOwnCompanyBudget(budget) && (
                         <>
-                          <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Aprovado')}>Autorizar</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => toggleExpanded(budget.id)}>Autorizar (ver detalhes)</button>
                           <button className="btn btn-danger btn-sm" onClick={() => changeStatus(budget, 'Rejeitado')}>Não autorizar</button>
                         </>
                       )}
@@ -396,6 +409,27 @@ export default function Budgets() {
                           </div>
                         )}
 
+                        {user?.role === 'cliente' && budget.status === 'Enviado' && isOwnCompanyBudget(budget) && (
+                          <div className="detail-report">
+                            <strong>Autorizar este orçamento</strong>
+                            <label className="form-field">
+                              Nome completo
+                              <input className="form-input" value={aprovacaoDraftFor(budget.id).nome} onChange={(e) => setAprovacaoDraft(budget.id, { nome: e.target.value })} />
+                            </label>
+                            <label className="form-field">
+                              CPF
+                              <input className="form-input" value={aprovacaoDraftFor(budget.id).cpf} onChange={(e) => setAprovacaoDraft(budget.id, { cpf: e.target.value })} placeholder="000.000.000-00" />
+                            </label>
+                            <label className="form-field">
+                              Telefone
+                              <input className="form-input" value={aprovacaoDraftFor(budget.id).telefone} onChange={(e) => setAprovacaoDraft(budget.id, { telefone: e.target.value })} placeholder="(00) 00000-0000" />
+                            </label>
+                            <div className="row-actions" style={{ marginTop: 8 }}>
+                              <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAutorizarOrcamento(budget)}>Autorizar orçamento</button>
+                            </div>
+                          </div>
+                        )}
+
                         {budget.status === 'Aprovado' && (
                           <div className="detail-report">
                             <strong>STATUS: APROVADO PELO CLIENTE</strong>
@@ -403,7 +437,7 @@ export default function Budgets() {
                               REALIZADO: Substituição da(s) peça(s) {budget.items?.map((item) => partName(item.peca_id)).join(', ')} e realização dos procedimentos técnicos necessários para conclusão do serviço.
                             </p>
                             <p className="detail-muted">
-                              Autorizado por: {budget.autorizado_por || '—'}{budget.aprovado_em && ` em ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`}
+                              Autorizado por: {budget.aprovacao_nome ? `${budget.aprovacao_nome} — CPF ${budget.aprovacao_cpf || '—'} — Tel ${budget.aprovacao_telefone || '—'}` : (budget.autorizado_por || '—')}{budget.aprovado_em && ` em ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`}
                             </p>
                             {budget.milvus_codigo && <p className="detail-muted">Ticket Milvus: #{budget.milvus_codigo}</p>}
                           </div>

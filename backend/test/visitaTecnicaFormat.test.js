@@ -8,7 +8,10 @@ const budget = {
   pecas_total: 450,
   deslocamento: 150,
   total: 600,
-  autorizado_por: 'Cliente via link de email (sem login)',
+  autorizado_por: 'Cliente via portal (usuário logado)',
+  aprovacao_nome: 'Maria Autorizante',
+  aprovacao_cpf: '123.456.789-00',
+  aprovacao_telefone: '(11) 91234-5678',
   aprovado_em: '2026-08-11T12:00:00.000Z'
 };
 
@@ -42,5 +45,5 @@ test('buildMilvusPayload inclui REALIZADO, STATUS e AUTORIZAÇÃO', () => {
   assert.match(payload.descricao, /REALIZADO: Substituição da peça Placa eletrônica/);
   assert.match(payload.descricao, /STATUS: APROVADO PELO CLIENTE/);
   assert.match(payload.descricao, /AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça\./);
-  assert.match(payload.descricao, /Cliente via link de email \(sem login\)/);
+  assert.match(payload.descricao, /Autorizado por Maria Autorizante \(CPF 123\.456\.789-00, tel \(11\) 91234-5678\)/);
 });

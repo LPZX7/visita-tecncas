@@ -74,7 +74,9 @@ function generateBudgetPdf({ budget, request, company, unit, items }) {
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(9.5).fillColor('#1B1E22')
       .text('AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça.', 56, doc.y, { width: 483 });
-    if (budget.autorizado_por) {
+    if (budget.aprovacao_nome) {
+      doc.text(`Autorizado por: ${budget.aprovacao_nome} — CPF ${budget.aprovacao_cpf || 'não informado'} — Tel ${budget.aprovacao_telefone || 'não informado'}`, 56);
+    } else if (budget.autorizado_por) {
       doc.text(`Autorizado por: ${budget.autorizado_por}`, 56);
     }
     if (budget.aprovado_em) {
