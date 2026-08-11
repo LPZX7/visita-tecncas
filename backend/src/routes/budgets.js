@@ -9,7 +9,7 @@ const { pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
-function validateVisitaTecnicaFields({ items, motivo_troca, servico_realizado, deslocamento }) {
+function validateVisitaTecnicaFields({ items, motivo_troca, deslocamento }) {
   if (!items || items.length === 0) return 'Selecione ao menos uma peça que será trocada';
   for (const item of items) {
     if (!item.quantidade || Number(item.quantidade) <= 0) return 'Informe a quantidade da peça';
@@ -18,7 +18,6 @@ function validateVisitaTecnicaFields({ items, motivo_troca, servico_realizado, d
     }
   }
   if (!motivo_troca || !String(motivo_troca).trim()) return 'Informe o motivo da troca';
-  if (!servico_realizado || !String(servico_realizado).trim()) return 'Informe o serviço que será realizado';
   if (deslocamento === undefined || deslocamento === null || Number(deslocamento) < 0) return 'Informe o valor da visita técnica';
   return null;
 }
@@ -74,7 +73,7 @@ router.get('/:id/pdf', async (req, res, next) => {
 
 router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
   try {
-    const { request_id, empresa_id, unidade_id, items = [], deslocamento = 0, motivo_troca, servico_realizado, observacoes_tecnicas } = req.body;
+    const { request_id, empresa_id, unidade_id, items = [], deslocamento = 0, motivo_troca, observacoes_tecnicas } = req.body;
     const draft_by = req.user.sub;
     if (!request_id || !empresa_id) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
@@ -85,7 +84,7 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       return res.status(400).json({ error: 'Solicitação inválida' });
     }
 
-    const validationError = validateVisitaTecnicaFields({ items, motivo_troca, servico_realizado, deslocamento });
+    const validationError = validateVisitaTecnicaFields({ items, motivo_troca, deslocamento });
     if (validationError) {
       return res.status(400).json({ error: validationError });
     }
@@ -106,7 +105,6 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       urgencia: 0,
       horas_trabalho: 0,
       motivo_troca: String(motivo_troca).trim(),
-      servico_realizado: String(servico_realizado).trim(),
       observacoes_tecnicas: (observacoes_tecnicas || '').trim() || null
     };
 

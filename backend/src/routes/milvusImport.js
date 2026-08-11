@@ -108,7 +108,6 @@ router.post('/:id/importar', async (req, res, next) => {
       total,
       deslocamento: deslocamentoTotal,
       motivo_troca: 'A definir',
-      servico_realizado: pendente.descricao || pendente.assunto || 'A definir',
       observacoes_tecnicas: null
     }, items);
 

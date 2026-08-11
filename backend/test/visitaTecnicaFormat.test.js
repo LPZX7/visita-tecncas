@@ -4,7 +4,6 @@ const { buildDescricao, buildRealizado, buildMilvusPayload, TITULO_VISITA_TECNIC
 
 const budget = {
   motivo_troca: 'Placa queimada após surto de energia',
-  servico_realizado: 'Substituição da placa e teste de funcionamento',
   observacoes_tecnicas: 'Equipamento também apresentava fiação desgastada',
   pecas_total: 450,
   deslocamento: 150,
@@ -20,7 +19,7 @@ test('buildDescricao inclui todos os campos obrigatórios da regra 1', () => {
   const texto = buildDescricao({ budget, items, request });
   assert.match(texto, /Peça: Placa eletrônica/);
   assert.match(texto, /Motivo da troca: Placa queimada após surto de energia/);
-  assert.match(texto, /Serviço a ser realizado: Substituição da placa e teste de funcionamento/);
+  assert.doesNotMatch(texto, /Serviço a ser realizado/);
   assert.match(texto, /Informações relevantes: Equipamento também apresentava fiação desgastada/);
   assert.match(texto, /Valor da peça: R\$ 450\.00/);
   assert.match(texto, /Valor da visita técnica: R\$ 150\.00/);

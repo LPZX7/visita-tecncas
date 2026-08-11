@@ -60,7 +60,6 @@ function generateBudgetPdf({ budget, request, company, unit, items }) {
   doc.moveDown(0.3);
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
   doc.text(`Motivo da troca: ${budget.motivo_troca || 'não informado'}`, 56);
-  doc.text(`Serviço a ser realizado: ${budget.servico_realizado || 'não informado'}`, 56);
   doc.text(`Informações relevantes: ${budget.observacoes_tecnicas || 'nenhuma'}`, 56);
   doc.moveDown(1);
 

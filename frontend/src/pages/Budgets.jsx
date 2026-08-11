@@ -3,7 +3,7 @@ import api from '../api';
 import { getUser } from '../utils/auth';
 import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '', motivo_troca: '', servico_realizado: '', observacoes_tecnicas: '' };
+const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '', motivo_troca: '', observacoes_tecnicas: '' };
 
 const STATUS_BADGE = {
   'Rascunho': 'badge-rascunho',
@@ -118,10 +118,6 @@ export default function Budgets() {
       setError('Informe o motivo da troca.');
       return;
     }
-    if (!form.servico_realizado.trim()) {
-      setError('Informe o serviço que será realizado.');
-      return;
-    }
     if (form.deslocamento === '' || Number(form.deslocamento) < 0) {
       setError('Informe o valor da visita técnica.');
       return;
@@ -134,7 +130,6 @@ export default function Budgets() {
         items,
         deslocamento: Number(form.deslocamento) || 0,
         motivo_troca: form.motivo_troca.trim(),
-        servico_realizado: form.servico_realizado.trim(),
         observacoes_tecnicas: form.observacoes_tecnicas.trim()
       });
       setForm(emptyForm);
@@ -282,10 +277,6 @@ export default function Budgets() {
             <textarea className="form-textarea" value={form.motivo_troca} onChange={(e) => setForm({ ...form, motivo_troca: e.target.value })} />
           </label>
           <label className="form-field">
-            Serviço que será realizado
-            <textarea className="form-textarea" value={form.servico_realizado} onChange={(e) => setForm({ ...form, servico_realizado: e.target.value })} />
-          </label>
-          <label className="form-field">
             Observações técnicas (informações relevantes encontradas no atendimento)
             <textarea className="form-textarea" value={form.observacoes_tecnicas} onChange={(e) => setForm({ ...form, observacoes_tecnicas: e.target.value })} />
           </label>
@@ -396,12 +387,6 @@ export default function Budgets() {
                           <div className="detail-report">
                             <strong>Motivo da troca</strong>
                             <p>{budget.motivo_troca}</p>
-                          </div>
-                        )}
-                        {budget.servico_realizado && (
-                          <div className="detail-report">
-                            <strong>Serviço a ser realizado</strong>
-                            <p>{budget.servico_realizado}</p>
                           </div>
                         )}
                         {budget.observacoes_tecnicas && (

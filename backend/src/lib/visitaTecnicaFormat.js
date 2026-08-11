@@ -13,7 +13,6 @@ function buildDescricao({ budget, items, request }) {
     `Peça: ${pecasLabel(items) || 'não informado'}`,
     `Quantidade: ${items.reduce((sum, item) => sum + Number(item.quantidade || 0), 0)}`,
     `Motivo da troca: ${budget.motivo_troca || 'não informado'}`,
-    `Serviço a ser realizado: ${budget.servico_realizado || 'não informado'}`,
     `Informações relevantes: ${budget.observacoes_tecnicas || 'nenhuma'}`,
     `Valor da peça: ${money(budget.pecas_total)}`,
     `Valor da visita técnica: ${money(budget.deslocamento)}`,

@@ -59,7 +59,6 @@ router.get('/:token', async (req, res, next) => {
       equipamento: equipment ? `${equipment.modelo} — ${equipment.numero_serie}` : null,
       problema: data.request?.descricao || null,
       motivo_troca: data.budget.motivo_troca || null,
-      servico_realizado: data.budget.servico_realizado || null,
       observacoes_tecnicas: data.budget.observacoes_tecnicas || null
     });
   } catch (err) {

@@ -97,7 +97,6 @@ export default function ApproveBudget() {
                     </ul>
                   )}
                   {data.motivo_troca && <p style={{ marginTop: 8 }}><strong>Motivo da troca:</strong> {data.motivo_troca}</p>}
-                  {data.servico_realizado && <p><strong>Serviço a ser realizado:</strong> {data.servico_realizado}</p>}
                   {data.observacoes_tecnicas && <p><strong>Informações relevantes:</strong> {data.observacoes_tecnicas}</p>}
                   <p><strong>Valor da peça:</strong> {money(data.pecas_total)}</p>
                   <p><strong>Visita técnica:</strong> {money(data.deslocamento)}</p>
