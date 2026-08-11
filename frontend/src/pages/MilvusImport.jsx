@@ -40,13 +40,18 @@ function matchUnit(pendente, unitsOfCompany) {
   return candidates.length === 1 ? candidates[0] : null;
 }
 
-// Procura, no texto do ticket, o modelo de algum equipamento já cadastrado
-// para essa empresa/unidade (ex.: texto "braço da catraca" bate com o
-// equipamento de modelo "Catraca").
+function wordsOf(str) {
+  return norm(str).split(/[^a-zà-ú0-9]+/i).filter((w) => w.length >= 4);
+}
+
+// Procura, no texto do ticket, alguma palavra que também apareça no modelo
+// de um equipamento já cadastrado para essa empresa/unidade — ex.: texto
+// "braço da catraca" bate com o equipamento de modelo "Catraca X200" pela
+// palavra "catraca" em comum, mesmo sem o texto citar o modelo inteiro.
 function matchEquipment(pendente, equipmentsOfCompany) {
-  const texto = norm(`${pendente.assunto || ''} ${pendente.descricao || ''}`);
-  if (!texto) return null;
-  const candidates = equipmentsOfCompany.filter((eq) => eq.modelo && texto.includes(norm(eq.modelo)));
+  const textWords = new Set(wordsOf(`${pendente.assunto || ''} ${pendente.descricao || ''}`));
+  if (textWords.size === 0) return null;
+  const candidates = equipmentsOfCompany.filter((eq) => eq.modelo && wordsOf(eq.modelo).some((w) => textWords.has(w)));
   return candidates.length === 1 ? candidates[0] : null;
 }
 
