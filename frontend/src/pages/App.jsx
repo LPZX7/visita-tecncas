@@ -21,6 +21,7 @@ import TermoConclusao from './TermoConclusao';
 import ValidarTermo from './ValidarTermo';
 import NotificationBell from '../components/NotificationBell';
 import ActivityBell from '../components/ActivityBell';
+import WhatsAppButton from '../components/WhatsAppButton';
 import Sidebar from '../components/Sidebar';
 import Signup from './Signup';
 import ForgotPassword from './ForgotPassword';
@@ -111,22 +112,28 @@ export default function App() {
   const isPublicStandaloneRoute = /^\/(aprovar-orcamento|aprovar-visita|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
   if (isPublicStandaloneRoute) {
     return (
-      <Routes>
-        <Route path="/aprovar-orcamento/:token" element={<ApproveBudget />} />
-        <Route path="/aprovar-visita/:token" element={<ApproveVisit />} />
-        <Route path="/cadastro" element={<Signup />} />
-        <Route path="/esqueci-senha" element={<ForgotPassword />} />
-        <Route path="/redefinir-senha/:token" element={<ResetPassword />} />
-        <Route path="/validar/:codigo" element={<ValidarTermo />} />
-      </Routes>
+      <>
+        <Routes>
+          <Route path="/aprovar-orcamento/:token" element={<ApproveBudget />} />
+          <Route path="/aprovar-visita/:token" element={<ApproveVisit />} />
+          <Route path="/cadastro" element={<Signup />} />
+          <Route path="/esqueci-senha" element={<ForgotPassword />} />
+          <Route path="/redefinir-senha/:token" element={<ResetPassword />} />
+          <Route path="/validar/:codigo" element={<ValidarTermo />} />
+        </Routes>
+        <WhatsAppButton />
+      </>
     );
   }
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <>
+        <Routes>
+          <Route path="*" element={<Login />} />
+        </Routes>
+        <WhatsAppButton />
+      </>
     );
   }
 
@@ -303,6 +310,7 @@ export default function App() {
         </Routes>
         </main>
       </div>
+      <WhatsAppButton />
     </div>
   );
 }
