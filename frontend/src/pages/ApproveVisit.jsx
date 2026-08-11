@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../api';
+import { getUser } from '../utils/auth';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -9,6 +10,7 @@ function formatDateTime(value) {
 
 export default function ApproveVisit() {
   const { token } = useParams();
+  const user = getUser();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -23,9 +25,9 @@ export default function ApproveVisit() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const act = async (action) => {
+  const act = async (decisao) => {
     setError('');
-    if (action === 'aprovar') {
+    if (decisao === 'aprovado') {
       if (!autorizante.nome.trim() || !autorizante.cpf.trim() || !autorizante.telefone.trim()) {
         setError('Preencha seu nome, CPF e telefone para autorizar a visita.');
         return;
@@ -33,14 +35,19 @@ export default function ApproveVisit() {
     }
     setSubmitting(true);
     try {
-      const res = await api.post(`/public/visitas/${token}/${action}`, action === 'aprovar' ? autorizante : {});
-      setResult(res.data);
+      const res = await api.patch(`/requests/${data.request_id}/aprovacao-visita`, decisao === 'aprovado' ? { decisao, ...autorizante } : { decisao });
+      setResult({
+        aprovacao_cliente: res.data.aprovacao_cliente,
+        message: decisao === 'aprovado' ? 'Visita autorizada com sucesso. Nossa equipe foi notificada.' : 'Visita recusada. Nossa equipe foi notificada.'
+      });
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível registrar sua resposta.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const loginLink = `/login?redirect=${encodeURIComponent(`/aprovar-visita/${token}`)}`;
 
   return (
     <div className="standalone-page">
@@ -55,11 +62,11 @@ export default function ApproveVisit() {
 
         {loading && <p className="section-text">Carregando…</p>}
 
-        {!loading && error && !result && (
+        {!loading && error && !result && !data && (
           <div className="alert alert-error">{error}</div>
         )}
 
-        {!loading && !error && data && !result && (
+        {!loading && data && !result && (
           <>
             {data.aprovacao_cliente ? (
               <div className="alert alert-error">
@@ -101,33 +108,44 @@ export default function ApproveVisit() {
                   </div>
                 </div>
 
-                <div className="detail-panel" style={{ marginBottom: 20 }}>
-                  <strong style={{ display: 'block', marginBottom: 8 }}>Dados de quem está autorizando</strong>
-                  <label className="form-field">
-                    Nome completo
-                    <input className="form-input" value={autorizante.nome} onChange={(e) => setAutorizante({ ...autorizante, nome: e.target.value })} />
-                  </label>
-                  <label className="form-field">
-                    CPF
-                    <input className="form-input" value={autorizante.cpf} onChange={(e) => setAutorizante({ ...autorizante, cpf: e.target.value })} placeholder="000.000.000-00" />
-                  </label>
-                  <label className="form-field">
-                    Telefone
-                    <input className="form-input" value={autorizante.telefone} onChange={(e) => setAutorizante({ ...autorizante, telefone: e.target.value })} placeholder="(00) 00000-0000" />
-                  </label>
-                  <p className="detail-muted">Obrigatório apenas para autorizar. Para recusar, não é necessário preencher.</p>
-                </div>
+                {!user ? (
+                  <div className="alert alert-error" style={{ marginBottom: 16 }}>
+                    Por segurança, é preciso fazer login na sua conta para autorizar ou recusar esta visita.
+                    <div style={{ marginTop: 12 }}>
+                      <Link to={loginLink} className="btn btn-primary">Fazer login para continuar</Link>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="detail-panel" style={{ marginBottom: 20 }}>
+                      <strong style={{ display: 'block', marginBottom: 8 }}>Dados de quem está autorizando</strong>
+                      <label className="form-field">
+                        Nome completo
+                        <input className="form-input" value={autorizante.nome} onChange={(e) => setAutorizante({ ...autorizante, nome: e.target.value })} />
+                      </label>
+                      <label className="form-field">
+                        CPF
+                        <input className="form-input" value={autorizante.cpf} onChange={(e) => setAutorizante({ ...autorizante, cpf: e.target.value })} placeholder="000.000.000-00" />
+                      </label>
+                      <label className="form-field">
+                        Telefone
+                        <input className="form-input" value={autorizante.telefone} onChange={(e) => setAutorizante({ ...autorizante, telefone: e.target.value })} placeholder="(00) 00000-0000" />
+                      </label>
+                      <p className="detail-muted">Obrigatório apenas para autorizar. Para recusar, não é necessário preencher.</p>
+                    </div>
 
-                {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+                    {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
 
-                <div className="row-actions" style={{ gap: 12 }}>
-                  <button className="btn btn-primary" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('aprovar')}>
-                    Autorizar visita
-                  </button>
-                  <button className="btn btn-danger" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('recusar')}>
-                    Recusar
-                  </button>
-                </div>
+                    <div className="row-actions" style={{ gap: 12 }}>
+                      <button className="btn btn-primary" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('aprovado')}>
+                        Autorizar visita
+                      </button>
+                      <button className="btn btn-danger" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('recusado')}>
+                        Recusar
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </>

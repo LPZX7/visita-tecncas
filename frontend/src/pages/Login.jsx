@@ -6,7 +6,9 @@ import AuthLayout from '../components/AuthLayout';
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
-  const expired = new URLSearchParams(window.location.search).get('expired') === '1';
+  const params = new URLSearchParams(window.location.search);
+  const expired = params.get('expired') === '1';
+  const redirectTo = params.get('redirect');
   const [error, setError] = useState(expired ? 'Sua sessão expirou. Faça login novamente.' : '');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
@@ -17,7 +19,7 @@ export default function Login() {
     try {
       const res = await api.post('/auth/login', form);
       setAuth(res.data.token, res.data.user);
-      navigate('/dashboard');
+      navigate(redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao fazer login. Verifique seu email e senha.');
     }
