@@ -2,11 +2,6 @@ const db = require('./db');
 const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado } = require('./milvus');
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 
-function isTicketVisitaTecnica(ticket) {
-  const texto = `${ticket.assunto || ''} ${ticket.categoria_secundaria || ''} ${ticket.categoria_primaria || ''}`;
-  return /visita/i.test(texto);
-}
-
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
   if (!lista.length) return { encontrados: 0, novos: 0 };
@@ -18,7 +13,6 @@ async function syncMilvusChamados() {
   for (const ticket of lista) {
     const codigo = String(ticket.codigo);
     if (existentes.has(codigo)) continue;
-    if (!isTicketVisitaTecnica(ticket)) continue;
 
     await db.createMilvusPendente({
       milvus_codigo: codigo,
