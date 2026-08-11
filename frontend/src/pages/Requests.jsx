@@ -39,6 +39,7 @@ export default function Requests() {
   const [drafts, setDrafts] = useState({});
   const [expanded, setExpanded] = useState({});
   const [reportDrafts, setReportDrafts] = useState({});
+  const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
 
@@ -158,6 +159,24 @@ export default function Requests() {
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao excluir termo de conclusão');
+    }
+  };
+
+  const aprovacaoDraftFor = (id) => aprovacaoDrafts[id] || { nome: '', cpf: '', telefone: '' };
+  const setAprovacaoDraft = (id, patch) => setAprovacaoDrafts((prev) => ({ ...prev, [id]: { ...aprovacaoDraftFor(id), ...patch } }));
+
+  const handleAprovacaoVisita = async (req, decisao) => {
+    setError('');
+    const draft = aprovacaoDraftFor(req.id);
+    if (decisao === 'aprovado' && (!draft.nome.trim() || !draft.cpf.trim() || !draft.telefone.trim())) {
+      setError('Preencha nome, CPF e telefone para autorizar a visita.');
+      return;
+    }
+    try {
+      await api.patch(`/requests/${req.id}/aprovacao-visita`, { decisao, ...draft });
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao registrar sua decisão sobre a visita');
     }
   };
 
@@ -366,6 +385,11 @@ export default function Requests() {
                               {req.aprovacao_cliente === 'recusado' && <span className="badge badge-rejeitado">Recusada</span>}
                               {!req.aprovacao_cliente && <span className="badge badge-enviado">Aguardando</span>}
                             </p>
+                            {req.aprovacao_cliente === 'aprovado' && req.aprovacao_nome && (canManage || isTech) && (
+                              <p className="detail-muted">
+                                Por: {req.aprovacao_nome} — CPF {req.aprovacao_cpf} — Tel {req.aprovacao_telefone}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <strong>Aberto em</strong>
@@ -384,6 +408,27 @@ export default function Requests() {
                             <p>{formatDateTime(req.hora_checkout)}</p>
                           </div>
                         </div>
+                        {user?.role === 'cliente' && !req.aprovacao_cliente && (
+                          <div className="detail-report">
+                            <strong>Autorizar esta visita</strong>
+                            <label className="form-field">
+                              Nome completo
+                              <input className="form-input" value={aprovacaoDraftFor(req.id).nome} onChange={(e) => setAprovacaoDraft(req.id, { nome: e.target.value })} />
+                            </label>
+                            <label className="form-field">
+                              CPF
+                              <input className="form-input" value={aprovacaoDraftFor(req.id).cpf} onChange={(e) => setAprovacaoDraft(req.id, { cpf: e.target.value })} placeholder="000.000.000-00" />
+                            </label>
+                            <label className="form-field">
+                              Telefone
+                              <input className="form-input" value={aprovacaoDraftFor(req.id).telefone} onChange={(e) => setAprovacaoDraft(req.id, { telefone: e.target.value })} placeholder="(00) 00000-0000" />
+                            </label>
+                            <div className="row-actions" style={{ marginTop: 8 }}>
+                              <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAprovacaoVisita(req, 'aprovado')}>Autorizar visita</button>
+                              <button type="button" className="btn btn-danger btn-sm" onClick={() => handleAprovacaoVisita(req, 'recusado')}>Recusar</button>
+                            </div>
+                          </div>
+                        )}
                         {req.relatorio_visita && (
                           <div className="detail-report">
                             <strong>Relatório da visita</strong>

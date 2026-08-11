@@ -67,15 +67,33 @@ async function respond(req, res, decision) {
     });
   }
 
-  const updated = await db.updateRequest(data.request.id, {
+  const patch = {
     aprovacao_cliente: decision,
     data_aprovacao_cliente: new Date().toISOString()
-  });
+  };
+
+  if (decision === 'aprovado') {
+    const { nome, cpf, telefone } = req.body;
+    if (!nome || !String(nome).trim()) {
+      return res.status(400).json({ error: 'Informe o nome de quem está autorizando a visita' });
+    }
+    if (!cpf || !String(cpf).trim()) {
+      return res.status(400).json({ error: 'Informe o CPF de quem está autorizando a visita' });
+    }
+    if (!telefone || !String(telefone).trim()) {
+      return res.status(400).json({ error: 'Informe o telefone de quem está autorizando a visita' });
+    }
+    patch.aprovacao_nome = String(nome).trim();
+    patch.aprovacao_cpf = String(cpf).trim();
+    patch.aprovacao_telefone = String(telefone).trim();
+  }
+
+  const updated = await db.updateRequest(data.request.id, patch);
 
   await db.createNotification({
     empresa_id: data.request.empresa_id,
     titulo: decision === 'aprovado' ? `Chamado #${updated.numero} aprovado pelo cliente` : `Chamado #${updated.numero} recusado pelo cliente`,
-    mensagem: data.company?.razao_social || '',
+    mensagem: decision === 'aprovado' ? `Autorizado por ${updated.aprovacao_nome}` : (data.company?.razao_social || ''),
     link: '/requests'
   });
 
@@ -84,7 +102,9 @@ async function respond(req, res, decision) {
     acao: decision === 'aprovado' ? 'visita_aprovada' : 'visita_recusada',
     entidade: 'request',
     entidade_id: updated.id,
-    detalhes: `Chamado #${updated.numero} — ${decision} sem login, via link enviado por email`
+    detalhes: decision === 'aprovado'
+      ? `Chamado #${updated.numero} — aprovado por ${updated.aprovacao_nome} (CPF ${updated.aprovacao_cpf}, tel ${updated.aprovacao_telefone}) via link de email`
+      : `Chamado #${updated.numero} — recusado sem login, via link enviado por email`
   });
 
   res.json({

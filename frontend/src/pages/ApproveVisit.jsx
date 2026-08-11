@@ -14,6 +14,7 @@ export default function ApproveVisit() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [autorizante, setAutorizante] = useState({ nome: '', cpf: '', telefone: '' });
 
   useEffect(() => {
     api.get(`/public/visitas/${token}`)
@@ -23,10 +24,16 @@ export default function ApproveVisit() {
   }, [token]);
 
   const act = async (action) => {
-    setSubmitting(true);
     setError('');
+    if (action === 'aprovar') {
+      if (!autorizante.nome.trim() || !autorizante.cpf.trim() || !autorizante.telefone.trim()) {
+        setError('Preencha seu nome, CPF e telefone para autorizar a visita.');
+        return;
+      }
+    }
+    setSubmitting(true);
     try {
-      const res = await api.post(`/public/visitas/${token}/${action}`);
+      const res = await api.post(`/public/visitas/${token}/${action}`, action === 'aprovar' ? autorizante : {});
       setResult(res.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível registrar sua resposta.');
@@ -92,6 +99,23 @@ export default function ApproveVisit() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                <div className="detail-panel" style={{ marginBottom: 20 }}>
+                  <strong style={{ display: 'block', marginBottom: 8 }}>Dados de quem está autorizando</strong>
+                  <label className="form-field">
+                    Nome completo
+                    <input className="form-input" value={autorizante.nome} onChange={(e) => setAutorizante({ ...autorizante, nome: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    CPF
+                    <input className="form-input" value={autorizante.cpf} onChange={(e) => setAutorizante({ ...autorizante, cpf: e.target.value })} placeholder="000.000.000-00" />
+                  </label>
+                  <label className="form-field">
+                    Telefone
+                    <input className="form-input" value={autorizante.telefone} onChange={(e) => setAutorizante({ ...autorizante, telefone: e.target.value })} placeholder="(00) 00000-0000" />
+                  </label>
+                  <p className="detail-muted">Obrigatório apenas para autorizar. Para recusar, não é necessário preencher.</p>
                 </div>
 
                 {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}

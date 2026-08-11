@@ -240,6 +240,70 @@ router.patch('/:id/avaliacao', requireRole('cliente'), async (req, res, next) =>
   }
 });
 
+router.patch('/:id/aprovacao-visita', requireRole('cliente'), async (req, res, next) => {
+  try {
+    const request = await db.getRequestById(req.params.id);
+    if (!request) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+    if (request.empresa_id !== req.user.empresa_id) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (request.aprovacao_cliente) {
+      return res.status(409).json({ error: `Esta visita já foi ${request.aprovacao_cliente === 'aprovado' ? 'aprovada' : 'recusada'} anteriormente.` });
+    }
+
+    const { decisao } = req.body;
+    if (!['aprovado', 'recusado'].includes(decisao)) {
+      return res.status(400).json({ error: 'Decisão inválida' });
+    }
+
+    const patch = {
+      aprovacao_cliente: decisao,
+      data_aprovacao_cliente: new Date().toISOString()
+    };
+
+    if (decisao === 'aprovado') {
+      const { nome, cpf, telefone } = req.body;
+      if (!nome || !String(nome).trim()) {
+        return res.status(400).json({ error: 'Informe o nome de quem está autorizando a visita' });
+      }
+      if (!cpf || !String(cpf).trim()) {
+        return res.status(400).json({ error: 'Informe o CPF de quem está autorizando a visita' });
+      }
+      if (!telefone || !String(telefone).trim()) {
+        return res.status(400).json({ error: 'Informe o telefone de quem está autorizando a visita' });
+      }
+      patch.aprovacao_nome = String(nome).trim();
+      patch.aprovacao_cpf = String(cpf).trim();
+      patch.aprovacao_telefone = String(telefone).trim();
+    }
+
+    const updated = await db.updateRequest(request.id, patch);
+
+    await db.createNotification({
+      empresa_id: updated.empresa_id,
+      titulo: decisao === 'aprovado' ? `Chamado #${updated.numero} aprovado pelo cliente` : `Chamado #${updated.numero} recusado pelo cliente`,
+      mensagem: decisao === 'aprovado' ? `Autorizado por ${updated.aprovacao_nome} (pelo portal)` : '',
+      link: '/requests'
+    });
+
+    await db.logAudit({
+      user: req.user,
+      acao: decisao === 'aprovado' ? 'visita_aprovada' : 'visita_recusada',
+      entidade: 'request',
+      entidade_id: updated.id,
+      detalhes: decisao === 'aprovado'
+        ? `Chamado #${updated.numero} — aprovado por ${updated.aprovacao_nome} (CPF ${updated.aprovacao_cpf}, tel ${updated.aprovacao_telefone}) pelo portal`
+        : `Chamado #${updated.numero} — recusado pelo portal`
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/:id/relatorio-pdf', async (req, res, next) => {
   try {
     const request = await db.getRequestById(req.params.id);

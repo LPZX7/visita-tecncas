@@ -128,6 +128,9 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cliente TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS data_aprovacao_cliente TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS solicitante_email TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_nome TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cpf TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_telefone TEXT;
 
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,
