@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../lib/db');
-const { verifyToken } = require('../lib/auth');
+const { verifyToken, requireRole } = require('../lib/auth');
 const { generateContractPdf } = require('../lib/contractPdf');
 
 const router = express.Router();
@@ -59,6 +59,29 @@ router.get('/:id/pdf', async (req, res, next) => {
     const doc = generateContractPdf(bundle);
     doc.pipe(res);
     doc.end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const bundle = await loadContractBundle(req.params.id);
+    if (!bundle) {
+      return res.status(404).json({ error: 'Contrato não encontrado' });
+    }
+    const result = await db.deleteContract(req.params.id);
+    if (result.blocked) {
+      return res.status(409).json({ error: 'Não é possível excluir: existe um termo de conclusão assinado vinculado a este contrato' });
+    }
+    await db.logAudit({
+      user: req.user,
+      acao: 'contrato_excluido',
+      entidade: 'contract',
+      entidade_id: req.params.id,
+      detalhes: `Contrato ${bundle.contract.numero} — R$ ${Number(bundle.contract.valor_total).toFixed(2)}`
+    });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

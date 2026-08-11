@@ -735,6 +735,11 @@ async function updateBudget(id, patch) {
   return getBudgetById(id);
 }
 
+async function deleteBudget(id) {
+  await pool.query('DELETE FROM orcamento_itens WHERE orcamento_id = $1', [id]);
+  return safeDelete('budgets', id);
+}
+
 // ---------- contratos ----------
 
 async function getContracts() {
@@ -780,6 +785,10 @@ async function createContractForBudget(budget) {
     [row.id, row.numero, row.orcamento_id, row.empresa_id, row.request_id, row.valor_total, row.status, row.criado_em]
   );
   return getContractById(row.id);
+}
+
+async function deleteContract(id) {
+  return safeDelete('contratos', id);
 }
 
 // ---------- notificacoes ----------
@@ -953,10 +962,12 @@ module.exports = {
   getBudgetById,
   createBudget,
   updateBudget,
+  deleteBudget,
   getContracts,
   getContractById,
   getContractByBudgetId,
   createContractForBudget,
+  deleteContract,
   getNotifications,
   createNotification,
   markNotificationsRead,

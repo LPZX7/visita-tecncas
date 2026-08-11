@@ -175,6 +175,17 @@ export default function Budgets() {
     });
   };
 
+  const handleDeleteBudget = async (budget) => {
+    if (!window.confirm('Excluir este orçamento? Esta ação não pode ser desfeita.')) return;
+    setError('');
+    try {
+      await api.delete(`/budgets/${budget.id}`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao excluir orçamento');
+    }
+  };
+
   return (
     <div>
       <h2 className="page-title">Orçamentos</h2>
@@ -337,6 +348,9 @@ export default function Budgets() {
                         <button className="btn btn-outline btn-sm" onClick={() => openContractPdf(contractFor(budget.id).id)}>
                           Baixar contrato
                         </button>
+                      )}
+                      {user?.role === 'gestor' && (
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteBudget(budget)}>Excluir</button>
                       )}
                     </div>
                   </td>

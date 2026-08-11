@@ -250,4 +250,27 @@ router.patch('/:id/status', async (req, res, next) => {
   }
 });
 
+router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const existing = await db.getBudgetById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+    const result = await db.deleteBudget(req.params.id);
+    if (result.blocked) {
+      return res.status(409).json({ error: 'Não é possível excluir: existe um contrato vinculado a este orçamento — exclua o contrato primeiro' });
+    }
+    await db.logAudit({
+      user: req.user,
+      acao: 'orcamento_excluido',
+      entidade: 'budget',
+      entidade_id: req.params.id,
+      detalhes: `Orçamento de R$ ${Number(existing.total).toFixed(2)} — status ${existing.status}`
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
