@@ -41,8 +41,8 @@ async function listarChamadosVisitaTecnica() {
   throw lastErr;
 }
 
-const CATEGORIA_ID_VISITA_TECNICA = 689789;
-const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'Catraca';
+const CATEGORIA_ID_VISITA_TECNICA = 689812;
+const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'VISITA TECNICA';
 
 function onlyDigits(str) {
   return (str || '').replace(/\D/g, '');
