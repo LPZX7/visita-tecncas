@@ -16,4 +16,19 @@ router.get('/', requireRole('analista', 'gestor'), async (req, res, next) => {
   }
 });
 
+router.delete('/', requireRole('gestor'), async (req, res, next) => {
+  try {
+    await db.clearAuditLog();
+    await db.logAudit({
+      user: req.user,
+      acao: 'auditoria_limpa',
+      entidade: 'audit_log',
+      detalhes: 'Log de auditoria limpo por completo'
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

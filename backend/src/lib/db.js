@@ -933,6 +933,10 @@ async function getAuditLog({ page = 1, pageSize = 50 } = {}) {
   return { items: rows, total: Number(countRows[0].count) };
 }
 
+async function clearAuditLog() {
+  await pool.query('DELETE FROM audit_log');
+}
+
 module.exports = {
   initDb,
   getUsers,
@@ -985,6 +989,7 @@ module.exports = {
   markNotificationsRead,
   logAudit,
   getAuditLog,
+  clearAuditLog,
   getVisitaAceiteByRequestId,
   getVisitaAceiteByCodigo,
   createVisitaAceite,

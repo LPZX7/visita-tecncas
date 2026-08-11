@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import Pagination from '../components/Pagination';
+import { getUser } from '../utils/auth';
 
 export const ACAO_LABEL = {
   orcamento_criado: 'Orçamento criado',
@@ -31,13 +32,14 @@ function formatDate(value) {
 }
 
 export default function AuditLog() {
+  const user = getUser();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     setError('');
     api.get('/audit', { params: { page, pageSize: PAGE_SIZE } })
@@ -47,14 +49,36 @@ export default function AuditLog() {
       })
       .catch((err) => setError(err.response?.data?.error || 'Erro ao carregar log de auditoria'))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const handleClear = async () => {
+    if (!window.confirm('Limpar 100% do log de auditoria? Esta ação não pode ser desfeita.')) return;
+    setError('');
+    try {
+      await api.delete('/audit');
+      setPage(1);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao limpar auditoria');
+    }
+  };
 
   return (
     <div>
       <h2 className="page-title">Log de Auditoria</h2>
       <p className="section-text">Histórico de ações sensíveis: aprovação/rejeição de orçamentos, exclusões e mudanças de usuário.</p>
+      {user?.role === 'gestor' && (
+        <div className="row-actions" style={{ marginBottom: 16 }}>
+          <button type="button" className="btn btn-danger" onClick={handleClear}>Limpar auditoria</button>
+        </div>
+      )}
       {error && <div className="alert alert-error">{error}</div>}
 
       {loading ? (
