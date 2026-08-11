@@ -1,5 +1,5 @@
 const BASE_URL = 'https://apiintegracao.milvus.com.br/api';
-const CATEGORIA_VISITA_TECNICA = 'VISITA TECNICA';
+const CATEGORIA_VISITA_TECNICA = 'Visita Tecnica Mirontec';
 
 function getToken() {
   return process.env.MILVUS_API_TOKEN;
@@ -41,8 +41,8 @@ async function listarChamadosVisitaTecnica() {
   throw lastErr;
 }
 
-const CATEGORIA_ID_VISITA_TECNICA = 689812;
-const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'VISITA TECNICA';
+const CATEGORIA_ID_VISITA_TECNICA = 689813;
+const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'Catraca';
 
 function onlyDigits(str) {
   return (str || '').replace(/\D/g, '');
