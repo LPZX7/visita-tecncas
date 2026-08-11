@@ -665,6 +665,7 @@ async function updateRequest(id, patch) {
 }
 
 async function deleteRequest(id) {
+  await pool.query('UPDATE milvus_chamados_pendentes SET request_id = NULL WHERE request_id = $1', [id]);
   return safeDelete('requests', id);
 }
 
