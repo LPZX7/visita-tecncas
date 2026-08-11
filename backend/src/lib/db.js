@@ -276,9 +276,32 @@ async function seedDefaultAdmin() {
   );
 }
 
+// Peças básicas de catraca, cadastradas com valor provisório (marcado com
+// prefixo "REVISAR-" no código) — ajustar o preço real no catálogo antes de
+// usar em orçamentos que vão para aprovação do cliente.
+const VALOR_PROVISORIO_AVISO = 'Valor provisório (custo estimado x2) — revisar o custo real e ajustar antes de aprovar orçamentos.';
+const DEFAULT_CATRACA_PARTS = [
+  { codigo: 'REVISAR-CATR-BRACO', nome: 'Braço da catraca', categoria: 'Catraca', preco_unitario: 200 },
+  { codigo: 'REVISAR-CATR-TECLADO', nome: 'Teclado', categoria: 'Catraca', preco_unitario: 150 },
+  { codigo: 'REVISAR-CATR-PLACA', nome: 'Placa eletrônica', categoria: 'Catraca', preco_unitario: 350 },
+  { codigo: 'REVISAR-CATR-FONTE', nome: 'Fonte de alimentação', categoria: 'Catraca', preco_unitario: 120 }
+];
+
+async function seedCatracaParts() {
+  for (const part of DEFAULT_CATRACA_PARTS) {
+    const { rows } = await pool.query('SELECT id FROM pecas WHERE codigo = $1', [part.codigo]);
+    if (rows[0]) continue;
+    await pool.query(
+      'INSERT INTO pecas (id, codigo, nome, categoria, preco_unitario, estoque, fornecedor, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [uuid(), part.codigo, part.nome, part.categoria, part.preco_unitario, 0, VALOR_PROVISORIO_AVISO, now()]
+    );
+  }
+}
+
 async function initDb() {
   await pool.query(SCHEMA_SQL);
   await seedDefaultAdmin();
+  await seedCatracaParts();
 }
 
 // ---------- generic partial-update helper ----------
