@@ -16,6 +16,19 @@ function money(value) {
   return `R$ ${Number(value || 0).toFixed(2)}`;
 }
 
+function norm(str) {
+  return (str || '').toLowerCase().trim();
+}
+
+// Procura, na descrição do chamado, o nome de peças já cadastradas no
+// catálogo (ex.: descrição "Troca do teclado e braço da catraca" bate com
+// as peças "Teclado" e "Braço da catraca", se existirem no catálogo).
+function matchPartsFromText(text, parts) {
+  const texto = norm(text);
+  if (!texto) return [];
+  return parts.filter((part) => part.nome && texto.includes(norm(part.nome)));
+}
+
 export default function Budgets() {
   const user = getUser();
   const [budgets, setBudgets] = useState([]);
@@ -30,6 +43,7 @@ export default function Budgets() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [expanded, setExpanded] = useState({});
+  const [itemsAutoFilled, setItemsAutoFilled] = useState(false);
 
   const canCreate = ['tecnico', 'analista', 'gestor'].includes(user?.role);
   const isStaff = ['tecnico', 'analista', 'gestor'].includes(user?.role);
@@ -64,10 +78,24 @@ export default function Budgets() {
     if (!part || !itemDraft.quantidade || itemDraft.quantidade <= 0) return;
     setItems([...items, { peca_id: part.id, valor_unitario: part.preco_unitario, quantidade: Number(itemDraft.quantidade) }]);
     setItemDraft({ peca_id: '', quantidade: 1 });
+    setItemsAutoFilled(false);
   };
 
   const removeItem = (idx) => {
     setItems(items.filter((_, i) => i !== idx));
+    setItemsAutoFilled(false);
+  };
+
+  const selectRequest = (id) => {
+    const req = requests.find((r) => r.id === id);
+    setForm({ ...form, request_id: id });
+    if (req && items.length === 0) {
+      const matched = matchPartsFromText(req.descricao, parts);
+      if (matched.length > 0) {
+        setItems(matched.map((part) => ({ peca_id: part.id, valor_unitario: part.preco_unitario, quantidade: 1 })));
+        setItemsAutoFilled(true);
+      }
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -112,6 +140,7 @@ export default function Budgets() {
       setForm(emptyForm);
       setItems([]);
       setItemDraft({ peca_id: '', quantidade: 1 });
+      setItemsAutoFilled(false);
       setSuccess('Orçamento criado com sucesso!');
       load();
       setTimeout(() => setSuccess(''), 4000);
@@ -195,13 +224,19 @@ export default function Budgets() {
             Solicitação
             <SearchableSelect
               value={form.request_id}
-              onChange={(id) => setForm({ ...form, request_id: id })}
+              onChange={selectRequest}
               placeholder={form.empresa_id ? 'Digite para buscar a solicitação...' : 'Selecione uma empresa primeiro'}
               disabled={!form.empresa_id}
               emptyMessage="Nenhuma solicitação para esta empresa."
               options={requestsForSelectedCompany.map((req) => ({ value: req.id, label: req.descricao, sublabel: req.status }))}
             />
           </label>
+
+          {itemsAutoFilled && (
+            <p className="section-text" style={{ color: 'var(--verde, #1e8e5a)' }}>
+              Peça(s) identificada(s) automaticamente pela descrição do chamado, com o valor do catálogo — confira antes de enviar.
+            </p>
+          )}
 
           <div className="item-row">
             <label className="form-field">
