@@ -3,7 +3,7 @@ import api from '../api';
 import { getUser } from '../utils/auth';
 import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '' };
+const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '', motivo_troca: '', servico_realizado: '', observacoes_tecnicas: '' };
 
 const STATUS_BADGE = {
   'Rascunho': 'badge-rascunho',
@@ -82,13 +82,32 @@ export default function Budgets() {
       setError('Selecione uma solicitação.');
       return;
     }
+    if (items.length === 0) {
+      setError('Adicione ao menos uma peça que será trocada.');
+      return;
+    }
+    if (!form.motivo_troca.trim()) {
+      setError('Informe o motivo da troca.');
+      return;
+    }
+    if (!form.servico_realizado.trim()) {
+      setError('Informe o serviço que será realizado.');
+      return;
+    }
+    if (form.deslocamento === '' || Number(form.deslocamento) < 0) {
+      setError('Informe o valor da visita técnica.');
+      return;
+    }
     try {
       await api.post('/budgets', {
         request_id: form.request_id,
         empresa_id: form.empresa_id,
         unidade_id: form.unidade_id || null,
         items,
-        deslocamento: Number(form.deslocamento) || 0
+        deslocamento: Number(form.deslocamento) || 0,
+        motivo_troca: form.motivo_troca.trim(),
+        servico_realizado: form.servico_realizado.trim(),
+        observacoes_tecnicas: form.observacoes_tecnicas.trim()
       });
       setForm(emptyForm);
       setItems([]);
@@ -210,7 +229,26 @@ export default function Budgets() {
             </ul>
           )}
 
-          <label className="form-field">Deslocamento (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
+          <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
+
+          <label className="form-field">
+            Motivo da troca
+            <textarea className="form-textarea" value={form.motivo_troca} onChange={(e) => setForm({ ...form, motivo_troca: e.target.value })} />
+          </label>
+          <label className="form-field">
+            Serviço que será realizado
+            <textarea className="form-textarea" value={form.servico_realizado} onChange={(e) => setForm({ ...form, servico_realizado: e.target.value })} />
+          </label>
+          <label className="form-field">
+            Observações técnicas (informações relevantes encontradas no atendimento)
+            <textarea className="form-textarea" value={form.observacoes_tecnicas} onChange={(e) => setForm({ ...form, observacoes_tecnicas: e.target.value })} />
+          </label>
+
+          {items.length > 0 && (
+            <p className="section-text">
+              Valor da peça: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0))} + Visita técnica: {money(Number(form.deslocamento) || 0)} = Total: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0) + (Number(form.deslocamento) || 0))}
+            </p>
+          )}
 
           <button type="submit" className="btn btn-primary">Criar orçamento</button>
         </form>
@@ -252,15 +290,12 @@ export default function Budgets() {
                         <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Enviado')}>Enviar</button>
                       )}
                       {isStaff && budget.status === 'Enviado' && (
-                        <>
-                          <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Aprovado')}>Aprovar</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => changeStatus(budget, 'Rejeitado')}>Rejeitar</button>
-                        </>
+                        <span className="badge badge-enviado">Aguardando autorização do cliente</span>
                       )}
                       {user?.role === 'cliente' && budget.status === 'Enviado' && isOwnCompanyBudget(budget) && (
                         <>
-                          <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Aprovado')}>Aprovar</button>
-                          <button className="btn btn-danger btn-sm" onClick={() => changeStatus(budget, 'Rejeitado')}>Rejeitar</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Aprovado')}>Autorizar</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => changeStatus(budget, 'Rejeitado')}>Não autorizar</button>
                         </>
                       )}
                       {budget.status === 'Aprovado' && contractFor(budget.id) && (
@@ -305,8 +340,40 @@ export default function Budgets() {
 
                         <div className="detail-report">
                           <strong>Total</strong>
-                          <p>{money(budget.total)} ({money(budget.pecas_total)} peças + {money(budget.deslocamento)} deslocamento)</p>
+                          <p>{money(budget.total)} ({money(budget.pecas_total)} peça + {money(budget.deslocamento)} visita técnica)</p>
                         </div>
+
+                        {budget.motivo_troca && (
+                          <div className="detail-report">
+                            <strong>Motivo da troca</strong>
+                            <p>{budget.motivo_troca}</p>
+                          </div>
+                        )}
+                        {budget.servico_realizado && (
+                          <div className="detail-report">
+                            <strong>Serviço a ser realizado</strong>
+                            <p>{budget.servico_realizado}</p>
+                          </div>
+                        )}
+                        {budget.observacoes_tecnicas && (
+                          <div className="detail-report">
+                            <strong>Informações relevantes</strong>
+                            <p>{budget.observacoes_tecnicas}</p>
+                          </div>
+                        )}
+
+                        {budget.status === 'Aprovado' && (
+                          <div className="detail-report">
+                            <strong>STATUS: APROVADO PELO CLIENTE</strong>
+                            <p>
+                              REALIZADO: Substituição da(s) peça(s) {budget.items?.map((item) => partName(item.peca_id)).join(', ')} e realização dos procedimentos técnicos necessários para conclusão do serviço.
+                            </p>
+                            <p className="detail-muted">
+                              Autorizado por: {budget.autorizado_por || '—'}{budget.aprovado_em && ` em ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`}
+                            </p>
+                            {budget.milvus_codigo && <p className="detail-muted">Ticket Milvus: #{budget.milvus_codigo}</p>}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -148,6 +148,12 @@ const SCHEMA_SQL = `
   ALTER TABLE budgets ALTER COLUMN regra_cobranca_id DROP NOT NULL;
   ALTER TABLE budgets ADD COLUMN IF NOT EXISTS empresa_id TEXT REFERENCES empresas(id);
   ALTER TABLE budgets ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS motivo_troca TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS servico_realizado TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS observacoes_tecnicas TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS aprovado_em TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS autorizado_por TEXT;
+  ALTER TABLE budgets ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
 
   CREATE TABLE IF NOT EXISTS orcamento_itens (
     id TEXT PRIMARY KEY,
@@ -607,13 +613,16 @@ async function createBudget(budget, items = []) {
     deslocamento: budget.deslocamento || 0,
     urgencia: budget.urgencia || 0,
     horas_trabalho: budget.horas_trabalho || 0,
+    motivo_troca: budget.motivo_troca || null,
+    servico_realizado: budget.servico_realizado || null,
+    observacoes_tecnicas: budget.observacoes_tecnicas || null,
     criado_em: now(),
     atualizado_em: now()
   });
   await pool.query(
-    `INSERT INTO budgets (id, request_id, draft_by, regra_cobranca_id, empresa_id, unidade_id, base_total, pecas_total, mao_obra_total, total, status, deslocamento, urgencia, horas_trabalho, criado_em, atualizado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-    [row.id, row.request_id, row.draft_by, row.regra_cobranca_id, row.empresa_id, row.unidade_id, row.base_total, row.pecas_total, row.mao_obra_total, row.total, row.status, row.deslocamento, row.urgencia, row.horas_trabalho, row.criado_em, row.atualizado_em]
+    `INSERT INTO budgets (id, request_id, draft_by, regra_cobranca_id, empresa_id, unidade_id, base_total, pecas_total, mao_obra_total, total, status, deslocamento, urgencia, horas_trabalho, motivo_troca, servico_realizado, observacoes_tecnicas, criado_em, atualizado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+    [row.id, row.request_id, row.draft_by, row.regra_cobranca_id, row.empresa_id, row.unidade_id, row.base_total, row.pecas_total, row.mao_obra_total, row.total, row.status, row.deslocamento, row.urgencia, row.horas_trabalho, row.motivo_troca, row.servico_realizado, row.observacoes_tecnicas, row.criado_em, row.atualizado_em]
   );
 
   for (const item of items) {
@@ -627,9 +636,13 @@ async function createBudget(budget, items = []) {
 }
 
 async function updateBudget(id, patch) {
-  const { rows } = await pool.query('SELECT id FROM budgets WHERE id = $1', [id]);
+  const { rows } = await pool.query('SELECT * FROM budgets WHERE id = $1', [id]);
   if (!rows[0]) return null;
-  await updateRow('budgets', id, patch);
+  const fields = { ...patch };
+  if (patch.status === 'Aprovado' && !rows[0].aprovado_em) {
+    fields.aprovado_em = now();
+  }
+  await updateRow('budgets', id, fields);
   return getBudgetById(id);
 }
 

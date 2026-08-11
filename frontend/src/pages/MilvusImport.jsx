@@ -10,6 +10,7 @@ function formatDateTime(value) {
 export default function MilvusImport() {
   const [pendentes, setPendentes] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [error, setError] = useState('');
@@ -19,6 +20,7 @@ export default function MilvusImport() {
   const load = () => {
     api.get('/milvus-import').then((res) => setPendentes(res.data)).catch(() => {});
     api.get('/companies').then((res) => setCompanies(res.data)).catch(() => {});
+    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
     api.get('/equipments').then((res) => setEquipments(res.data)).catch(() => {});
   };
 
@@ -26,10 +28,23 @@ export default function MilvusImport() {
     load();
   }, []);
 
-  const draftFor = (id) => drafts[id] || { empresa_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '' };
+  const draftFor = (id) => drafts[id] || { empresa_id: '', unidade_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '' };
   const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftFor(id), ...patch } }));
 
-  const equipmentsForCompany = (empresaId) => equipments.filter((eq) => eq.empresa_id === empresaId);
+  const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
+
+  const equipmentsForCompany = (empresaId, unidadeId) => equipments.filter((eq) => {
+    if (eq.empresa_id !== empresaId) return false;
+    if (!unidadeId) return true;
+    return !eq.unidade_id || eq.unidade_id === unidadeId;
+  });
+
+  const addressFor = (empresaId, unidadeId) => {
+    const unit = unidadeId ? units.find((u) => u.id === unidadeId) : null;
+    if (unit) return [unit.endereco, unit.numero, unit.bairro, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ');
+    const company = companies.find((c) => c.id === empresaId);
+    return company?.endereco || '';
+  };
 
   const sync = async () => {
     setSyncing(true);
@@ -51,7 +66,7 @@ export default function MilvusImport() {
     setSuccess('');
     const draft = draftFor(id);
     if (!draft.empresa_id || !draft.equipamento_id) {
-      setError('Selecione empresa e equipamento antes de importar.');
+      setError('Selecione o solicitante e o equipamento antes de importar.');
       return;
     }
     try {
@@ -108,14 +123,30 @@ export default function MilvusImport() {
               {p.descricao && <p className="section-text">{p.descricao}</p>}
 
               <label className="form-field">
-                Empresa
+                Solicitante
                 <SearchableSelect
                   value={draft.empresa_id}
-                  onChange={(id) => setDraft(p.id, { empresa_id: id, equipamento_id: '' })}
+                  onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, '') })}
                   placeholder="Digite para buscar a empresa..."
                   options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
                 />
               </label>
+              {draft.empresa_id && unitsForCompany(draft.empresa_id).length > 0 && (
+                <label className="form-field">
+                  Unidade de Negócio
+                  <SearchableSelect
+                    value={draft.unidade_id}
+                    onChange={(id) => setDraft(p.id, { unidade_id: id, equipamento_id: '', endereco: addressFor(draft.empresa_id, id) })}
+                    placeholder="Digite para buscar a filial ou sede..."
+                    emptyMessage="Nenhuma unidade cadastrada para esta empresa."
+                    options={unitsForCompany(draft.empresa_id).map((u) => ({
+                      value: u.id,
+                      label: `${u.tipo} — ${u.nome}`,
+                      sublabel: [u.endereco, u.cidade && u.estado ? `${u.cidade}/${u.estado}` : u.cidade].filter(Boolean).join(', ')
+                    }))}
+                  />
+                </label>
+              )}
               <label className="form-field">
                 Equipamento
                 <select
@@ -125,7 +156,7 @@ export default function MilvusImport() {
                   disabled={!draft.empresa_id}
                 >
                   <option value="">{draft.empresa_id ? 'Selecione' : 'Selecione uma empresa primeiro'}</option>
-                  {equipmentsForCompany(draft.empresa_id).map((eq) => (
+                  {equipmentsForCompany(draft.empresa_id, draft.unidade_id).map((eq) => (
                     <option key={eq.id} value={eq.id}>{eq.modelo} — {eq.numero_serie}</option>
                   ))}
                 </select>

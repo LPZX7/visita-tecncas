@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('../lib/db');
 const { verifyApprovalToken } = require('../lib/approvalToken');
 const { sendMail } = require('../lib/mailer');
+const { pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
 
 const router = express.Router();
 
@@ -45,6 +46,7 @@ router.get('/:token', async (req, res, next) => {
   try {
     const data = await loadFromToken(req, res);
     if (!data) return;
+    const equipment = data.request?.equipamento_id ? await db.getEquipmentById(data.request.equipamento_id) : null;
     res.json({
       status: data.budget.status,
       total: data.budget.total,
@@ -53,7 +55,12 @@ router.get('/:token', async (req, res, next) => {
       items: data.items.map((item) => ({ nome: item.peca?.nome || 'Peça', quantidade: item.quantidade, valor_unitario: item.valor_unitario })),
       empresa: data.company?.razao_social || null,
       unidade: data.unit ? `${data.unit.tipo} — ${data.unit.nome}` : null,
-      chamado: data.request?.descricao || null
+      chamado: data.request?.descricao || null,
+      equipamento: equipment ? `${equipment.modelo} — ${equipment.numero_serie}` : null,
+      problema: data.request?.descricao || null,
+      motivo_troca: data.budget.motivo_troca || null,
+      servico_realizado: data.budget.servico_realizado || null,
+      observacoes_tecnicas: data.budget.observacoes_tecnicas || null
     });
   } catch (err) {
     next(err);
@@ -68,7 +75,11 @@ async function respond(req, res, status, successMessage) {
     return res.status(409).json({ error: `Este orçamento já foi ${data.budget.status.toLowerCase()} anteriormente.`, status: data.budget.status });
   }
 
-  const updated = await db.updateBudget(data.budget.id, { status });
+  const patch = { status };
+  if (status === 'Aprovado') {
+    patch.autorizado_por = 'Cliente via link de email (sem login)';
+  }
+  const updated = await db.updateBudget(data.budget.id, patch);
   await db.logAudit({
     user: { nome: `${data.company?.razao_social || 'Cliente'} (via link de aprovação por email)` },
     acao: `orcamento_${status.toLowerCase()}`,
@@ -80,6 +91,13 @@ async function respond(req, res, status, successMessage) {
   let contract = null;
   if (status === 'Aprovado') {
     contract = await db.createContractForBudget(updated);
+    pushVisitaTecnicaAprovadaToMilvus(
+      updated,
+      data.request,
+      data.company,
+      data.items.map((item) => ({ nome: item.peca?.nome || 'Peça', quantidade: item.quantidade, valor_unitario: item.valor_unitario })),
+      { email: data.company?.email, contato: data.company?.responsavel }
+    );
   }
 
   const draftUser = data.budget.draft_by ? await db.getUserById(data.budget.draft_by) : null;

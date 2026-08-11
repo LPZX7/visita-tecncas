@@ -1,13 +1,15 @@
 const PDFDocument = require('pdfkit');
 const { drawHeader, money } = require('./pdfHeader');
+const { buildRealizado } = require('./visitaTecnicaFormat');
 
 function generateBudgetPdf({ budget, request, company, unit, items }) {
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
-  drawHeader(doc, 'Orçamento de Serviço');
+  drawHeader(doc, 'VISITA TÉCNICA');
 
+  const statusLabel = budget.status === 'Aprovado' ? 'APROVADO PELO CLIENTE' : budget.status;
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#0F2747').text(`Orçamento — ${request.descricao}`);
-  doc.font('Helvetica').fontSize(9).fillColor('#64748b').text(`Status: ${budget.status} · Gerado em ${new Date(budget.criado_em).toLocaleDateString('pt-BR')}`);
+  doc.font('Helvetica').fontSize(9).fillColor('#64748b').text(`Status: ${statusLabel} · Gerado em ${new Date(budget.criado_em).toLocaleDateString('pt-BR')}`);
   doc.moveDown(1.2);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('CLIENTE');
@@ -51,6 +53,34 @@ function generateBudgetPdf({ budget, request, company, unit, items }) {
       doc.text(money(item.valor_unitario * item.quantidade), 400, y, { width: 139, align: 'right' });
     });
     doc.x = 56;
+    doc.moveDown(1);
+  }
+
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('SERVIÇO', 56, doc.y);
+  doc.moveDown(0.3);
+  doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
+  doc.text(`Motivo da troca: ${budget.motivo_troca || 'não informado'}`, 56);
+  doc.text(`Serviço a ser realizado: ${budget.servico_realizado || 'não informado'}`, 56);
+  doc.text(`Informações relevantes: ${budget.observacoes_tecnicas || 'nenhuma'}`, 56);
+  doc.moveDown(1);
+
+  if (budget.status === 'Aprovado') {
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('REALIZADO', 56, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#1B1E22')
+      .text(buildRealizado(items || []).replace(/^REALIZADO:\s*/, ''), 56, doc.y, { width: 483 });
+    doc.moveDown(0.6);
+
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('STATUS: APROVADO PELO CLIENTE', 56, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(9.5).fillColor('#1B1E22')
+      .text('AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça.', 56, doc.y, { width: 483 });
+    if (budget.autorizado_por) {
+      doc.text(`Autorizado por: ${budget.autorizado_por}`, 56);
+    }
+    if (budget.aprovado_em) {
+      doc.text(`Data/hora da autorização: ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`, 56);
+    }
     doc.moveDown(1);
   }
 

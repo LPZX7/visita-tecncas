@@ -1,5 +1,11 @@
 const db = require('./db');
 const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado } = require('./milvus');
+const { buildMilvusPayload } = require('./visitaTecnicaFormat');
+
+function isTicketVisitaTecnica(ticket) {
+  const texto = `${ticket.assunto || ''} ${ticket.categoria_secundaria || ''} ${ticket.categoria_primaria || ''}`;
+  return /visita/i.test(texto);
+}
 
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
@@ -12,6 +18,7 @@ async function syncMilvusChamados() {
   for (const ticket of lista) {
     const codigo = String(ticket.codigo);
     if (existentes.has(codigo)) continue;
+    if (!isTicketVisitaTecnica(ticket)) continue;
 
     await db.createMilvusPendente({
       milvus_codigo: codigo,
@@ -67,4 +74,43 @@ async function pushChamadoToMilvus(request, company, opts = {}) {
   }
 }
 
-module.exports = { syncMilvusChamados, pushChamadoToMilvus };
+async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
+  if (!process.env.MILVUS_API_TOKEN) return;
+  if (!company?.cnpj) {
+    console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível enviar a visita técnica aprovada (orçamento #${budget.id}) ao Milvus`);
+    return;
+  }
+
+  try {
+    let clienteToken = company.milvus_cliente_token;
+    if (!clienteToken) {
+      const cliente = await buscarClientePorDocumento(company.cnpj);
+      if (!cliente) {
+        console.warn(`[milvus] Cliente com CNPJ ${company.cnpj} (${company.razao_social}) não encontrado no Milvus — visita técnica (orçamento #${budget.id}) não foi enviada`);
+        return;
+      }
+      clienteToken = cliente.token;
+      await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
+    }
+
+    const { assunto, descricao } = buildMilvusPayload({ budget, items, request });
+
+    const codigo = await criarChamado({
+      clienteToken,
+      assunto,
+      descricao,
+      email: opts.email,
+      telefone: opts.telefone,
+      contato: opts.contato
+    });
+
+    if (codigo) {
+      await db.updateBudget(budget.id, { milvus_codigo: codigo });
+      console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) enviada ao Milvus como ticket #${codigo}`);
+    }
+  } catch (err) {
+    console.error(`[milvus] Falha ao enviar visita técnica aprovada (orçamento #${budget.id}) ao Milvus:`, err.message);
+  }
+}
+
+module.exports = { syncMilvusChamados, pushChamadoToMilvus, pushVisitaTecnicaAprovadaToMilvus };

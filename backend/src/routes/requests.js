@@ -6,7 +6,6 @@ const { sendMail } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
-const { pushChamadoToMilvus } = require('../lib/milvusSync');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
@@ -83,10 +82,8 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       link: '/requests'
     });
 
-    pushChamadoToMilvus(created, company, {
-      email: req.user.email || company?.email,
-      contato: req.user.name
-    });
+    // Não sincronizar com o Milvus aqui: a visita técnica só é enviada ao Milvus
+    // depois que o cliente autorizar o orçamento (ver budgets.js / publicBudgets.js).
 
     res.status(201).json(created);
   } catch (err) {

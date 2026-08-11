@@ -5,8 +5,23 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { signApprovalToken } = require('../lib/approvalToken');
 const { generateBudgetPdf } = require('../lib/budgetPdf');
 const { calculateBudgetTotal } = require('../lib/pricing');
+const { pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
+
+function validateVisitaTecnicaFields({ items, motivo_troca, servico_realizado, deslocamento }) {
+  if (!items || items.length === 0) return 'Selecione ao menos uma peça que será trocada';
+  for (const item of items) {
+    if (!item.quantidade || Number(item.quantidade) <= 0) return 'Informe a quantidade da peça';
+    if (item.valor_unitario === undefined || item.valor_unitario === null || Number(item.valor_unitario) < 0) {
+      return 'Informe o valor unitário da peça';
+    }
+  }
+  if (!motivo_troca || !String(motivo_troca).trim()) return 'Informe o motivo da troca';
+  if (!servico_realizado || !String(servico_realizado).trim()) return 'Informe o serviço que será realizado';
+  if (deslocamento === undefined || deslocamento === null || Number(deslocamento) < 0) return 'Informe o valor da visita técnica';
+  return null;
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -59,7 +74,7 @@ router.get('/:id/pdf', async (req, res, next) => {
 
 router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
   try {
-    const { request_id, empresa_id, unidade_id, items = [], deslocamento = 0 } = req.body;
+    const { request_id, empresa_id, unidade_id, items = [], deslocamento = 0, motivo_troca, servico_realizado, observacoes_tecnicas } = req.body;
     const draft_by = req.user.sub;
     if (!request_id || !empresa_id) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
@@ -68,6 +83,11 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
     const request = (await db.getRequests()).find((req) => req.id === request_id);
     if (!request) {
       return res.status(400).json({ error: 'Solicitação inválida' });
+    }
+
+    const validationError = validateVisitaTecnicaFields({ items, motivo_troca, servico_realizado, deslocamento });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
     }
 
     const { pecasTotal: partsTotal, deslocamentoTotal, total } = calculateBudgetTotal({ items, deslocamento });
@@ -84,7 +104,10 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       status: 'Rascunho',
       deslocamento: deslocamentoTotal,
       urgencia: 0,
-      horas_trabalho: 0
+      horas_trabalho: 0,
+      motivo_troca: String(motivo_troca).trim(),
+      servico_realizado: String(servico_realizado).trim(),
+      observacoes_tecnicas: (observacoes_tecnicas || '').trim() || null
     };
 
     const created = await db.createBudget(budget, items);
@@ -117,17 +140,24 @@ router.patch('/:id/status', async (req, res, next) => {
         return res.status(400).json({ error: 'Transição de status não permitida' });
       }
     } else if (['tecnico', 'analista', 'gestor'].includes(req.user.role)) {
-      if (budget.status === 'Rascunho' && status !== 'Enviado') {
-        return res.status(400).json({ error: 'Transição de status não permitida' });
+      // A equipe só pode enviar o orçamento para o cliente — a aprovação/rejeição
+      // exige uma ação explícita do próprio cliente (portal ou link de email).
+      if (budget.status !== 'Rascunho' || status !== 'Enviado') {
+        return res.status(400).json({ error: 'Somente o cliente pode autorizar ou recusar esta visita técnica. A equipe pode apenas enviar o orçamento para aprovação.' });
       }
-      if (budget.status !== 'Rascunho' && !['Aprovado', 'Rejeitado', 'Enviado'].includes(status)) {
-        return res.status(400).json({ error: 'Transição de status não permitida' });
+      const validationError = validateVisitaTecnicaFields(budget);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
       }
     } else {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
-    const updated = await db.updateBudget(budget.id, { status });
+    const patch = { status };
+    if (status === 'Aprovado') {
+      patch.autorizado_por = 'Cliente via portal (usuário logado)';
+    }
+    const updated = await db.updateBudget(budget.id, patch);
     await db.logAudit({
       user: req.user,
       acao: `orcamento_${status.toLowerCase()}`,
@@ -164,6 +194,17 @@ router.patch('/:id/status', async (req, res, next) => {
       });
     } else if (status === 'Aprovado') {
       const contract = await db.createContractForBudget(updated);
+
+      const companyForMilvus = request ? await db.getCompanyById(request.empresa_id) : null;
+      const itemsForMilvus = await Promise.all((updated.items || []).map(async (item) => ({
+        nome: (await db.getPartById(item.peca_id))?.nome || 'Peça',
+        quantidade: item.quantidade,
+        valor_unitario: item.valor_unitario
+      })));
+      pushVisitaTecnicaAprovadaToMilvus(updated, request, companyForMilvus, itemsForMilvus, {
+        email: companyForMilvus?.email,
+        contato: companyForMilvus?.responsavel
+      });
 
       const draftUser = await db.getUserById(updated.draft_by);
       if (draftUser?.email) {

@@ -57,36 +57,53 @@ export default function ApproveBudget() {
               <div className="alert alert-error">Este orçamento já foi <strong>{data.status.toLowerCase()}</strong> anteriormente. Nenhuma ação é necessária.</div>
             ) : (
               <>
-                <h1 className="login-card__headline">Orçamento para aprovação</h1>
-                <p className="login-card__lead">{data.empresa} — chamado: {data.chamado}</p>
+                <h1 className="login-card__headline">VISITA TÉCNICA</h1>
 
                 <div className="detail-panel" style={{ marginBottom: 20 }}>
                   <div className="detail-grid">
+                    <div>
+                      <strong>Cliente</strong>
+                      <p>{data.empresa}</p>
+                    </div>
                     {data.unidade && (
                       <div>
                         <strong>Unidade</strong>
                         <p>{data.unidade}</p>
                       </div>
                     )}
-                    <div>
-                      <strong>Deslocamento</strong>
-                      <p>{money(data.deslocamento)}</p>
-                    </div>
+                    {data.equipamento && (
+                      <div>
+                        <strong>Equipamento</strong>
+                        <p>{data.equipamento}</p>
+                      </div>
+                    )}
+                    {data.problema && (
+                      <div>
+                        <strong>Problema</strong>
+                        <p>{data.problema}</p>
+                      </div>
+                    )}
                   </div>
 
+                  <strong style={{ display: 'block', marginTop: 16 }}>SERVIÇO</strong>
                   {data.items?.length > 0 && (
-                    <ul className="item-list" style={{ marginTop: 16 }}>
+                    <ul className="item-list" style={{ marginTop: 8 }}>
                       {data.items.map((item, idx) => (
                         <li key={idx}>
-                          <span>{item.nome} × {item.quantidade}</span>
+                          <span>Peça: {item.nome} — Quantidade: {item.quantidade}</span>
                           <span>{money(item.valor_unitario * item.quantidade)}</span>
                         </li>
                       ))}
                     </ul>
                   )}
+                  {data.motivo_troca && <p style={{ marginTop: 8 }}><strong>Motivo da troca:</strong> {data.motivo_troca}</p>}
+                  {data.servico_realizado && <p><strong>Serviço a ser realizado:</strong> {data.servico_realizado}</p>}
+                  {data.observacoes_tecnicas && <p><strong>Informações relevantes:</strong> {data.observacoes_tecnicas}</p>}
+                  <p><strong>Valor da peça:</strong> {money(data.pecas_total)}</p>
+                  <p><strong>Visita técnica:</strong> {money(data.deslocamento)}</p>
 
                   <div className="detail-report">
-                    <strong>Total</strong>
+                    <strong>TOTAL</strong>
                     <p style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--grafite)' }}>{money(data.total)}</p>
                   </div>
                 </div>
@@ -95,10 +112,10 @@ export default function ApproveBudget() {
 
                 <div className="row-actions" style={{ gap: 12 }}>
                   <button className="btn btn-primary" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('approve')}>
-                    Aprovar orçamento
+                    AUTORIZAR
                   </button>
                   <button className="btn btn-danger" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('reject')}>
-                    Rejeitar orçamento
+                    NÃO AUTORIZAR
                   </button>
                 </div>
               </>
