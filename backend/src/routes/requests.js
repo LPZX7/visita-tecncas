@@ -439,4 +439,28 @@ router.get('/:id/termo-conclusao/pdf', async (req, res, next) => {
   }
 });
 
+router.delete('/:id/termo-conclusao', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const request = await db.getRequestById(req.params.id);
+    if (!request) {
+      return res.status(404).json({ error: 'Solicitação não encontrada' });
+    }
+    const aceite = await db.getVisitaAceiteByRequestId(request.id);
+    if (!aceite) {
+      return res.status(404).json({ error: 'Este chamado não tem termo de conclusão assinado' });
+    }
+    await db.deleteVisitaAceiteByRequestId(request.id);
+    await db.logAudit({
+      user: req.user,
+      acao: 'termo_conclusao_excluido',
+      entidade: 'request',
+      entidade_id: request.id,
+      detalhes: `Chamado #${request.numero} — termo assinado por ${aceite.nome_aceitante} (código ${aceite.codigo_validacao}) excluído`
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

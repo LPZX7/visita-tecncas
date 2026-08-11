@@ -150,6 +150,17 @@ export default function Requests() {
     }
   };
 
+  const handleDeleteTermo = async (req) => {
+    if (!window.confirm('Excluir o termo de conclusão assinado deste chamado? Esta ação não pode ser desfeita.')) return;
+    setError('');
+    try {
+      await api.delete(`/requests/${req.id}/termo-conclusao`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao excluir termo de conclusão');
+    }
+  };
+
   const handleCheckin = async (req) => {
     setError('');
     try {
@@ -384,6 +395,11 @@ export default function Requests() {
                             <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/visitas/${req.id}/termo`)}>
                               Termo de conclusão da visita
                             </button>
+                            {isGestor && (
+                              <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDeleteTermo(req)}>
+                                Excluir termo assinado
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>

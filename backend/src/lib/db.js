@@ -887,6 +887,11 @@ async function createVisitaAceite(data) {
   return row;
 }
 
+async function deleteVisitaAceiteByRequestId(request_id) {
+  const result = await pool.query('DELETE FROM visita_aceites WHERE request_id = $1', [request_id]);
+  return result.rowCount > 0;
+}
+
 // ---------- audit log ----------
 
 async function logAudit({ user, acao, entidade, entidade_id, detalhes }) {
@@ -976,6 +981,7 @@ module.exports = {
   getVisitaAceiteByRequestId,
   getVisitaAceiteByCodigo,
   createVisitaAceite,
+  deleteVisitaAceiteByRequestId,
   getMilvusPendentesByCodigos,
   createMilvusPendente,
   getMilvusPendentes,
