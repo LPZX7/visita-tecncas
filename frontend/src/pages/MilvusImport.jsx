@@ -7,6 +7,49 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString('pt-BR');
 }
 
+function norm(str) {
+  return (str || '').toLowerCase().trim();
+}
+
+// Casa o "Cliente" do ticket Milvus com uma empresa cadastrada pelo nome
+// (razão social ou fantasia). Só assume o match se for único — em caso de
+// ambiguidade, deixa em branco para o usuário escolher manualmente.
+function matchCompany(pendente, companies) {
+  const nome = norm(pendente.cliente_nome);
+  if (!nome) return null;
+  const candidates = companies.filter((c) => {
+    const razao = norm(c.razao_social);
+    const fantasia = norm(c.nome_fantasia);
+    return (razao && (razao === nome || razao.includes(nome) || nome.includes(razao)))
+      || (fantasia && (fantasia === nome || fantasia.includes(nome) || nome.includes(fantasia)));
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+// Dentro da empresa já casada, tenta achar a unidade certa pelo email do
+// ticket (bate com o email cadastrado na unidade) ou pelo nome da unidade
+// aparecendo no nome do cliente do ticket (ex.: "Mirontec – Atibaia").
+function matchUnit(pendente, unitsOfCompany) {
+  const emails = norm(pendente.cliente_email).split(',').map((e) => e.trim()).filter(Boolean);
+  const nome = norm(pendente.cliente_nome);
+  const candidates = unitsOfCompany.filter((u) => {
+    if (emails.length && u.email && emails.includes(norm(u.email))) return true;
+    const unome = norm(u.nome);
+    return unome && (nome.includes(unome) || unome.includes(nome));
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+// Procura, no texto do ticket, o modelo de algum equipamento já cadastrado
+// para essa empresa/unidade (ex.: texto "braço da catraca" bate com o
+// equipamento de modelo "Catraca").
+function matchEquipment(pendente, equipmentsOfCompany) {
+  const texto = norm(`${pendente.assunto || ''} ${pendente.descricao || ''}`);
+  if (!texto) return null;
+  const candidates = equipmentsOfCompany.filter((eq) => eq.modelo && texto.includes(norm(eq.modelo)));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 export default function MilvusImport() {
   const [pendentes, setPendentes] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -29,7 +72,7 @@ export default function MilvusImport() {
   }, []);
 
   const draftFor = (id) => drafts[id] || { empresa_id: '', unidade_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '' };
-  const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftFor(id), ...patch } }));
+  const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftFor(id), ...patch, _auto: false } }));
 
   const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
 
@@ -45,6 +88,35 @@ export default function MilvusImport() {
     const company = companies.find((c) => c.id === empresaId);
     return company?.endereco || '';
   };
+
+  // Pré-preenche solicitante, unidade, equipamento e endereço a partir dos
+  // dados do próprio ticket Milvus, para qualquer empresa — sempre editável,
+  // o usuário confirma (ou corrige) antes de importar.
+  useEffect(() => {
+    if (!pendentes.length || !companies.length) return;
+    setDrafts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const p of pendentes) {
+        if (next[p.id]) continue;
+        const company = matchCompany(p, companies);
+        if (!company) continue;
+        const unit = matchUnit(p, units.filter((u) => u.empresa_id === company.id));
+        const equipment = matchEquipment(p, equipmentsForCompany(company.id, unit?.id || ''));
+        next[p.id] = {
+          empresa_id: company.id,
+          unidade_id: unit?.id || '',
+          equipamento_id: equipment?.id || '',
+          urgencia: 'Normal',
+          endereco: addressFor(company.id, unit?.id || ''),
+          _auto: true
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendentes, companies, units, equipments]);
 
   const sync = async () => {
     setSyncing(true);
@@ -121,6 +193,11 @@ export default function MilvusImport() {
                 <div><dt>Recebido em</dt><dd>{formatDateTime(p.criado_em)}</dd></div>
               </dl>
               {p.descricao && <p className="section-text">{p.descricao}</p>}
+              {draft._auto && (
+                <p className="section-text" style={{ color: 'var(--verde, #1e8e5a)' }}>
+                  Solicitante, equipamento e endereço pré-preenchidos automaticamente a partir do ticket — confira antes de importar.
+                </p>
+              )}
 
               <label className="form-field">
                 Solicitante
