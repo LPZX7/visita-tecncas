@@ -44,9 +44,12 @@ export default function Requests() {
   const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
+  const [confirmouSuporte, setConfirmouSuporte] = useState(false);
 
   const isClienteSemEmpresa = user?.role === 'cliente' && !user?.empresa_id;
   const canCreate = ['cliente', 'analista', 'gestor'].includes(user?.role) && !isClienteSemEmpresa;
+  const isCliente = user?.role === 'cliente';
+  const suporteLink = `https://wa.me/5511997488664?text=${encodeURIComponent('Olá, preciso de suporte.')}`;
   const canManage = ['analista', 'gestor'].includes(user?.role);
   const isTech = user?.role === 'tecnico';
   const isGestor = user?.role === 'gestor';
@@ -224,7 +227,23 @@ export default function Requests() {
         </div>
       )}
 
-      {canCreate && (
+      {canCreate && isCliente && !confirmouSuporte && (
+        <div className="card-form">
+          <h3>Antes de abrir um chamado</h3>
+          <p className="section-text">
+            Muitas vezes conseguimos resolver o seu problema direto pelo suporte, sem precisar de uma visita técnica. Fale com a gente primeiro:
+          </p>
+          <div className="row-actions" style={{ marginBottom: 16 }}>
+            <a href={suporteLink} target="_blank" rel="noopener noreferrer" className="btn btn-primary">Falar com o suporte no WhatsApp</a>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+            <input type="checkbox" checked={confirmouSuporte} onChange={(e) => setConfirmouSuporte(e.target.checked)} />
+            Já falei com o suporte e ainda preciso de uma visita técnica
+          </label>
+        </div>
+      )}
+
+      {canCreate && (!isCliente || confirmouSuporte) && (
         <form onSubmit={handleSubmit} className="card-form">
           <h3>Abrir novo chamado</h3>
           {user?.role === 'cliente' && (
