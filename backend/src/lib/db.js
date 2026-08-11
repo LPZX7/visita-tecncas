@@ -276,18 +276,36 @@ async function seedDefaultAdmin() {
   );
 }
 
-// Peças básicas de catraca, cadastradas com valor provisório (marcado com
-// prefixo "REVISAR-" no código) — ajustar o preço real no catálogo antes de
-// usar em orçamentos que vão para aprovação do cliente.
+// Peças básicas de catraca, cadastradas com valor provisório — ajustar o
+// custo real no catálogo antes de usar em orçamentos que vão para
+// aprovação do cliente.
 const VALOR_PROVISORIO_AVISO = 'Valor provisório (custo estimado x2) — revisar o custo real e ajustar antes de aprovar orçamentos.';
 const DEFAULT_CATRACA_PARTS = [
-  { codigo: 'REVISAR-CATR-BRACO', nome: 'Braço da catraca', categoria: 'Catraca', preco_unitario: 200 },
-  { codigo: 'REVISAR-CATR-TECLADO', nome: 'Teclado', categoria: 'Catraca', preco_unitario: 150 },
-  { codigo: 'REVISAR-CATR-PLACA', nome: 'Placa eletrônica', categoria: 'Catraca', preco_unitario: 350 },
-  { codigo: 'REVISAR-CATR-FONTE', nome: 'Fonte de alimentação', categoria: 'Catraca', preco_unitario: 120 }
+  { codigo: 'CATR-BRACO', nome: 'Braço da catraca', categoria: 'Catraca', preco_unitario: 200 },
+  { codigo: 'CATR-TECLADO', nome: 'Teclado', categoria: 'Catraca', preco_unitario: 150 },
+  { codigo: 'CATR-PLACA', nome: 'Placa eletrônica', categoria: 'Catraca', preco_unitario: 350 },
+  { codigo: 'CATR-FONTE', nome: 'Fonte de alimentação', categoria: 'Catraca', preco_unitario: 120 }
+];
+
+// Renomeia peças de um deploy anterior que ainda estejam com o prefixo
+// "REVISAR-" no código, em vez de duplicar.
+const LEGACY_CODE_RENAMES = [
+  ['REVISAR-CATR-BRACO', 'CATR-BRACO'],
+  ['REVISAR-CATR-TECLADO', 'CATR-TECLADO'],
+  ['REVISAR-CATR-PLACA', 'CATR-PLACA'],
+  ['REVISAR-CATR-FONTE', 'CATR-FONTE']
 ];
 
 async function seedCatracaParts() {
+  for (const [oldCodigo, newCodigo] of LEGACY_CODE_RENAMES) {
+    const { rows: jaExiste } = await pool.query('SELECT id FROM pecas WHERE codigo = $1', [newCodigo]);
+    if (jaExiste[0]) continue;
+    const { rows: legado } = await pool.query('SELECT id FROM pecas WHERE codigo = $1', [oldCodigo]);
+    if (legado[0]) {
+      await pool.query('UPDATE pecas SET codigo = $1 WHERE id = $2', [newCodigo, legado[0].id]);
+    }
+  }
+
   for (const part of DEFAULT_CATRACA_PARTS) {
     const { rows } = await pool.query('SELECT id FROM pecas WHERE codigo = $1', [part.codigo]);
     if (rows[0]) continue;
