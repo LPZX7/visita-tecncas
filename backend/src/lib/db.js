@@ -316,10 +316,31 @@ async function seedCatracaParts() {
   }
 }
 
+// Modelos de catraca da Mirontec para aparecerem no seletor de Equipamento
+// ao importar chamados — número de série e local de instalação ficam como
+// "A definir" até alguém preencher o valor real em Equipamentos.
+async function seedMirontecCatracas() {
+  const { rows: empresaRows } = await pool.query(
+    "SELECT id FROM empresas WHERE lower(razao_social) LIKE '%mirontec%' OR lower(nome_fantasia) LIKE '%mirontec%' LIMIT 1"
+  );
+  const empresaId = empresaRows[0]?.id;
+  if (!empresaId) return;
+
+  for (const modelo of ['Catraca Revolution', 'Top Fit']) {
+    const { rows } = await pool.query('SELECT id FROM equipamentos WHERE empresa_id = $1 AND modelo = $2', [empresaId, modelo]);
+    if (rows[0]) continue;
+    await pool.query(
+      'INSERT INTO equipamentos (id, empresa_id, modelo, numero_serie, local_instalacao, criado_em) VALUES ($1, $2, $3, $4, $5, $6)',
+      [uuid(), empresaId, modelo, 'A definir', 'A definir', now()]
+    );
+  }
+}
+
 async function initDb() {
   await pool.query(SCHEMA_SQL);
   await seedDefaultAdmin();
   await seedCatracaParts();
+  await seedMirontecCatracas();
 }
 
 // ---------- generic partial-update helper ----------
