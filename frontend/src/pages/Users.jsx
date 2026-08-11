@@ -65,6 +65,15 @@ export default function Users() {
     }
   };
 
+  const toggleLiberado = async (user) => {
+    try {
+      await api.patch(`/users/${user.id}`, { liberado_para_chamado: !user.liberado_para_chamado });
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao atualizar usuário');
+    }
+  };
+
   const handleDelete = async (user) => {
     if (!window.confirm(`Excluir o usuário ${user.nome}? Esta ação não pode ser desfeita.`)) return;
     setError('');
@@ -201,7 +210,12 @@ export default function Users() {
                   user.unidade_id ? unitName(user.unidade_id) : '—'
                 )}
               </td>
-              <td><span className={`badge ${user.ativo ? 'badge-ativo' : 'badge-inativo'}`}>{user.ativo ? 'Ativo' : 'Inativo'}</span></td>
+              <td>
+                <span className={`badge ${user.ativo ? 'badge-ativo' : 'badge-inativo'}`}>{user.ativo ? 'Ativo' : 'Inativo'}</span>
+                {user.role === 'cliente' && user.liberado_para_chamado && (
+                  <span className="badge badge-aprovado" style={{ marginLeft: 6 }}>Liberado p/ chamado</span>
+                )}
+              </td>
               <td>
                 <div className="row-actions">
                   {editingId === user.id ? (
@@ -215,6 +229,11 @@ export default function Users() {
                   <button className="btn btn-outline btn-sm" onClick={() => toggleActive(user)}>
                     {user.ativo ? 'Desativar' : 'Ativar'}
                   </button>
+                  {user.role === 'cliente' && (
+                    <button className={`btn btn-sm ${user.liberado_para_chamado ? 'btn-outline' : 'btn-primary'}`} onClick={() => toggleLiberado(user)}>
+                      {user.liberado_para_chamado ? 'Revogar liberação de chamado' : 'Liberar abertura de chamado'}
+                    </button>
+                  )}
                   {isGestor && user.id !== currentUser?.id && (
                     <button className="btn btn-danger btn-sm" onClick={() => handleDelete(user)}>Excluir</button>
                   )}

@@ -44,7 +44,8 @@ export default function Requests() {
   const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
-  const [confirmouSuporte, setConfirmouSuporte] = useState(false);
+  const [liberado, setLiberado] = useState(null);
+  const [checkingLiberacao, setCheckingLiberacao] = useState(false);
 
   const isClienteSemEmpresa = user?.role === 'cliente' && !user?.empresa_id;
   const canCreate = ['cliente', 'analista', 'gestor'].includes(user?.role) && !isClienteSemEmpresa;
@@ -53,6 +54,12 @@ export default function Requests() {
   const canManage = ['analista', 'gestor'].includes(user?.role);
   const isTech = user?.role === 'tecnico';
   const isGestor = user?.role === 'gestor';
+
+  const checkLiberacao = () => {
+    if (!isCliente) return;
+    setCheckingLiberacao(true);
+    api.get('/users/me').then((res) => setLiberado(!!res.data.liberado_para_chamado)).catch(() => {}).finally(() => setCheckingLiberacao(false));
+  };
 
   const load = () => {
     api.get('/requests').then((res) => setRequests(res.data));
@@ -66,6 +73,7 @@ export default function Requests() {
       api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
       api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
     }
+    checkLiberacao();
   };
 
   useEffect(() => {
@@ -118,10 +126,16 @@ export default function Requests() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await api.post('/requests', form);
-    const resetEndereco = user?.role === 'cliente' ? addressFor(user.empresa_id, user.unidade_id) : '';
-    setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal' });
-    load();
+    setError('');
+    try {
+      await api.post('/requests', form);
+      const resetEndereco = user?.role === 'cliente' ? addressFor(user.empresa_id, user.unidade_id) : '';
+      setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal' });
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao abrir chamado');
+      load();
+    }
   };
 
   const draftFor = (req) => drafts[req.id] || {
@@ -227,23 +241,22 @@ export default function Requests() {
         </div>
       )}
 
-      {canCreate && isCliente && !confirmouSuporte && (
+      {canCreate && isCliente && !liberado && (
         <div className="card-form">
           <h3>Antes de abrir um chamado</h3>
           <p className="section-text">
-            Muitas vezes conseguimos resolver o seu problema direto pelo suporte, sem precisar de uma visita técnica. Fale com a gente primeiro:
+            Muitas vezes conseguimos resolver o seu problema direto pelo suporte, sem precisar de uma visita técnica. Fale com a gente primeiro — nossa equipe libera a abertura do chamado pra você assim que a conversa terminar.
           </p>
-          <div className="row-actions" style={{ marginBottom: 16 }}>
+          <div className="row-actions">
             <a href={suporteLink} target="_blank" rel="noopener noreferrer" className="btn btn-primary">Falar com o suporte no WhatsApp</a>
+            <button type="button" className="btn btn-outline" onClick={checkLiberacao} disabled={checkingLiberacao}>
+              {checkingLiberacao ? 'Verificando...' : 'Já fui liberado, verificar de novo'}
+            </button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-            <input type="checkbox" checked={confirmouSuporte} onChange={(e) => setConfirmouSuporte(e.target.checked)} />
-            Já falei com o suporte e ainda preciso de uma visita técnica
-          </label>
         </div>
       )}
 
-      {canCreate && (!isCliente || confirmouSuporte) && (
+      {canCreate && (!isCliente || liberado) && (
         <form onSubmit={handleSubmit} className="card-form">
           <h3>Abrir novo chamado</h3>
           {user?.role === 'cliente' && (

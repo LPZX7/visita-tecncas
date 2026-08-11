@@ -61,6 +61,7 @@ const SCHEMA_SQL = `
 
   ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS liberado_para_chamado INTEGER NOT NULL DEFAULT 0;
 
   ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
   ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
@@ -265,7 +266,7 @@ function withDefaults(obj) {
 
 function toUser(row) {
   if (!row) return null;
-  return { ...row, ativo: !!row.ativo };
+  return { ...row, ativo: !!row.ativo, liberado_para_chamado: !!row.liberado_para_chamado };
 }
 
 async function seedDefaultAdmin() {
@@ -433,6 +434,7 @@ async function updateUser(id, patch) {
   if (!rows[0]) return null;
   const fields = { ...patch };
   if ('ativo' in fields) fields.ativo = fields.ativo ? 1 : 0;
+  if ('liberado_para_chamado' in fields) fields.liberado_para_chamado = fields.liberado_para_chamado ? 1 : 0;
   await updateRow('users', id, fields, { touchUpdatedAt: false });
   return getUserById(id);
 }

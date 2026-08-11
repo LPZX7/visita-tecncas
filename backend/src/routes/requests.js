@@ -34,11 +34,17 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     const { equipamento_id, descricao, urgencia, endereco } = req.body;
     let empresa_id = req.body.empresa_id;
 
+    let requesterUser = null;
     if (req.user.role === 'cliente') {
       if (!req.user.empresa_id) {
         return res.status(403).json({ error: 'Sua conta ainda não está vinculada a uma empresa. Aguarde o contato do gestor.' });
       }
       empresa_id = req.user.empresa_id;
+
+      requesterUser = await db.getUserById(req.user.sub);
+      if (!requesterUser?.liberado_para_chamado) {
+        return res.status(403).json({ error: 'Fale com o suporte antes de abrir um chamado — sua conta ainda não foi liberada.' });
+      }
     }
 
     if (!empresa_id || !equipamento_id || !descricao) {
@@ -63,6 +69,11 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     };
 
     const created = await db.createRequest(request);
+
+    if (req.user.role === 'cliente') {
+      // Liberação é de uso único — precisa passar pelo suporte de novo pro próximo chamado.
+      await db.updateUser(req.user.sub, { liberado_para_chamado: false });
+    }
 
     const company = await db.getCompanyById(empresa_id);
     if (req.user.role === 'cliente') {

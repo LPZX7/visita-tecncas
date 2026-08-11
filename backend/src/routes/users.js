@@ -40,7 +40,7 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    const { ativo, role, empresa_id, unidade_id } = req.body;
+    const { ativo, role, empresa_id, unidade_id, liberado_para_chamado } = req.body;
     const patch = {};
 
     if (ativo !== undefined) {
@@ -48,6 +48,12 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
         return res.status(400).json({ error: 'Campo "ativo" deve ser boolean' });
       }
       patch.ativo = ativo;
+    }
+    if (liberado_para_chamado !== undefined) {
+      if (typeof liberado_para_chamado !== 'boolean') {
+        return res.status(400).json({ error: 'Campo "liberado_para_chamado" deve ser boolean' });
+      }
+      patch.liberado_para_chamado = liberado_para_chamado;
     }
     if (role !== undefined) {
       if (req.user.role !== 'gestor') {
@@ -91,10 +97,11 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
 
     const updated = await db.updateUser(req.params.id, patch);
 
-    if ('ativo' in patch || 'role' in patch) {
+    if ('ativo' in patch || 'role' in patch || 'liberado_para_chamado' in patch) {
       const mudancas = [];
       if ('ativo' in patch) mudancas.push(patch.ativo ? 'ativado' : 'desativado');
       if ('role' in patch) mudancas.push(`perfil alterado para ${patch.role}`);
+      if ('liberado_para_chamado' in patch) mudancas.push(patch.liberado_para_chamado ? 'liberado para abrir chamado' : 'liberação de chamado revogada');
       await db.logAudit({
         user: req.user,
         acao: 'usuario_alterado',
