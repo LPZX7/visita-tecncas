@@ -65,6 +65,17 @@ export default function Users() {
     }
   };
 
+  const handleDelete = async (user) => {
+    if (!window.confirm(`Excluir o usuário ${user.nome}? Esta ação não pode ser desfeita.`)) return;
+    setError('');
+    try {
+      await api.delete(`/users/${user.id}`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao excluir usuário');
+    }
+  };
+
   const startEdit = (user) => {
     setEditingId(user.id);
     setEditDraft({ role: user.role, empresa_id: user.empresa_id || '', unidade_id: user.unidade_id || '' });
@@ -204,6 +215,9 @@ export default function Users() {
                   <button className="btn btn-outline btn-sm" onClick={() => toggleActive(user)}>
                     {user.ativo ? 'Desativar' : 'Ativar'}
                   </button>
+                  {isGestor && user.id !== currentUser?.id && (
+                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(user)}>Excluir</button>
+                  )}
                 </div>
               </td>
             </tr>

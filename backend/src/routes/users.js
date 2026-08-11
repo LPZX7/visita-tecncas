@@ -110,4 +110,30 @@ router.patch('/:id', requireRole('gestor', 'analista'), async (req, res, next) =
   }
 });
 
+router.delete('/:id', requireRole('gestor'), async (req, res, next) => {
+  try {
+    if (req.params.id === req.user.sub) {
+      return res.status(400).json({ error: 'Você não pode excluir sua própria conta' });
+    }
+    const user = await db.getUserById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+    const result = await db.deleteUser(req.params.id);
+    if (result.blocked) {
+      return res.status(409).json({ error: 'Não é possível excluir: este usuário tem chamados ou orçamentos vinculados. Desative a conta em vez de excluir.' });
+    }
+    await db.logAudit({
+      user: req.user,
+      acao: 'usuario_excluido',
+      entidade: 'user',
+      entidade_id: req.params.id,
+      detalhes: `${user.nome} (${user.email})`
+    });
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

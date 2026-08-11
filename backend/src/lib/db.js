@@ -437,6 +437,22 @@ async function updateUser(id, patch) {
   return getUserById(id);
 }
 
+// aberto_por/assigned_technician (requests) e draft_by (budgets) não têm FK
+// de banco para users — checamos na aplicação para não deixar chamado ou
+// orçamento com um autor/técnico "órfão" ao excluir o usuário.
+async function deleteUser(id) {
+  const { rows: reqRows } = await pool.query(
+    'SELECT COUNT(*) AS n FROM requests WHERE aberto_por = $1 OR assigned_technician = $1',
+    [id]
+  );
+  if (Number(reqRows[0].n) > 0) return { deleted: false, blocked: true };
+
+  const { rows: budgetRows } = await pool.query('SELECT COUNT(*) AS n FROM budgets WHERE draft_by = $1', [id]);
+  if (Number(budgetRows[0].n) > 0) return { deleted: false, blocked: true };
+
+  return safeDelete('users', id);
+}
+
 // ---------- empresas ----------
 
 async function getCompanies() {
@@ -944,6 +960,7 @@ module.exports = {
   findUserByEmail,
   createUser,
   updateUser,
+  deleteUser,
   getCompanies,
   getCompanyById,
   createCompany,

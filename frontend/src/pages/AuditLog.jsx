@@ -21,7 +21,9 @@ export const ACAO_LABEL = {
   visita_recusada: 'Visita técnica recusada',
   usuario_criado: 'Usuário criado',
   usuario_alterado: 'Usuário alterado',
-  equipamento_excluido: 'Equipamento excluído'
+  usuario_excluido: 'Usuário excluído',
+  equipamento_excluido: 'Equipamento excluído',
+  auditoria_limpa: 'Auditoria limpa'
 };
 
 const PAGE_SIZE = 50;
