@@ -109,6 +109,13 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
     };
 
     const created = await db.createBudget(budget, items);
+    await db.logAudit({
+      user: req.user,
+      acao: 'orcamento_criado',
+      entidade: 'budget',
+      entidade_id: created.id,
+      detalhes: `Orçamento (rascunho) criado — R$ ${Number(created.total).toFixed(2)}`
+    });
     res.status(201).json(created);
   } catch (err) {
     next(err);

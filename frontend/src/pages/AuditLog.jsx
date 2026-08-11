@@ -2,12 +2,22 @@ import { useEffect, useState } from 'react';
 import api from '../api';
 import Pagination from '../components/Pagination';
 
-const ACAO_LABEL = {
+export const ACAO_LABEL = {
+  orcamento_criado: 'Orçamento criado',
+  orcamento_criado_automatico: 'Orçamento criado automaticamente (importação Milvus)',
   orcamento_aprovado: 'Orçamento aprovado',
   orcamento_rejeitado: 'Orçamento rejeitado',
   orcamento_enviado: 'Orçamento enviado',
   orcamento_rascunho: 'Orçamento voltou a rascunho',
+  orcamento_excluido: 'Orçamento excluído',
+  chamado_criado: 'Chamado criado',
   chamado_excluido: 'Chamado excluído',
+  contrato_excluido: 'Contrato excluído',
+  termo_conclusao_aceito: 'Termo de conclusão assinado',
+  termo_conclusao_excluido: 'Termo de conclusão excluído',
+  milvus_chamado_importado: 'Chamado importado do Milvus',
+  visita_aprovada: 'Visita técnica autorizada',
+  visita_recusada: 'Visita técnica recusada',
   usuario_criado: 'Usuário criado',
   usuario_alterado: 'Usuário alterado',
   equipamento_excluido: 'Equipamento excluído'

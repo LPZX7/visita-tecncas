@@ -20,6 +20,7 @@ import ApproveVisit from './ApproveVisit';
 import TermoConclusao from './TermoConclusao';
 import ValidarTermo from './ValidarTermo';
 import NotificationBell from '../components/NotificationBell';
+import ActivityBell from '../components/ActivityBell';
 import Sidebar from '../components/Sidebar';
 import Signup from './Signup';
 import ForgotPassword from './ForgotPassword';
@@ -156,6 +157,7 @@ export default function App() {
           )}
 
           <div className="topbar__actions">
+            {['analista', 'gestor'].includes(user?.role) && <ActivityBell />}
             <NotificationBell />
             <button type="button" className="topbar__logout-mobile" onClick={handleLogout} aria-label="Sair">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

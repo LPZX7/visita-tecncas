@@ -82,6 +82,13 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       mensagem: created.descricao,
       link: '/requests'
     });
+    await db.logAudit({
+      user: req.user,
+      acao: 'chamado_criado',
+      entidade: 'request',
+      entidade_id: created.id,
+      detalhes: `Chamado #${created.numero} — ${created.descricao}`
+    });
 
     // Não sincronizar com o Milvus aqui: a visita técnica só é enviada ao Milvus
     // depois que o cliente autorizar o orçamento (ver budgets.js / publicBudgets.js).
