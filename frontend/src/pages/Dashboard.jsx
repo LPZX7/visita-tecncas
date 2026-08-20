@@ -111,6 +111,7 @@ export default function Dashboard() {
   const [requests, setRequests] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [users, setUsers] = useState([]);
@@ -118,6 +119,8 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
   const [selectedDay, setSelectedDay] = useState(null);
+  const [reportPeriod, setReportPeriod] = useState('todos');
+  const [expandedCompany, setExpandedCompany] = useState(null);
   const [calCursor, setCalCursor] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -131,18 +134,20 @@ export default function Dashboard() {
     setLoading(true);
     try {
       if (role === 'gestor') {
-        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes, usersRes] = await Promise.all([
+        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes, usersRes, unitsRes] = await Promise.all([
           api.get('/requests'),
           api.get('/budgets'),
           api.get('/companies'),
           api.get('/equipments'),
           api.get('/parts'),
-          api.get('/users')
+          api.get('/users'),
+          api.get('/units')
         ]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
         setUsers(usersRes.data);
         setCompanies(companiesRes.data);
+        setUnits(unitsRes.data);
         setMetrics({
           requests: requestsRes.data.length,
           budgets: budgetsRes.data.length,
@@ -201,6 +206,59 @@ export default function Dashboard() {
   const currentMonthKey = today.slice(0, 7);
   const aprovadosEsteMes = orcamentosAprovados.filter((b) => (b.atualizado_em || b.criado_em || '').slice(0, 7) === currentMonthKey);
   const faturamentoEsteMes = aprovadosEsteMes.reduce((sum, b) => sum + Number(b.total || 0), 0);
+
+  const reportBudgets = useMemo(() => {
+    const approved = budgets.filter((budget) => budget.status === 'Aprovado');
+    if (reportPeriod === 'todos') return approved;
+    const now = new Date();
+    return approved.filter((budget) => {
+      const value = budget.aprovado_em || budget.atualizado_em || budget.criado_em;
+      if (!value) return false;
+      const date = new Date(value);
+      if (reportPeriod === 'mes') return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+      if (reportPeriod === 'ano') return date.getFullYear() === now.getFullYear();
+      if (reportPeriod === '90dias') return date >= new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return true;
+    });
+  }, [budgets, reportPeriod]);
+
+  const companyFinancialReport = useMemo(() => companies.map((company) => {
+    const companyBudgets = reportBudgets.filter((budget) => budget.empresa_id === company.id);
+    const companyUnits = units.filter((unit) => unit.empresa_id === company.id);
+    const totals = companyBudgets.reduce((acc, budget) => ({
+      visits: acc.visits + Number(budget.deslocamento || 0),
+      parts: acc.parts + Number(budget.pecas_total || 0),
+      total: acc.total + Number(budget.total || 0),
+      count: acc.count + 1
+    }), { visits: 0, parts: 0, total: 0, count: 0 });
+    const branches = companyUnits.map((unit) => {
+      const branchBudgets = companyBudgets.filter((budget) => budget.unidade_id === unit.id);
+      return branchBudgets.reduce((acc, budget) => ({
+        ...acc,
+        visits: acc.visits + Number(budget.deslocamento || 0),
+        parts: acc.parts + Number(budget.pecas_total || 0),
+        total: acc.total + Number(budget.total || 0),
+        count: acc.count + 1
+      }), { id: unit.id, name: unit.nome, type: unit.tipo, visits: 0, parts: 0, total: 0, count: 0 });
+    }).sort((a, b) => b.total - a.total);
+    const unassigned = companyBudgets.filter((budget) => !budget.unidade_id);
+    if (unassigned.length) {
+      branches.push(unassigned.reduce((acc, budget) => ({
+        ...acc,
+        visits: acc.visits + Number(budget.deslocamento || 0),
+        parts: acc.parts + Number(budget.pecas_total || 0),
+        total: acc.total + Number(budget.total || 0),
+        count: acc.count + 1
+      }), { id: 'sem-unidade', name: 'Sem filial informada', type: 'Outros', visits: 0, parts: 0, total: 0, count: 0 }));
+    }
+    return { id: company.id, name: company.razao_social, ...totals, branches };
+  }).filter((company) => company.count > 0).sort((a, b) => b.total - a.total), [companies, units, reportBudgets]);
+
+  const reportTotals = companyFinancialReport.reduce((acc, company) => ({
+    visits: acc.visits + company.visits,
+    parts: acc.parts + company.parts,
+    total: acc.total + company.total
+  }), { visits: 0, parts: 0, total: 0 });
   const chamadosPorStatus = groupedStatusCounts(requests);
   const orcamentosPorStatus = countBy(budgets, 'status', BUDGET_STATUS_COLOR);
   const tendenciaChamados = last14DaysTrend(requests);
@@ -695,6 +753,80 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+      )}
+
+      {!loading && role === 'gestor' && (
+        <section className="reports-section" aria-labelledby="reports-title">
+          <div className="reports-header">
+            <div>
+              <span className="page-eyebrow">RELATÓRIOS</span>
+              <h2 id="reports-title">Faturamento por empresa</h2>
+              <p className="section-text">Orçamentos aprovados, separados entre valor da visita técnica e valor das peças.</p>
+            </div>
+            <label className="report-filter">
+              <span>Período</span>
+              <select className="form-input" value={reportPeriod} onChange={(event) => setReportPeriod(event.target.value)}>
+                <option value="todos">Todo o período</option>
+                <option value="mes">Este mês</option>
+                <option value="90dias">Últimos 90 dias</option>
+                <option value="ano">Este ano</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="report-summary">
+            <div><span>Visitas técnicas</span><strong>R$ {reportTotals.visits.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+            <div><span>Peças</span><strong>R$ {reportTotals.parts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+            <div className="report-summary__total"><span>Faturamento total</span><strong>R$ {reportTotals.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></div>
+          </div>
+
+          {companyFinancialReport.length === 0 ? (
+            <p className="section-text reports-empty">Nenhum orçamento aprovado no período selecionado.</p>
+          ) : (
+            <div className="company-report-list">
+              {companyFinancialReport.map((company, index) => {
+                const expanded = expandedCompany === company.id;
+                return (
+                  <article className={`company-report ${expanded ? 'is-expanded' : ''}`} key={company.id}>
+                    <button
+                      type="button"
+                      className="company-report__button"
+                      onClick={() => setExpandedCompany(expanded ? null : company.id)}
+                      aria-expanded={expanded}
+                    >
+                      <span className="company-report__rank">{index + 1}</span>
+                      <span className="company-report__identity">
+                        <strong>{company.name}</strong>
+                        <small>{company.count} orçamento{company.count === 1 ? '' : 's'} aprovado{company.count === 1 ? '' : 's'}</small>
+                      </span>
+                      <span className="company-report__value"><small>Visitas</small>R$ {company.visits.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      <span className="company-report__value"><small>Peças</small>R$ {company.parts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      <span className="company-report__value company-report__value--total"><small>Total</small>R$ {company.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      <span className="company-report__chevron" aria-hidden="true">⌄</span>
+                    </button>
+                    {expanded && (
+                      <div className="branch-report">
+                        <div className="branch-report__heading">
+                          <span>Filial</span><span>Visitas</span><span>Peças</span><span>Total</span>
+                        </div>
+                        {company.branches.length === 0 ? (
+                          <p className="section-text">Nenhuma filial cadastrada para esta empresa.</p>
+                        ) : company.branches.map((branch) => (
+                          <div className="branch-report__row" key={branch.id}>
+                            <span><strong>{branch.name}</strong><small>{branch.type} · {branch.count} orçamento{branch.count === 1 ? '' : 's'}</small></span>
+                            <span>R$ {branch.visits.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <span>R$ {branch.parts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <strong>R$ {branch.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
       )}
 
       {!loading && role === 'gestor' && (
