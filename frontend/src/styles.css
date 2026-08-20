@@ -1255,6 +1255,22 @@ a:hover {
   box-shadow: 0 14px 36px rgba(27, 30, 34, 0.045);
 }
 
+.reports-page__header { align-items: end; }
+.reports-page__header .report-filter { flex: 0 0 210px; }
+.reports-page__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eaf1ff;
+  color: var(--azul);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
 .reports-header {
   display: flex;
   align-items: flex-end;
@@ -1320,6 +1336,8 @@ a:hover {
 .reports-empty { padding: 22px; text-align: center; background: #f8fafc; border-radius: 12px; }
 
 @media (max-width: 800px) {
+  .reports-page__header { align-items: stretch; }
+  .reports-page__header .report-filter { flex-basis: auto; }
   .reports-header { align-items: stretch; flex-direction: column; }
   .report-summary { grid-template-columns: 1fr; }
   .company-report__button { grid-template-columns: 34px 1fr 24px; }

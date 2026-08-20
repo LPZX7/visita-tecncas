@@ -15,6 +15,7 @@ import Profile from './Profile';
 import AuditLog from './AuditLog';
 import MilvusImport from './MilvusImport';
 import Contracts from './Contracts';
+import Reports from './Reports';
 import ApproveBudget from './ApproveBudget';
 import ApproveVisit from './ApproveVisit';
 import TermoConclusao from './TermoConclusao';
@@ -94,6 +95,7 @@ export default function App() {
     ];
     if (role === 'gestor') return [
       { to: '/dashboard', label: 'Dashboard' },
+      { to: '/reports', label: 'Relatórios' },
       { to: '/requests', label: 'Chamados' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
@@ -192,6 +194,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico', 'cliente']}>
                 <Requests />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute allowedRoles={['gestor']}>
+                <Reports />
               </ProtectedRoute>
             }
           />

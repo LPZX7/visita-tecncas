@@ -5,6 +5,7 @@ const ICONS = {
   dashboard: <><rect x="3" y="3" width="7.5" height="9" rx="2" /><rect x="13.5" y="3" width="7.5" height="5.5" rx="2" /><rect x="13.5" y="11" width="7.5" height="10" rx="2" /><rect x="3" y="14.5" width="7.5" height="6.5" rx="2" /></>,
   requests: <><path d="M8 3h8a2 2 0 012 2v14a2 2 0 01-2 2H8a2 2 0 01-2-2V5a2 2 0 012-2z" /><path d="M9 8h6M9 12h6M9 16h3" strokeLinecap="round" /></>,
   budgets: <><rect x="2.5" y="6" width="19" height="13" rx="2.5" /><circle cx="12" cy="12.5" r="3" /><path d="M6 6V5a2 2 0 012-2h8a2 2 0 012 2v1" /></>,
+  reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" strokeLinecap="round" /><path d="M3 7l6-4 6 6 6-5" strokeLinecap="round" strokeLinejoin="round" /></>,
   contracts: <><path d="M7 2.5h7l4 4v15H7z" /><path d="M10 11h6M10 15h6M10 7h2" strokeLinecap="round" /></>,
   companies: <><rect x="4" y="2.5" width="16" height="19" rx="1.5" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2" strokeLinecap="round" /></>,
   building: <><path d="M3 21h18" strokeLinecap="round" /><path d="M5 21V6l7-3 7 3v15" /><path d="M9 21v-6h6v6" /></>,
@@ -20,6 +21,7 @@ const ICONS = {
 
 const ICON_BY_PATH = {
   '/dashboard': 'dashboard',
+  '/reports': 'reports',
   '/requests': 'requests',
   '/budgets': 'budgets',
   '/contracts': 'contracts',
