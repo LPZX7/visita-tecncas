@@ -59,7 +59,11 @@ function Kpi({ label, value, detail, tone = '' }) {
 }
 
 function ReportTitle({ eyebrow, title, description, badge }) {
-  return <div className="reports-header"><div><span className="page-eyebrow">{eyebrow}</span><h3>{title}</h3><p className="section-text">{description}</p></div>{badge && <span className="reports-page__badge">{badge}</span>}</div>;
+  const professionalTitle = title
+    .replace('Top 10 empresas com maior lucro bruto', 'Ranking de empresas por lucro bruto')
+    .replace('Top 10 filiais com maior resultado', 'Ranking de filiais por resultado');
+  const professionalBadge = typeof badge === 'string' && badge.startsWith('TOP') ? 'RANKING' : badge;
+  return <div className="reports-header"><div><span className="page-eyebrow">{eyebrow}</span><h3>{professionalTitle}</h3><p className="section-text">{description}</p></div>{professionalBadge && <span className="reports-page__badge">{professionalBadge}</span>}</div>;
 }
 
 function StatusBars({ rows, valueFormatter = (value) => value }) {
