@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 
 const ICONS = {
@@ -45,7 +45,7 @@ function Icon({ name }) {
   );
 }
 
-function SidebarGroup({ item, collapsed }) {
+function SidebarGroup({ item, collapsed, onNavigate }) {
   const location = useLocation();
   const isChildActive = item.children.some((c) => location.pathname === c.to);
   const [open, setOpen] = useState(isChildActive);
@@ -60,7 +60,7 @@ function SidebarGroup({ item, collapsed }) {
         data-tooltip={item.label}
       >
         <Icon name={ICON_BY_PATH[item.children[0]?.to] || 'companies'} />
-        {!collapsed && (
+        {(!collapsed || mobileOpen) && (
           <>
             <span>{item.label}</span>
             <span className="sidebar__group-chevron"><Icon name="chevron" /></span>
@@ -74,6 +74,7 @@ function SidebarGroup({ item, collapsed }) {
               <NavLink
                 key={c.to}
                 to={c.to}
+                onClick={onNavigate}
                 className={({ isActive }) => `sidebar__sublink ${isActive ? 'is-active' : ''}`}
               >
                 <Icon name={childIcon(c)} />
@@ -89,6 +90,12 @@ function SidebarGroup({ item, collapsed }) {
 
 export default function Sidebar({ links, user, onLogout }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === '1');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const toggle = () => {
     setCollapsed((prev) => {
@@ -102,7 +109,16 @@ export default function Sidebar({ links, user, onLogout }) {
   const roleLabel = { gestor: 'Gestor', analista: 'Analista', tecnico: 'Técnico', cliente: 'Cliente' }[user?.role] || user?.role;
 
   return (
-    <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''}`}>
+    <>
+      <button type="button" className="sidebar-mobile-toggle" onClick={() => setMobileOpen((open) => !open)} aria-label={mobileOpen ? 'Fechar menu' : 'Abrir menu'} aria-expanded={mobileOpen}>
+        {mobileOpen ? (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        ) : (
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        )}
+      </button>
+      {mobileOpen && <button type="button" className="sidebar-mobile-overlay" onClick={() => setMobileOpen(false)} aria-label="Fechar menu" />}
+      <aside className={`sidebar ${collapsed ? 'is-collapsed' : ''} ${mobileOpen ? 'is-mobile-open' : ''}`}>
       <div className="sidebar__brand">
         <img src="/mirontec-logo.jpg" alt="Mirontec" className="sidebar__logo" onError={(e) => { e.target.src = '/mirontec-logo.svg'; }} />
         {!collapsed && (
@@ -116,16 +132,17 @@ export default function Sidebar({ links, user, onLogout }) {
       <nav className="sidebar__nav">
         {links.map((l) => (
           l.children ? (
-            <SidebarGroup key={l.label} item={l} collapsed={collapsed} />
+            <SidebarGroup key={l.label} item={l} collapsed={collapsed && !mobileOpen} onNavigate={() => setMobileOpen(false)} />
           ) : (
             <NavLink
               key={l.to}
               to={l.to}
+              onClick={() => setMobileOpen(false)}
               className={({ isActive }) => `sidebar__link ${isActive ? 'is-active' : ''}`}
               data-tooltip={l.label}
             >
               <Icon name={ICON_BY_PATH[l.to] || 'dashboard'} />
-              {!collapsed && <span>{l.label}</span>}
+              {(!collapsed || mobileOpen) && <span>{l.label}</span>}
             </NavLink>
           )
         ))}
@@ -138,13 +155,13 @@ export default function Sidebar({ links, user, onLogout }) {
           </svg>
         </button>
 
-        <NavLink to="/perfil" className="sidebar__user" data-tooltip="Meu perfil">
+        <NavLink to="/perfil" className="sidebar__user" data-tooltip="Meu perfil" onClick={() => setMobileOpen(false)}>
           {user?.avatar ? (
             <img src={user.avatar} alt="" className="sidebar__avatar sidebar__avatar--photo" />
           ) : (
             <span className="sidebar__avatar">{initials}</span>
           )}
-          {!collapsed && (
+          {(!collapsed || mobileOpen) && (
             <div className="sidebar__user-info">
               <strong>{user?.nome}</strong>
               <span>{roleLabel}</span>
@@ -152,14 +169,15 @@ export default function Sidebar({ links, user, onLogout }) {
           )}
         </NavLink>
 
-        <button type="button" className="sidebar__logout" onClick={onLogout} data-tooltip="Sair">
+        <button type="button" className="sidebar__logout" onClick={() => { setMobileOpen(false); onLogout(); }} data-tooltip="Sair">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
             <path d="M16 17l5-5-5-5M21 12H9" />
           </svg>
-          {!collapsed && <span>Sair</span>}
+          {(!collapsed || mobileOpen) && <span>Sair</span>}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
