@@ -49,6 +49,7 @@ function SidebarGroup({ item, collapsed }) {
   const location = useLocation();
   const isChildActive = item.children.some((c) => location.pathname === c.to);
   const [open, setOpen] = useState(isChildActive);
+  const childIcon = (child) => ICON_BY_PATH[child.to] || 'plus';
 
   return (
     <div className={`sidebar__group ${open ? 'is-open' : ''}`}>
@@ -75,7 +76,7 @@ function SidebarGroup({ item, collapsed }) {
                 to={c.to}
                 className={({ isActive }) => `sidebar__sublink ${isActive ? 'is-active' : ''}`}
               >
-                <Icon name="plus" />
+                <Icon name={childIcon(c)} />
                 <span>{c.label}</span>
               </NavLink>
             ))}

@@ -94,8 +94,13 @@ export default function App() {
       { to: '/milvus-import', label: 'Importar Milvus' }
     ];
     if (role === 'gestor') return [
-      { to: '/dashboard', label: 'Dashboard' },
-      { to: '/reports', label: 'Relatórios' },
+      {
+        label: 'Dashboard',
+        children: [
+          { to: '/dashboard', label: 'Visão geral' },
+          { to: '/reports', label: 'Relatórios' }
+        ]
+      },
       { to: '/requests', label: 'Chamados' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
