@@ -667,6 +667,20 @@ export default function Dashboard() {
       )}
 
       {!loading && role === 'gestor' && (
+        <section className="dashboard-report-topic" aria-labelledby="dashboard-report-title">
+          <div className="dashboard-report-topic__icon" aria-hidden="true">
+            <SectionIcon name="money" />
+          </div>
+          <div className="dashboard-report-topic__content">
+            <span className="page-eyebrow">RELATÓRIOS</span>
+            <h3 id="dashboard-report-title">Relatório de lucro por empresa</h3>
+            <p>Consulte as 10 empresas com maior resultado e abra cada uma para comparar deslocamento, peças e lucro bruto por filial.</p>
+          </div>
+          <Link to="/reports" className="btn btn-primary dashboard-report-topic__button">Ver relatórios</Link>
+        </section>
+      )}
+
+      {!loading && role === 'gestor' && (
         <div className="charts-grid">
           <div className="chart-card">
             <h3>Chamados nos últimos 14 dias</h3>

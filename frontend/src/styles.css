@@ -798,6 +798,38 @@ a:hover {
   margin-top: 30px;
 }
 
+.dashboard-report-topic {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  border: 1px solid rgba(37, 99, 235, .16);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f5f8ff 0%, #ffffff 58%, #effaf4 100%);
+  box-shadow: 0 14px 36px rgba(27, 30, 34, .045);
+}
+
+.dashboard-report-topic__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: var(--azul);
+  color: #fff;
+}
+
+.dashboard-report-topic__icon .section-icon { width: 24px; height: 24px; color: #fff; }
+.dashboard-report-topic__content h3 { margin: 4px 0 5px; font-size: 1.08rem; }
+.dashboard-report-topic__content p { margin: 0; color: #64748b; font-size: .88rem; line-height: 1.5; }
+.dashboard-report-topic__button { white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .dashboard-report-topic { grid-template-columns: auto 1fr; }
+  .dashboard-report-topic__button { grid-column: 1 / -1; width: 100%; }
+}
+
 .panel-card {
   padding: 26px;
   border-radius: 20px;
