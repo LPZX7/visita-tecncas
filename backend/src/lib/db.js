@@ -132,6 +132,10 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_nome TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cpf TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_telefone TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS teve_adicional BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS adicional_descricao TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS custo_adicional REAL NOT NULL DEFAULT 0;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS observacao_final TEXT;
 
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,
@@ -210,6 +214,16 @@ const SCHEMA_SQL = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_milvus_pendentes_status ON milvus_chamados_pendentes(status);
+
+  UPDATE requests AS r
+  SET milvus_codigo = m.milvus_codigo
+  FROM milvus_chamados_pendentes AS m
+  WHERE m.request_id = r.id AND r.milvus_codigo IS NULL;
+
+  UPDATE budgets AS b
+  SET milvus_codigo = r.milvus_codigo
+  FROM requests AS r
+  WHERE b.request_id = r.id AND b.milvus_codigo IS NULL AND r.milvus_codigo IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS visita_aceites (
     id TEXT PRIMARY KEY,
@@ -665,14 +679,15 @@ async function createRequest(request) {
     avaliacao_comentario: null,
     aberto_por: request.aberto_por,
     solicitante_email: request.solicitante_email || null,
+    milvus_codigo: request.milvus_codigo || null,
     criado_em: now(),
     atualizado_em: now(),
     concluded_at: null
   });
   await pool.query(
-    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, criado_em, atualizado_em, concluded_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
-    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.criado_em, row.atualizado_em, row.concluded_at]
+    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, milvus_codigo, criado_em, atualizado_em, concluded_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.milvus_codigo, row.criado_em, row.atualizado_em, row.concluded_at]
   );
   return getRequestById(row.id);
 }

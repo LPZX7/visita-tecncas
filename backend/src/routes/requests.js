@@ -8,12 +8,26 @@ const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 const { syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { buildAutomaticServiceReport, buildCompletionEmail } = require('../lib/visitCompletion');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
 
 const router = express.Router();
 router.use(verifyToken);
+
+async function approvedContextForRequest(requestId) {
+  const budgets = await db.getBudgets();
+  const approved = budgets.find((budget) => budget.request_id === requestId && budget.status === 'Aprovado');
+  if (!approved) return { budget: null, parts: [] };
+
+  const parts = await Promise.all((approved.items || []).map(async (item) => ({
+    nome: (await db.getPartById(item.peca_id))?.nome || 'Peça',
+    quantidade: item.quantidade,
+    valor_unitario: item.valor_unitario
+  })));
+  return { budget: approved, parts };
+}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -120,8 +134,18 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       return res.status(404).json({ error: 'Solicitação não encontrada' });
     }
 
-    const { status, assigned_technician, agendado_para, relatorio_visita } = req.body;
+    const {
+      status,
+      assigned_technician,
+      agendado_para,
+      relatorio_visita,
+      teve_adicional,
+      adicional_descricao,
+      custo_adicional,
+      observacao_final
+    } = req.body;
     const patch = {};
+    let completionContext = null;
 
     const jaTemAceite = await db.getVisitaAceiteByRequestId(request.id);
     if (jaTemAceite && (relatorio_visita !== undefined || assigned_technician !== undefined || agendado_para !== undefined)) {
@@ -139,16 +163,31 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (status === 'Concluída' && !request.hora_checkin) {
           return res.status(400).json({ error: 'Faça o check-in antes de concluir a visita' });
         }
-        if (status === 'Concluída' && !(relatorio_visita || '').trim()) {
-          return res.status(400).json({ error: 'Relatório da visita é obrigatório para concluir o chamado' });
+        if (status === 'Concluída' && request.hora_checkout) {
+          return res.status(409).json({ error: 'Esta visita já foi finalizada' });
+        }
+        if (status === 'Concluída' && typeof teve_adicional !== 'boolean') {
+          return res.status(400).json({ error: 'Informe se houve peça extra ou custo adicional' });
+        }
+        if (status === 'Concluída' && teve_adicional && !(adicional_descricao || '').trim()) {
+          return res.status(400).json({ error: 'Descreva a peça extra ou o custo adicional' });
+        }
+        const additionalCost = Number(custo_adicional || 0);
+        if (status === 'Concluída' && (!Number.isFinite(additionalCost) || additionalCost < 0)) {
+          return res.status(400).json({ error: 'Informe um valor adicional válido' });
         }
         patch.status = status;
         if (status === 'Em Atendimento' && !request.hora_checkin) {
           patch.hora_checkin = new Date().toISOString();
         }
         if (status === 'Concluída') {
+          completionContext = await approvedContextForRequest(request.id);
           patch.hora_checkout = new Date().toISOString();
-          patch.relatorio_visita = relatorio_visita.trim();
+          patch.relatorio_visita = (relatorio_visita || '').trim() || buildAutomaticServiceReport(completionContext.parts);
+          patch.teve_adicional = teve_adicional;
+          patch.adicional_descricao = teve_adicional ? adicional_descricao.trim() : null;
+          patch.custo_adicional = teve_adicional ? additionalCost : 0;
+          patch.observacao_final = (observacao_final || '').trim() || null;
         }
       }
     } else {
@@ -180,7 +219,8 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     if (patch.status) {
       const company = await db.getCompanyById(updated.empresa_id);
-      if (company?.email) {
+      const isTechnicalCompletion = patch.status === 'Concluída' && Boolean(patch.hora_checkout);
+      if (company?.email && !isTechnicalCompletion) {
         sendMail({
           to: company.email,
           subject: `Atualização do chamado — ${updated.status}`,
@@ -195,9 +235,42 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       });
 
       if (patch.status === 'Em Atendimento' && patch.hora_checkin) {
-        syncRequestUpdateToMilvus(updated, { tipo: 'checkin', technician: req.user.name });
-      } else if (patch.status === 'Concluída') {
-        syncRequestUpdateToMilvus(updated, { tipo: 'concluida' });
+        await syncRequestUpdateToMilvus(updated, { tipo: 'checkin', technician: req.user.name });
+      } else if (isTechnicalCompletion) {
+        const [approvedContext, equipment, technician] = await Promise.all([
+          completionContext || approvedContextForRequest(updated.id),
+          db.getEquipmentById(updated.equipamento_id),
+          updated.assigned_technician ? db.getUserById(updated.assigned_technician) : Promise.resolve(null)
+        ]);
+        const unit = approvedContext.budget?.unidade_id
+          ? await db.getUnitById(approvedContext.budget.unidade_id)
+          : null;
+        const approvedParts = approvedContext.parts;
+        const emailDestino = updated.solicitante_email || company?.email;
+        const completionEmail = buildCompletionEmail({
+          request: updated,
+          company,
+          unit,
+          equipment,
+          technician,
+          approvedParts,
+          portalUrl: `${FRONTEND_URL}/requests`
+        });
+
+        await Promise.all([
+          syncRequestUpdateToMilvus(updated, { tipo: 'concluida', approvedParts }),
+          emailDestino
+            ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html })
+            : Promise.resolve()
+        ]);
+
+        await db.logAudit({
+          user: req.user,
+          acao: 'visita_finalizada',
+          entidade: 'request',
+          entidade_id: updated.id,
+          detalhes: `Chamado #${updated.numero} finalizado${updated.teve_adicional ? ` com adicional de R$ ${Number(updated.custo_adicional).toFixed(2)}` : ' sem custo adicional'}${emailDestino ? ` — resumo enviado ao contato do chamado (${emailDestino})` : ' — sem email de destinatário cadastrado'}`
+        });
       }
     }
 

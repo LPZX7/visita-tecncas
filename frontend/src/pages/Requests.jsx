@@ -40,7 +40,15 @@ export default function Requests() {
   const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
   const [drafts, setDrafts] = useState({});
   const [expanded, setExpanded] = useState({});
-  const [reportDrafts, setReportDrafts] = useState({});
+  const [checkoutRequest, setCheckoutRequest] = useState(null);
+  const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [checkoutForm, setCheckoutForm] = useState({
+    teve_adicional: null,
+    adicional_descricao: '',
+    custo_adicional: '',
+    observacao_final: '',
+    confirmar_conclusao: false
+  });
   const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
@@ -215,18 +223,53 @@ export default function Requests() {
     }
   };
 
-  const handleCheckout = async (req) => {
+  const openCheckout = (req) => {
     setError('');
-    const relatorio = reportDrafts[req.id] || '';
-    if (!relatorio.trim()) {
-      setError('Descreva o relatório da visita antes de concluir.');
+    setCheckoutRequest(req);
+    setCheckoutForm({
+      teve_adicional: null,
+      adicional_descricao: '',
+      custo_adicional: '',
+      observacao_final: '',
+      confirmar_conclusao: false
+    });
+  };
+
+  const closeCheckout = () => {
+    if (checkoutSaving) return;
+    setCheckoutRequest(null);
+  };
+
+  const handleCheckout = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (checkoutForm.teve_adicional === null) {
+      setError('Responda se houve peça extra ou custo adicional.');
       return;
     }
+    if (checkoutForm.teve_adicional && !checkoutForm.adicional_descricao.trim()) {
+      setError('Descreva qual peça extra foi usada ou qual custo adicional ocorreu.');
+      return;
+    }
+    if (!checkoutForm.confirmar_conclusao) {
+      setError('Confirme que a visita foi concluída antes de encerrar o chamado.');
+      return;
+    }
+    setCheckoutSaving(true);
     try {
-      await api.patch(`/requests/${req.id}`, { status: 'Concluída', relatorio_visita: relatorio });
+      await api.patch(`/requests/${checkoutRequest.id}`, {
+        status: 'Concluída',
+        teve_adicional: checkoutForm.teve_adicional,
+        adicional_descricao: checkoutForm.teve_adicional ? checkoutForm.adicional_descricao.trim() : null,
+        custo_adicional: checkoutForm.teve_adicional ? Number(checkoutForm.custo_adicional || 0) : 0,
+        observacao_final: checkoutForm.observacao_final.trim() || null
+      });
+      setCheckoutRequest(null);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao concluir visita');
+    } finally {
+      setCheckoutSaving(false);
     }
   };
 
@@ -383,15 +426,7 @@ export default function Requests() {
                       ) : req.hora_checkout ? (
                         <span className="badge badge-concluida">Visita concluída</span>
                       ) : req.hora_checkin ? (
-                        <div className="row-actions" style={{ flexDirection: 'column', alignItems: 'stretch', minWidth: 220 }}>
-                          <textarea
-                            className="form-textarea"
-                            placeholder="Relatório da visita (obrigatório para concluir)"
-                            value={reportDrafts[req.id] || ''}
-                            onChange={(e) => setReportDrafts((prev) => ({ ...prev, [req.id]: e.target.value }))}
-                          />
-                          <button className="btn btn-primary btn-sm" onClick={() => handleCheckout(req)}>Finalizar visita (check-out)</button>
-                        </div>
+                        <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Finalizar atendimento</button>
                       ) : (
                         <button className="btn btn-outline btn-sm" onClick={() => handleCheckin(req)}>Iniciar visita (check-in)</button>
                       )}
@@ -483,6 +518,10 @@ export default function Requests() {
                           <div className="detail-report">
                             <strong>Relatório da visita</strong>
                             <p>{req.relatorio_visita}</p>
+                            <p>Peça ou custo adicional: {req.teve_adicional ? 'Sim' : 'Não'}</p>
+                            {req.teve_adicional && req.adicional_descricao && <p>Adicional informado: {req.adicional_descricao}</p>}
+                            {req.teve_adicional && <p>Valor adicional: {Number(req.custo_adicional || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
+                            {req.observacao_final && <p>Observação do técnico: {req.observacao_final}</p>}
                           </div>
                         )}
                         {req.status === 'Concluída' && (user?.role === 'cliente' || canManage) && (
@@ -507,6 +546,111 @@ export default function Requests() {
         </tbody>
       </table>
       <Pagination page={page} totalPages={Math.max(1, Math.ceil(requests.length / PAGE_SIZE))} onChange={setPage} />
+
+      {checkoutRequest && (
+        <div className="checkout-modal" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && closeCheckout()}>
+          <form className="checkout-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-title" onSubmit={handleCheckout}>
+            <div className="checkout-modal__header">
+              <div>
+                <span className="checkout-modal__eyebrow">FINALIZAÇÃO ASSISTIDA</span>
+                <h3 id="checkout-title">Como foi o atendimento?</h3>
+                <p>Responda só o necessário. O sistema monta o resumo, registra no Milvus e envia ao contato do chamado.</p>
+              </div>
+              <button type="button" className="checkout-modal__close" onClick={closeCheckout} aria-label="Fechar">×</button>
+            </div>
+
+            <div className="checkout-modal__body">
+              <div className="checkout-auto-summary">
+                <strong>Resumo automático</strong>
+                <p>
+                  O sistema usará os dados já aprovados no chamado e as peças previstas
+                  {approvedBudgetFor(checkoutRequest.id)?.items?.length
+                    ? `: ${approvedBudgetFor(checkoutRequest.id).items.map((item) => `${partName(item.peca_id)}${item.quantidade > 1 ? ` (x${item.quantidade})` : ''}`).join(', ')}.`
+                    : '.'}
+                </p>
+              </div>
+
+              <fieldset className="checkout-question checkout-question--choice">
+                <legend><b>1.</b> Foi usada alguma peça a mais ou houve outro custo?</legend>
+                <div className="checkout-choice-grid">
+                  <label className={`checkout-choice ${checkoutForm.teve_adicional === true ? 'checkout-choice--active' : ''}`}>
+                    <input type="radio" name="teve_adicional" checked={checkoutForm.teve_adicional === true} onChange={() => setCheckoutForm({ ...checkoutForm, teve_adicional: true })} />
+                    <span><strong>Sim</strong><small>Quero informar um adicional</small></span>
+                  </label>
+                  <label className={`checkout-choice ${checkoutForm.teve_adicional === false ? 'checkout-choice--active' : ''}`}>
+                    <input type="radio" name="teve_adicional" checked={checkoutForm.teve_adicional === false} onChange={() => setCheckoutForm({ ...checkoutForm, teve_adicional: false, adicional_descricao: '', custo_adicional: '' })} />
+                    <span><strong>Não</strong><small>Não houve valor nem peça extra</small></span>
+                  </label>
+                </div>
+              </fieldset>
+
+              {checkoutForm.teve_adicional === true && (
+                <div className="checkout-additional-fields">
+                  <label className="form-field">
+                    Qual peça ou custo adicional?
+                    <textarea
+                      className="form-textarea"
+                      rows="3"
+                      placeholder="Ex.: 1 cabo de alimentação que não estava no orçamento."
+                      value={checkoutForm.adicional_descricao}
+                      onChange={(e) => setCheckoutForm({ ...checkoutForm, adicional_descricao: e.target.value })}
+                      required
+                    />
+                  </label>
+                  <label className="form-field">
+                    Valor adicional (R$)
+                    <input
+                      className="form-input"
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={checkoutForm.custo_adicional}
+                      onChange={(e) => setCheckoutForm({ ...checkoutForm, custo_adicional: e.target.value })}
+                    />
+                    <small className="checkout-field-help">Se for apenas uma peça sem valor definido, pode deixar em zero.</small>
+                  </label>
+                </div>
+              )}
+
+              {checkoutForm.teve_adicional !== null && (
+                <label className="form-field checkout-question">
+                  <span><b>2.</b> Quer deixar alguma observação? <small>(opcional)</small></span>
+                  <textarea
+                    className="form-textarea"
+                    rows="3"
+                    placeholder="Ex.: Cliente acompanhou os testes e o equipamento ficou funcionando normalmente."
+                    value={checkoutForm.observacao_final}
+                    onChange={(e) => setCheckoutForm({ ...checkoutForm, observacao_final: e.target.value })}
+                  />
+                </label>
+              )}
+
+              {checkoutForm.teve_adicional !== null && (
+                <label className={`checkout-confirm ${checkoutForm.confirmar_conclusao ? 'checkout-confirm--active' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={checkoutForm.confirmar_conclusao}
+                    onChange={(e) => setCheckoutForm({ ...checkoutForm, confirmar_conclusao: e.target.checked })}
+                  />
+                  <span>
+                    <strong>Confirmo que a visita foi concluída com sucesso</strong>
+                    <small>Ao confirmar, o chamado será encerrado no site e no Milvus.</small>
+                  </span>
+                </label>
+              )}
+            </div>
+
+            <div className="checkout-modal__footer">
+              <button type="button" className="btn btn-outline" onClick={closeCheckout} disabled={checkoutSaving}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={checkoutSaving || checkoutForm.teve_adicional === null || !checkoutForm.confirmar_conclusao}>
+                {checkoutSaving ? 'Finalizando e enviando...' : 'Confirmar e finalizar atendimento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

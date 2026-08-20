@@ -2640,6 +2640,195 @@ a:hover {
   border-top: 1px solid var(--border);
 }
 
+.checkout-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(5px);
+}
+
+.checkout-modal__dialog {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.32);
+}
+
+.checkout-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 25px 28px 21px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0f172a, #1e3a5f);
+}
+
+.checkout-modal__header h3 {
+  margin: 4px 0 7px;
+  color: #ffffff;
+  font-size: 1.35rem;
+}
+
+.checkout-modal__header p {
+  max-width: 530px;
+  margin: 0;
+  color: #cbd5e1;
+  font-size: .9rem;
+  line-height: 1.5;
+}
+
+.checkout-modal__eyebrow {
+  color: #93c5fd;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+
+.checkout-modal__close {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 10px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, .08);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.checkout-modal__body {
+  display: grid;
+  gap: 20px;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
+
+.checkout-question {
+  gap: 9px;
+}
+
+.checkout-question > span,
+.checkout-question legend {
+  color: #0f172a;
+  font-size: .95rem;
+}
+
+.checkout-question b {
+  color: #2563eb;
+}
+
+.checkout-question--choice {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.checkout-question--choice legend {
+  margin-bottom: 10px;
+}
+
+.checkout-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.checkout-choice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 15px;
+  border: 1px solid #dbe3ee;
+  border-radius: 13px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.checkout-choice--active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+}
+
+.checkout-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2563eb;
+}
+
+.checkout-choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.checkout-choice small,
+.checkout-field-help {
+  color: #64748b;
+  font-size: .78rem;
+}
+
+.checkout-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  background: #f0fdf4;
+  cursor: pointer;
+}
+
+.checkout-confirm--active {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, .1);
+}
+
+.checkout-confirm input {
+  width: 19px;
+  height: 19px;
+  margin-top: 2px;
+  accent-color: #16a34a;
+}
+
+.checkout-confirm span {
+  display: grid;
+  gap: 3px;
+}
+
+.checkout-confirm strong { color: #14532d; }
+.checkout-confirm small { color: #4b6f59; font-size: .79rem; }
+
+.checkout-additional-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(160px, .75fr);
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #fde68a;
+  border-radius: 14px;
+  background: #fffbeb;
+}
+
+.checkout-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 17px 28px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
 .detail-report strong {
   display: block;
   font-size: 0.78rem;
@@ -3040,6 +3229,15 @@ a:hover {
   .info-list > div { align-items: flex-start; flex-direction: column; gap: 5px; }
   .info-list dd { text-align: left; overflow-wrap: anywhere; }
   .map-embed { min-width: 0; height: 180px; }
+
+  .checkout-modal { align-items: end; padding: 0; }
+  .checkout-modal__dialog { width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; }
+  .checkout-modal__header { padding: 20px 16px 17px; }
+  .checkout-modal__header h3 { font-size: 1.16rem; }
+  .checkout-modal__body { gap: 17px; padding: 19px 15px; }
+  .checkout-choice-grid, .checkout-additional-fields { grid-template-columns: minmax(0, 1fr); }
+  .checkout-modal__footer { padding: 14px 15px; flex-direction: column-reverse; }
+  .checkout-modal__footer .btn { width: 100%; }
 
   .calendar-nav { width: 100%; justify-content: space-between; }
   .calendar-nav__label { min-width: 0; font-size: .76rem; }

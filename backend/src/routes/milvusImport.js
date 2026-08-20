@@ -72,7 +72,8 @@ router.post('/:id/importar', async (req, res, next) => {
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
       aberto_por: req.user.sub,
-      solicitante_email: pendente.cliente_email || null
+      solicitante_email: pendente.cliente_email || null,
+      milvus_codigo: pendente.milvus_codigo
     });
 
     await db.updateMilvusPendente(pendente.id, { status: 'importado', request_id: request.id });
@@ -110,6 +111,7 @@ router.post('/:id/importar', async (req, res, next) => {
       motivo_troca: 'A definir',
       observacoes_tecnicas: null
     }, items);
+    await db.updateBudget(budget.id, { milvus_codigo: pendente.milvus_codigo });
 
     await db.logAudit({
       user: req.user,

@@ -1,6 +1,7 @@
 const db = require('./db');
 const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado } = require('./milvus');
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
+const { buildCompletionSummary } = require('./visitCompletion');
 
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
@@ -70,12 +71,24 @@ async function pushChamadoToMilvus(request, company, opts = {}) {
 
 async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
   if (!process.env.MILVUS_API_TOKEN) return;
-  if (!company?.cnpj) {
-    console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível enviar a visita técnica aprovada (orçamento #${budget.id}) ao Milvus`);
-    return;
-  }
 
   try {
+    const { assunto, descricao } = buildMilvusPayload({ budget, items, request });
+
+    if (budget.milvus_codigo) {
+      await criarAcompanhamento({
+        ticketCodigo: budget.milvus_codigo,
+        descricao: `${assunto}\n\n${descricao}`
+      });
+      console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) atualizada no ticket existente #${budget.milvus_codigo}`);
+      return;
+    }
+
+    if (!company?.cnpj) {
+      console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível enviar a visita técnica aprovada (orçamento #${budget.id}) ao Milvus`);
+      return;
+    }
+
     let clienteToken = company.milvus_cliente_token;
     if (!clienteToken) {
       const cliente = await buscarClientePorDocumento(company.cnpj);
@@ -86,8 +99,6 @@ async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items
       clienteToken = cliente.token;
       await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
     }
-
-    const { assunto, descricao } = buildMilvusPayload({ budget, items, request });
 
     const codigo = await criarChamado({
       clienteToken,
@@ -111,7 +122,7 @@ async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items
 // milvus_codigo), mantém aquele mesmo ticket atualizado conforme o
 // atendimento avança — check-in, check-out e conclusão. Não faz nada se o
 // chamado ainda não tiver orçamento aprovado com ticket no Milvus.
-async function syncRequestUpdateToMilvus(request, { tipo, technician }) {
+async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedParts = [] }) {
   if (!process.env.MILVUS_API_TOKEN) return;
 
   try {
@@ -126,12 +137,12 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician }) {
       });
       console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${aprovado.milvus_codigo}`);
     } else if (tipo === 'concluida') {
-      const relatorio = request.relatorio_visita || 'Sem relatório informado.';
+      const resumo = buildCompletionSummary({ request, approvedParts });
       await criarAcompanhamento({
         ticketCodigo: aprovado.milvus_codigo,
-        descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\nRelatório da visita: ${relatorio}`
+        descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\n${resumo}`
       });
-      await finalizarChamado({ ticketCodigo: aprovado.milvus_codigo, servicoRealizado: relatorio });
+      await finalizarChamado({ ticketCodigo: aprovado.milvus_codigo, servicoRealizado: resumo });
       console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${aprovado.milvus_codigo}`);
     }
   } catch (err) {
