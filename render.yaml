@@ -43,5 +43,3 @@ services:
         sync: false
       - key: MILVUS_API_TOKEN
         sync: false
-      - key: BOMCONTROLE_API_KEY
-        sync: false

@@ -21,10 +21,6 @@ Sistema de gestão de visitas técnicas com perfis Cliente, Técnico, Analista e
 - Configure `CORS_ORIGIN` somente com os endereços autorizados.
 - Contas desativadas e alterações de perfil têm efeito imediato nas requisições autenticadas.
 
-## Estoque BomControle
-
-Configure `BOMCONTROLE_API_KEY` para importar produtos, preço de venda e saldo em estoque. A sincronização ocorre na inicialização, a cada 15 minutos e manualmente pelo botão na tela **Peças**. Na configuração da API Key no BomControle, associe uma tabela de preço e conceda acesso ao módulo de produtos/estoque.
-
 ## Verificação
 
 - Backend: `npm test --prefix backend`

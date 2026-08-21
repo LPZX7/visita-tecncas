@@ -7,7 +7,6 @@ const helmet = require('helmet');
 const routes = require('./routes');
 const { initDb } = require('./lib/db');
 const { syncMilvusChamados } = require('./lib/milvusSync');
-const { syncBomControleParts } = require('./lib/bomControle');
 
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-in-production')) {
@@ -85,15 +84,6 @@ const port = process.env.PORT || 4100;
       setInterval(runMilvusSync, 5 * 60 * 1000);
     }
 
-    if (process.env.BOMCONTROLE_API_KEY) {
-      const runBomControleSync = () => {
-        syncBomControleParts()
-          .then((result) => console.log(`[bomcontrole] ${result.total} produto(s) sincronizado(s)`))
-          .catch((err) => console.error('[bomcontrole] Falha na sincronização:', err.message));
-      };
-      runBomControleSync();
-      setInterval(runBomControleSync, 15 * 60 * 1000);
-    }
   } catch (err) {
     console.error('Falha ao inicializar o banco de dados:', err);
     process.exit(1);
