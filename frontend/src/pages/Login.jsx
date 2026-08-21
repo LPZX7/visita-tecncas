@@ -11,17 +11,22 @@ export default function Login() {
   const redirectTo = params.get('redirect');
   const [error, setError] = useState(expired ? 'Sua sessão expirou. Faça login novamente.' : '');
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSubmitting(true);
     try {
       const res = await api.post('/auth/login', form);
-      setAuth(res.data.token, res.data.user);
+      setAuth(res.data.token, res.data.user, remember);
       navigate(redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao fazer login. Verifique seu email e senha.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -30,7 +35,7 @@ export default function Login() {
       <h1 id="auth-title" className="login-card__headline">Bem-vindo ao Mirontec Service</h1>
       <p className="login-card__lead">Informe seus dados para acessar o portal.</p>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
 
       <form className="login-form" onSubmit={handleSubmit}>
         <div className="form-field input-with-icon">
@@ -42,6 +47,7 @@ export default function Login() {
             id="email"
             className="form-input"
             type="email"
+            autoComplete="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="seuemail@empresa.com.br"
@@ -58,6 +64,7 @@ export default function Login() {
             id="password"
             className="form-input"
             type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             placeholder="Sua senha"
@@ -74,13 +81,13 @@ export default function Login() {
 
         <div className="login-actions">
           <label className="login-actions__remember">
-            <input type="checkbox" /> <span>Lembrar meu acesso</span>
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> <span>Lembrar meu acesso</span>
           </label>
           <Link to="/esqueci-senha" className="inline-link">Esqueci minha senha?</Link>
         </div>
 
-        <button type="submit" className="signin-button">
-          Entrar no sistema
+        <button type="submit" className="signin-button" disabled={submitting} aria-busy={submitting}>
+          {submitting ? 'Entrando...' : 'Entrar no sistema'}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 10 }}>
             <path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

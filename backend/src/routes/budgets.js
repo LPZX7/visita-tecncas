@@ -79,9 +79,31 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
 
-    const request = (await db.getRequests()).find((req) => req.id === request_id);
+    const request = await db.getRequestById(request_id);
     if (!request) {
       return res.status(400).json({ error: 'Solicitação inválida' });
+    }
+    if (request.empresa_id !== empresa_id) {
+      return res.status(400).json({ error: 'A empresa do orçamento não corresponde à solicitação' });
+    }
+    if (req.user.role === 'tecnico' && request.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você não está atribuído a esta solicitação' });
+    }
+    if (unidade_id) {
+      const unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== request.empresa_id) {
+        return res.status(400).json({ error: 'Filial/sede inválida para esta solicitação' });
+      }
+    }
+    const uniquePartIds = new Set();
+    for (const item of items) {
+      if (uniquePartIds.has(item.peca_id)) {
+        return res.status(400).json({ error: 'A mesma peça não pode aparecer mais de uma vez' });
+      }
+      uniquePartIds.add(item.peca_id);
+      if (!item.peca_id || !(await db.getPartById(item.peca_id))) {
+        return res.status(400).json({ error: 'Uma das peças selecionadas é inválida' });
+      }
     }
 
     const validationError = validateVisitaTecnicaFields({ items, motivo_troca, deslocamento });

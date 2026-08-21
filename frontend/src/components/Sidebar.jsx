@@ -60,7 +60,7 @@ function SidebarGroup({ item, collapsed, onNavigate }) {
         data-tooltip={item.label}
       >
         <Icon name={ICON_BY_PATH[item.children[0]?.to] || 'companies'} />
-        {(!collapsed || mobileOpen) && (
+        {!collapsed && (
           <>
             <span>{item.label}</span>
             <span className="sidebar__group-chevron"><Icon name="chevron" /></span>

@@ -1,22 +1,27 @@
 export function getToken() {
-  return localStorage.getItem('token');
+  return sessionStorage.getItem('token') || localStorage.getItem('token');
 }
 
 export function getUser() {
-  const raw = localStorage.getItem('user');
+  const raw = sessionStorage.getItem('user') || localStorage.getItem('user');
   return raw ? JSON.parse(raw) : null;
 }
 
-export function setAuth(token, user) {
-  localStorage.setItem('token', token);
-  localStorage.setItem('user', JSON.stringify(user));
+export function setAuth(token, user, remember = false) {
+  clearAuth();
+  const storage = remember ? localStorage : sessionStorage;
+  storage.setItem('token', token);
+  storage.setItem('user', JSON.stringify(user));
 }
 
 export function setUser(user) {
-  localStorage.setItem('user', JSON.stringify(user));
+  const storage = localStorage.getItem('token') ? localStorage : sessionStorage;
+  storage.setItem('user', JSON.stringify(user));
 }
 
 export function clearAuth() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('user');
 }

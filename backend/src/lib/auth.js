@@ -21,7 +21,7 @@ function signToken(user) {
   );
 }
 
-function verifyToken(req, res, next) {
+async function verifyToken(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Token não fornecido' });
@@ -31,10 +31,24 @@ function verifyToken(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    const user = await db.getUserById(payload.sub);
+    if (!user || !user.ativo) {
+      return res.status(401).json({ error: 'Sessão inválida ou usuário desativado' });
+    }
+    req.user = {
+      ...payload,
+      role: user.role,
+      empresa_id: user.empresa_id || null,
+      unidade_id: user.unidade_id || null,
+      name: user.nome,
+      email: user.email
+    };
     next();
   } catch (err) {
-    res.status(401).json({ error: 'Token inválido' });
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token inválido ou expirado' });
+    }
+    next(err);
   }
 }
 

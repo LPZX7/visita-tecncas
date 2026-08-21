@@ -7,6 +7,7 @@ import AuthLayout from '../components/AuthLayout';
 export default function Signup() {
   const [form, setForm] = useState({ nome: '', email: '', senha: '', confirmarSenha: '' });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -22,12 +23,15 @@ export default function Signup() {
       return;
     }
 
+    setSubmitting(true);
     try {
       const res = await api.post('/auth/signup', { nome: form.nome, email: form.email, senha: form.senha });
       setAuth(res.data.token, res.data.user);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao criar sua conta.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -38,7 +42,7 @@ export default function Signup() {
       <h1 id="auth-title" className="login-card__headline">Criar sua conta</h1>
       <p className="login-card__lead">Cadastre-se para acompanhar seus chamados e orçamentos.</p>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
 
       <form className="login-form" onSubmit={handleSubmit}>
         <div className="form-field">
@@ -47,6 +51,7 @@ export default function Signup() {
             id="nome"
             className="form-input"
             value={form.nome}
+            autoComplete="name"
             onChange={(e) => setForm({ ...form, nome: e.target.value })}
             placeholder="Seu nome"
             required
@@ -59,6 +64,7 @@ export default function Signup() {
             id="signup-email"
             className="form-input"
             type="email"
+            autoComplete="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
             placeholder="seuemail@empresa.com.br"
@@ -72,9 +78,10 @@ export default function Signup() {
             id="signup-senha"
             className="form-input"
             type="password"
+            autoComplete="new-password"
             value={form.senha}
             onChange={(e) => setForm({ ...form, senha: e.target.value })}
-            placeholder="Mínimo 6 caracteres"
+            placeholder="Mínimo 8 caracteres"
             required
             minLength={8}
           />
@@ -86,6 +93,7 @@ export default function Signup() {
             id="confirmar-senha"
             className="form-input"
             type="password"
+            autoComplete="new-password"
             value={form.confirmarSenha}
             onChange={(e) => setForm({ ...form, confirmarSenha: e.target.value })}
             placeholder="Repita a senha"
@@ -94,8 +102,8 @@ export default function Signup() {
           />
         </div>
 
-        <button type="submit" className="signin-button">
-          Cadastre-se agora
+        <button type="submit" className="signin-button" disabled={submitting} aria-busy={submitting}>
+          {submitting ? 'Criando conta...' : 'Cadastre-se agora'}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 10 }}>
             <path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

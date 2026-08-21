@@ -24,6 +24,15 @@ router.post('/', requireRole('gestor'), async (req, res, next) => {
     if (!empresa_id || !modelo || !numero_serie) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
+    if (!(await db.getCompanyById(empresa_id))) {
+      return res.status(400).json({ error: 'Empresa inválida' });
+    }
+    if (unidade_id) {
+      const unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== empresa_id) {
+        return res.status(400).json({ error: 'A filial/sede não pertence à empresa selecionada' });
+      }
+    }
     const equipment = await db.createEquipment({ empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
     res.status(201).json(equipment);
   } catch (err) {
@@ -40,6 +49,15 @@ router.put('/:id', requireRole('gestor'), async (req, res, next) => {
     const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
     if (!empresa_id || !modelo || !numero_serie) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+    }
+    if (!(await db.getCompanyById(empresa_id))) {
+      return res.status(400).json({ error: 'Empresa inválida' });
+    }
+    if (unidade_id) {
+      const unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== empresa_id) {
+        return res.status(400).json({ error: 'A filial/sede não pertence à empresa selecionada' });
+      }
     }
     const updated = await db.updateEquipment(req.params.id, { empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
     res.json(updated);

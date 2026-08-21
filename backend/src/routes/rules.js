@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require('../lib/auth');
 const router = express.Router();
 router.use(verifyToken);
 
-router.get('/', requireRole('gestor', 'analista', 'tecnico', 'cliente'), async (req, res, next) => {
+router.get('/', requireRole('gestor', 'analista', 'tecnico'), async (req, res, next) => {
   try {
     res.json(await db.getPricingRules());
   } catch (err) {

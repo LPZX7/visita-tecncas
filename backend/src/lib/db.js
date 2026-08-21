@@ -93,6 +93,10 @@ const SCHEMA_SQL = `
     atualizado_em TEXT
   );
 
+  ALTER TABLE pecas ADD COLUMN IF NOT EXISTS bomcontrole_id BIGINT;
+  ALTER TABLE pecas ADD COLUMN IF NOT EXISTS sincronizado_em TEXT;
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_pecas_bomcontrole_id ON pecas(bomcontrole_id) WHERE bomcontrole_id IS NOT NULL;
+
   CREATE TABLE IF NOT EXISTS regras_cobranca (
     id TEXT PRIMARY KEY,
     empresa_id TEXT NOT NULL,
@@ -289,6 +293,9 @@ async function seedDefaultAdmin() {
   if (count > 0) return;
   const email = process.env.ADMIN_EMAIL || 'admin@empresa.com';
   const password = process.env.ADMIN_PASSWORD || 'admin123';
+  if (process.env.NODE_ENV === 'production' && (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'change-me-in-production')) {
+    throw new Error('ADMIN_PASSWORD forte é obrigatório para inicializar um banco vazio em produção.');
+  }
   if (!process.env.ADMIN_PASSWORD) {
     console.warn('[aviso] ADMIN_PASSWORD não definido — usando senha padrão insegura "admin123". Configure ADMIN_PASSWORD antes de ir para produção.');
   }
@@ -306,7 +313,27 @@ const DEFAULT_CATRACA_PARTS = [
   { codigo: 'CATR-BRACO', nome: 'Braço da catraca', categoria: 'Catraca', preco_unitario: 200 },
   { codigo: 'CATR-TECLADO', nome: 'Teclado', categoria: 'Catraca', preco_unitario: 150 },
   { codigo: 'CATR-PLACA', nome: 'Placa eletrônica', categoria: 'Catraca', preco_unitario: 350 },
-  { codigo: 'CATR-FONTE', nome: 'Fonte de alimentação', categoria: 'Catraca', preco_unitario: 120 }
+  { codigo: 'CATR-FONTE', nome: 'Fonte de alimentação', categoria: 'Catraca', preco_unitario: 120 },
+  { codigo: 'CATR-BRACO-INOX', nome: 'Braço de catraca em aço inox', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-BRACO-PONTA', nome: 'Ponteira para braço de catraca', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-CUBO', nome: 'Cubo central do mecanismo', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-MOLA', nome: 'Mola de retorno do braço', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-TRAVA', nome: 'Conjunto de trava mecânica', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-SOLENOIDE-12V', nome: 'Solenoide 12V para catraca', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-AMORTECEDOR', nome: 'Amortecedor do mecanismo', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-ROLAMENTO', nome: 'Rolamento do eixo central', categoria: 'Catraca · Mecânica', preco_unitario: 0 },
+  { codigo: 'CATR-SENSOR-GIRO', nome: 'Sensor de giro / passagem', categoria: 'Catraca · Eletrônica', preco_unitario: 0 },
+  { codigo: 'CATR-SENSOR-OPTICO', nome: 'Sensor óptico de posição', categoria: 'Catraca · Eletrônica', preco_unitario: 0 },
+  { codigo: 'CATR-PLACA-CONTROLE', nome: 'Placa controladora de catraca', categoria: 'Catraca · Eletrônica', preco_unitario: 0 },
+  { codigo: 'CATR-LEITOR-PROX', nome: 'Leitor de proximidade RFID', categoria: 'Catraca · Acesso', preco_unitario: 0 },
+  { codigo: 'CATR-LEITOR-BIO', nome: 'Leitor biométrico', categoria: 'Catraca · Acesso', preco_unitario: 0 },
+  { codigo: 'CATR-DISPLAY', nome: 'Display indicador de acesso', categoria: 'Catraca · Eletrônica', preco_unitario: 0 },
+  { codigo: 'CATR-PICTOGRAMA', nome: 'Pictograma luminoso direcional', categoria: 'Catraca · Acabamento', preco_unitario: 0 },
+  { codigo: 'CATR-TAMPA', nome: 'Tampa superior da catraca', categoria: 'Catraca · Acabamento', preco_unitario: 0 },
+  { codigo: 'CATR-CHICOTE', nome: 'Chicote elétrico interno', categoria: 'Catraca · Elétrica', preco_unitario: 0 },
+  { codigo: 'CATR-FUSIVEL', nome: 'Fusível de proteção', categoria: 'Catraca · Elétrica', preco_unitario: 0 },
+  { codigo: 'CATR-BATERIA', nome: 'Bateria de backup', categoria: 'Catraca · Elétrica', preco_unitario: 0 },
+  { codigo: 'CATR-FECHADURA', nome: 'Fechadura para gabinete', categoria: 'Catraca · Acabamento', preco_unitario: 0 }
 ];
 
 // Renomeia peças de um deploy anterior que ainda estejam com o prefixo
@@ -333,7 +360,7 @@ async function seedCatracaParts() {
     if (rows[0]) continue;
     await pool.query(
       'INSERT INTO pecas (id, codigo, nome, categoria, preco_unitario, estoque, fornecedor, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [uuid(), part.codigo, part.nome, part.categoria, part.preco_unitario, 0, VALOR_PROVISORIO_AVISO, now()]
+      [uuid(), part.codigo, part.nome, part.categoria, part.preco_unitario, 0, part.preco_unitario > 0 ? VALOR_PROVISORIO_AVISO : 'Valor a definir', now()]
     );
   }
 }
@@ -604,6 +631,24 @@ async function updatePart(id, patch) {
   if (!existing) return null;
   await updateRow('pecas', id, patch);
   return getPartById(id);
+}
+
+async function upsertBomControlePart(part) {
+  const { rows } = await pool.query('SELECT id FROM pecas WHERE bomcontrole_id = $1', [part.bomcontrole_id]);
+  const sincronizado_em = now();
+  if (rows[0]) {
+    await updateRow('pecas', rows[0].id, {
+      codigo: part.codigo,
+      nome: part.nome,
+      preco_unitario: part.preco_unitario,
+      estoque: part.estoque,
+      sincronizado_em
+    });
+    return { created: false, part: await getPartById(rows[0].id) };
+  }
+  const created = await createPart(part);
+  await updateRow('pecas', created.id, { bomcontrole_id: part.bomcontrole_id, sincronizado_em });
+  return { created: true, part: await getPartById(created.id) };
 }
 
 async function deletePart(id) {
@@ -997,6 +1042,7 @@ module.exports = {
   getPartById,
   createPart,
   updatePart,
+  upsertBomControlePart,
   deletePart,
   getPricingRules,
   getPricingRuleById,

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import api from '../api';
 import { getUser } from '../utils/auth';
 import SearchableSelect from '../components/SearchableSelect';
+import PartCombobox from '../components/PartCombobox';
 
 const emptyForm = { request_id: '', empresa_id: '', unidade_id: '', deslocamento: '', motivo_troca: '', observacoes_tecnicas: '' };
 
@@ -45,6 +46,8 @@ export default function Budgets() {
   const [expanded, setExpanded] = useState({});
   const [itemsAutoFilled, setItemsAutoFilled] = useState(false);
   const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
+  const [addingItem, setAddingItem] = useState(false);
+  const [itemFeedback, setItemFeedback] = useState('');
 
   const canCreate = ['tecnico', 'analista', 'gestor'].includes(user?.role);
   const isStaff = ['tecnico', 'analista', 'gestor'].includes(user?.role);
@@ -76,14 +79,29 @@ export default function Budgets() {
 
   const addItem = () => {
     const part = parts.find((p) => p.id === itemDraft.peca_id);
-    if (!part || !itemDraft.quantidade || itemDraft.quantidade <= 0) return;
-    setItems([...items, { peca_id: part.id, valor_unitario: part.preco_unitario, quantidade: Number(itemDraft.quantidade) }]);
-    setItemDraft({ peca_id: '', quantidade: 1 });
-    setItemsAutoFilled(false);
+    const quantity = Number(itemDraft.quantidade);
+    if (!part || !Number.isInteger(quantity) || quantity <= 0 || addingItem) return;
+    setAddingItem(true);
+    setItemFeedback('');
+    window.setTimeout(() => {
+      setItems((current) => [...current, { peca_id: part.id, valor_unitario: part.preco_unitario, quantidade: quantity }]);
+      setItemDraft({ peca_id: '', quantidade: 1 });
+      setItemsAutoFilled(false);
+      setAddingItem(false);
+      setItemFeedback('Peça adicionada ao orçamento');
+      window.setTimeout(() => setItemFeedback(''), 2500);
+    }, 180);
   };
 
   const removeItem = (idx) => {
     setItems(items.filter((_, i) => i !== idx));
+    setItemsAutoFilled(false);
+  };
+
+  const updateItemQuantity = (idx, value) => {
+    const quantity = Number(value);
+    if (!Number.isInteger(quantity) || quantity <= 0) return;
+    setItems((current) => current.map((item, index) => index === idx ? { ...item, quantidade: quantity } : item));
     setItemsAutoFilled(false);
   };
 
@@ -260,27 +278,31 @@ export default function Budgets() {
           <div className="item-row">
             <label className="form-field">
               Peça
-              <select className="form-select" value={itemDraft.peca_id} onChange={(e) => setItemDraft({ ...itemDraft, peca_id: e.target.value })}>
-                <option value="">Selecione</option>
-                {parts.map((part) => (<option key={part.id} value={part.id}>{part.nome} — R$ {part.preco_unitario.toFixed(2)}</option>))}
-              </select>
+              <PartCombobox value={itemDraft.peca_id} onChange={(id) => setItemDraft({ ...itemDraft, peca_id: id })} parts={parts.filter((part) => !items.some((item) => item.peca_id === part.id) || part.id === itemDraft.peca_id)} />
             </label>
             <label className="form-field">
-              Qtd
-              <input className="form-input" type="number" min="1" value={itemDraft.quantidade} onChange={(e) => setItemDraft({ ...itemDraft, quantidade: e.target.value })} />
+              Quantidade
+              <input className="form-input budget-quantity" type="number" min="1" step="1" inputMode="numeric" value={itemDraft.quantidade} onChange={(e) => setItemDraft({ ...itemDraft, quantidade: e.target.value })} onBlur={() => { if (!Number.isInteger(Number(itemDraft.quantidade)) || Number(itemDraft.quantidade) <= 0) setItemDraft({ ...itemDraft, quantidade: 1 }); }} />
             </label>
-            <button type="button" className="btn btn-outline" onClick={addItem}>Adicionar peça</button>
+            <button type="button" className="btn btn-primary add-part-button" onClick={addItem} disabled={!itemDraft.peca_id || !Number.isInteger(Number(itemDraft.quantidade)) || Number(itemDraft.quantidade) <= 0 || addingItem} aria-busy={addingItem}>
+              <span aria-hidden="true">+</span> {addingItem ? 'Adicionando...' : 'Adicionar peça'}
+            </button>
           </div>
 
+          {itemFeedback && <div className="item-feedback" role="status"><span aria-hidden="true">✓</span> {itemFeedback}</div>}
+
           {items.length > 0 && (
-            <ul className="item-list">
-              {items.map((item, idx) => (
-                <li key={idx}>
-                  <span>{partName(item.peca_id)} × {item.quantidade} — R$ {(item.valor_unitario * item.quantidade).toFixed(2)}</span>
-                  <button type="button" className="btn btn-danger btn-sm" onClick={() => removeItem(idx)}>Remover</button>
-                </li>
-              ))}
-            </ul>
+            <div className="budget-parts-block">
+              <div className="budget-parts-block__title"><span>Peças do orçamento</span><strong>{items.length} item(ns)</strong></div>
+              <div className="budget-parts-table-wrap"><table className="budget-parts-table"><thead><tr><th>Peça</th><th>Qtd.</th><th>Unitário</th><th>Total</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>
+                {items.map((item, idx) => <tr key={`${item.peca_id}-${idx}`}>
+                  <td><strong>{partName(item.peca_id)}</strong><small>{parts.find((part) => part.id === item.peca_id)?.codigo || 'Sem código'}</small></td>
+                  <td><input type="number" min="1" step="1" inputMode="numeric" value={item.quantidade} onChange={(event) => updateItemQuantity(idx, event.target.value)} aria-label={`Quantidade de ${partName(item.peca_id)}`} /></td>
+                  <td>{money(item.valor_unitario)}</td><td><strong>{money(item.valor_unitario * item.quantidade)}</strong></td>
+                  <td><button type="button" className="budget-part-remove" onClick={() => removeItem(idx)} aria-label={`Remover ${partName(item.peca_id)}`} title="Remover peça">×</button></td>
+                </tr>)}
+              </tbody></table></div>
+            </div>
           )}
 
           <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>

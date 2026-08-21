@@ -1,14 +1,35 @@
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
+const { syncBomControleParts, getBomControleSyncStatus } = require('../lib/bomControle');
 
 const router = express.Router();
 router.use(verifyToken);
 
-router.get('/', requireRole('gestor', 'analista', 'tecnico', 'cliente'), async (req, res, next) => {
+router.get('/', requireRole('gestor', 'analista', 'tecnico'), async (req, res, next) => {
   try {
     res.json(await db.getParts());
   } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/bomcontrole/status', requireRole('gestor'), (req, res) => {
+  res.json(getBomControleSyncStatus());
+});
+
+router.post('/bomcontrole/sync', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const result = await syncBomControleParts();
+    await db.logAudit({
+      user: req.user,
+      acao: 'estoque_bomcontrole_sincronizado',
+      entidade: 'pecas',
+      detalhes: `${result.total} produtos processados (${result.created} novos, ${result.updated} atualizados)`
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes('não configurada')) return res.status(503).json({ error: err.message });
     next(err);
   }
 });
