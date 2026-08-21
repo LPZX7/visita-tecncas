@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser } from '../utils/auth';
 import MapLink from '../components/MapLink';
@@ -31,6 +31,7 @@ function formatDateTime(value) {
 export default function Requests() {
   const user = getUser();
   const navigate = useNavigate();
+  const location = useLocation();
   const [requests, setRequests] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
@@ -59,6 +60,7 @@ export default function Requests() {
   const [page, setPage] = useState(1);
   const [liberado, setLiberado] = useState(null);
   const [checkingLiberacao, setCheckingLiberacao] = useState(false);
+  const [highlightedRequestId, setHighlightedRequestId] = useState('');
 
   const isClienteSemEmpresa = user?.role === 'cliente' && !user?.empresa_id;
   const canCreate = ['cliente', 'analista', 'gestor'].includes(user?.role) && !isClienteSemEmpresa;
@@ -96,6 +98,25 @@ export default function Requests() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const targetId = location.hash.startsWith('#request-') ? location.hash.slice('#request-'.length) : '';
+    if (!targetId || requests.length === 0) return undefined;
+    const requestIndex = requests.findIndex((request) => request.id === targetId);
+    if (requestIndex < 0) return undefined;
+
+    setPage(Math.floor(requestIndex / PAGE_SIZE) + 1);
+    setExpanded((current) => ({ ...current, [targetId]: true }));
+    setHighlightedRequestId(targetId);
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`request-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    const highlightTimer = window.setTimeout(() => setHighlightedRequestId(''), 3500);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(highlightTimer);
+    };
+  }, [location.hash, requests]);
 
   useEffect(() => {
     if (user?.role !== 'cliente' || !user?.empresa_id || (companies.length === 0 && units.length === 0)) return;
@@ -466,7 +487,7 @@ export default function Requests() {
             const comp = company(req.empresa_id);
             return (
               <Fragment key={req.id}>
-                <tr>
+                <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
                   <td>{req.descricao}</td>
                   <td>{companyName(req.empresa_id)}</td>
                   <td>{equipmentLabel(req.equipamento_id)}</td>

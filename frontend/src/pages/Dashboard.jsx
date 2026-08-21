@@ -99,6 +99,23 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString('pt-BR');
 }
 
+function localDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function hasValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function overdueDays(dateKey, todayKey) {
+  const scheduled = new Date(`${dateKey}T12:00:00`);
+  const todayDate = new Date(`${todayKey}T12:00:00`);
+  return Math.max(1, Math.round((todayDate - scheduled) / 86400000));
+}
+
 const CLIENT_FILTERS = [
   { key: 'todos', label: 'Todos' },
   { key: 'andamento', label: 'Em andamento' },
@@ -114,10 +131,12 @@ export default function Dashboard() {
   const [equipments, setEquipments] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
   const [selectedDay, setSelectedDay] = useState(null);
+  const [operationalFilter, setOperationalFilter] = useState('overdue');
   const [calCursor, setCalCursor] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -125,7 +144,7 @@ export default function Dashboard() {
   const profile = getUser();
   const navigate = useNavigate();
   const role = profile?.role;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateKey();
 
   const load = async () => {
     setLoading(true);
@@ -143,6 +162,8 @@ export default function Dashboard() {
         setBudgets(budgetsRes.data);
         setUsers(usersRes.data);
         setCompanies(companiesRes.data);
+        setEquipments(equipmentsRes.data);
+        setParts(partsRes.data);
         setMetrics({
           requests: requestsRes.data.length,
           budgets: budgetsRes.data.length,
@@ -163,6 +184,19 @@ export default function Dashboard() {
         setCompanies(companiesRes.data);
         setEquipments(equipmentsRes.data);
         setContracts(contractsRes.data);
+      } else if (role === 'analista') {
+        const [requestsRes, budgetsRes, companiesRes, usersRes, partsRes] = await Promise.all([
+          api.get('/requests'),
+          api.get('/budgets'),
+          api.get('/companies'),
+          api.get('/users'),
+          api.get('/parts')
+        ]);
+        setRequests(requestsRes.data);
+        setBudgets(budgetsRes.data);
+        setCompanies(companiesRes.data);
+        setUsers(usersRes.data);
+        setParts(partsRes.data);
       } else {
         const [requestsRes, budgetsRes] = await Promise.all([api.get('/requests'), api.get('/budgets')]);
         setRequests(requestsRes.data);
@@ -246,6 +280,81 @@ export default function Dashboard() {
   users.forEach((u) => { userNameById[u.id] = u.nome; });
   const companyNameById = {};
   companies.forEach((c) => { companyNameById[c.id] = c.razao_social; });
+
+  // ---------- central operacional para gestor e analista ----------
+  const activeRequests = requests.filter((request) => !['Concluída', 'Cancelada'].includes(request.status));
+  const partsById = {};
+  parts.forEach((part) => { partsById[part.id] = part; });
+  const stockShortagesByRequest = {};
+  budgets.filter((budget) => budget.status === 'Aprovado').forEach((budget) => {
+    const shortages = (budget.items || []).filter((item) => {
+      const part = partsById[item.peca_id];
+      return part && Number(part.estoque || 0) < Number(item.quantidade || 0);
+    }).map((item) => {
+      const part = partsById[item.peca_id];
+      return `${part.nome} (${Number(part.estoque || 0)}/${Number(item.quantidade || 0)})`;
+    });
+    if (shortages.length > 0) {
+      stockShortagesByRequest[budget.request_id] = [
+        ...(stockShortagesByRequest[budget.request_id] || []),
+        ...shortages
+      ];
+    }
+  });
+
+  const overdueRequests = activeRequests
+    .filter((request) => {
+      const scheduledDay = (request.agendado_para || '').slice(0, 10);
+      return scheduledDay && scheduledDay < today;
+    })
+    .sort((a, b) => (a.agendado_para || '').localeCompare(b.agendado_para || ''))
+    .map((request) => ({
+      ...request,
+      operationalReason: `${overdueDays(request.agendado_para.slice(0, 10), today)} dia(s) de atraso`
+    }));
+  const unassignedRequests = activeRequests
+    .filter((request) => !request.assigned_technician)
+    .map((request) => ({ ...request, operationalReason: 'Nenhum técnico definido' }));
+  const waitingPartsRequests = activeRequests
+    .filter((request) => stockShortagesByRequest[request.id]?.length)
+    .map((request) => ({
+      ...request,
+      operationalReason: `Estoque insuficiente: ${[...new Set(stockShortagesByRequest[request.id])].slice(0, 2).join(', ')}`
+    }));
+  const missingEmailRequests = activeRequests
+    .filter((request) => !hasValidEmail(request.solicitante_email))
+    .map((request) => ({ ...request, operationalReason: 'Contato do cliente sem e-mail válido' }));
+  const unsyncedRequests = activeRequests
+    .filter((request) => !request.milvus_codigo)
+    .map((request) => ({ ...request, operationalReason: 'Chamado ainda não vinculado ao Milvus' }));
+  const todayRequests = requests
+    .filter((request) => request.status !== 'Cancelada' && (request.agendado_para || '').slice(0, 10) === today)
+    .sort((a, b) => (a.agendado_para || '').localeCompare(b.agendado_para || ''))
+    .map((request) => ({
+      ...request,
+      operationalReason: request.assigned_technician
+        ? `Técnico: ${userNameById[request.assigned_technician] || 'não identificado'}`
+        : 'Visita de hoje ainda sem técnico'
+    }));
+
+  const operationalQueues = [
+    { key: 'overdue', label: 'Atrasados', description: 'Visitas cuja data já passou', tone: 'danger', icon: 'clock', items: overdueRequests },
+    { key: 'unassigned', label: 'Sem técnico', description: 'Chamados ativos sem técnico', tone: 'warning', icon: 'user', items: unassignedRequests },
+    { key: 'parts', label: 'Aguardando peça', description: 'Estoque abaixo do aprovado', tone: 'purple', icon: 'box', items: waitingPartsRequests },
+    { key: 'email', label: 'Sem e-mail', description: 'Contato precisa ser corrigido', tone: 'rose', icon: 'mail', items: missingEmailRequests },
+    { key: 'milvus', label: 'Não sincronizados', description: 'Sem número de ticket Milvus', tone: 'blue', icon: 'sync', items: unsyncedRequests },
+    { key: 'today', label: 'Visitas hoje', description: 'Agenda operacional do dia', tone: 'success', icon: 'calendar', items: todayRequests }
+  ];
+  const operationalCountsKey = operationalQueues.map((queue) => `${queue.key}:${queue.items.length}`).join('|');
+  const selectedOperationalQueue = operationalQueues.find((queue) => queue.key === operationalFilter) || operationalQueues[0];
+
+  useEffect(() => {
+    if (loading || selectedOperationalQueue.items.length > 0) return;
+    const firstQueueWithItems = operationalQueues.find((queue) => queue.items.length > 0);
+    if (firstQueueWithItems) setOperationalFilter(firstQueueWithItems.key);
+    // Os totais formam uma assinatura estável; os objetos das filas são recriados a cada renderização.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, operationalCountsKey, selectedOperationalQueue.key, selectedOperationalQueue.items.length]);
 
   const calendarDayData = {};
   monthRequests.forEach((r) => {
@@ -598,6 +707,72 @@ export default function Dashboard() {
 
       {loading && <p className="section-text">Carregando…</p>}
 
+      {!loading && ['gestor', 'analista'].includes(role) && (
+        <section className="operations-panel" aria-labelledby="operations-title">
+          <div className="operations-panel__header">
+            <div>
+              <span className="page-eyebrow">CENTRAL OPERACIONAL</span>
+              <h3 id="operations-title">O que precisa de atenção agora</h3>
+              <p>Selecione um indicador para conferir os chamados e agir sem procurar em várias telas.</p>
+            </div>
+            <Link to="/requests" className="btn btn-outline btn-sm">Abrir todos os chamados</Link>
+          </div>
+
+          <div className="operations-grid" aria-label="Indicadores operacionais">
+            {operationalQueues.map((queue) => (
+              <button
+                key={queue.key}
+                type="button"
+                className={`operation-card operation-card--${queue.tone} ${operationalFilter === queue.key ? 'is-active' : ''}`}
+                aria-pressed={operationalFilter === queue.key}
+                onClick={() => setOperationalFilter(queue.key)}
+              >
+                <span className="operation-card__icon" aria-hidden="true"><OperationIcon name={queue.icon} /></span>
+                <span className="operation-card__content">
+                  <strong>{queue.items.length}</strong>
+                  <span>{queue.label}</span>
+                  <small>{queue.description}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="operations-detail" aria-live="polite">
+            <div className="operations-detail__header">
+              <div>
+                <strong>{selectedOperationalQueue.label}</strong>
+                <span>{selectedOperationalQueue.items.length} chamado{selectedOperationalQueue.items.length === 1 ? '' : 's'}</span>
+              </div>
+              {selectedOperationalQueue.items.length > 6 && (
+                <span>Exibindo os 6 primeiros</span>
+              )}
+            </div>
+
+            {selectedOperationalQueue.items.length === 0 ? (
+              <div className="operations-empty">
+                <span aria-hidden="true">✓</span>
+                <p>Nenhuma pendência nesta categoria.</p>
+              </div>
+            ) : (
+              <div className="operations-list">
+                {selectedOperationalQueue.items.slice(0, 6).map((request) => (
+                  <Link key={request.id} to={`/requests#request-${request.id}`} className="operation-row">
+                    <span className="operation-row__number">#{request.numero}</span>
+                    <span className="operation-row__main">
+                      <strong>{companyNameById[request.empresa_id] || 'Empresa não identificada'}</strong>
+                      <small>{request.descricao}</small>
+                    </span>
+                    <span className="operation-row__reason">{request.operationalReason}</span>
+                    <Badge status={request.status} />
+                    <span className="operation-row__arrow" aria-hidden="true">→</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {!loading && role === 'gestor' && (
         <div className="stats-grid">
           <div className="metric-card" style={{ '--stagger': 0 }}>
@@ -854,6 +1029,22 @@ export default function Dashboard() {
         </>
       )}
     </section>
+  );
+}
+
+function OperationIcon({ name }) {
+  const paths = {
+    clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7v5l3.5 2" /></>,
+    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.6-4 2.8-6 6.5-6s5.9 2 6.5 6" /></>,
+    box: <><path d="M4 7.5L12 3l8 4.5v9L12 21l-8-4.5z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="M4 7l8 6 8-6" /></>,
+    sync: <><path d="M20 7h-5V2" /><path d="M4 17h5v5" /><path d="M18.5 5.5A8 8 0 005 8M5.5 18.5A8 8 0 0019 16" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></>
+  };
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
   );
 }
 
