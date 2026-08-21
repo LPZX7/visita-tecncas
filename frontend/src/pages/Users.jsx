@@ -3,7 +3,7 @@ import api from '../api';
 import { getUser } from '../utils/auth';
 import SearchableSelect from '../components/SearchableSelect';
 
-const emptyForm = { nome: '', email: '', senha: '', role: 'cliente', empresa_id: '', unidade_id: '' };
+const emptyForm = { nome: '', email: '', senha: '', role: 'cliente', empresa_id: '', unidade_id: '', milvus_email: '', milvus_nome: '' };
 
 const ROLE_LABEL = {
   cliente: 'Cliente',
@@ -21,7 +21,7 @@ export default function Users() {
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '', unidade_id: '' });
+  const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '', unidade_id: '', milvus_email: '', milvus_nome: '' });
 
   const load = () => {
     api.get('/users').then((res) => setUsers(res.data));
@@ -87,7 +87,13 @@ export default function Users() {
 
   const startEdit = (user) => {
     setEditingId(user.id);
-    setEditDraft({ role: user.role, empresa_id: user.empresa_id || '', unidade_id: user.unidade_id || '' });
+    setEditDraft({
+      role: user.role,
+      empresa_id: user.empresa_id || '',
+      unidade_id: user.unidade_id || '',
+      milvus_email: user.milvus_email || '',
+      milvus_nome: user.milvus_nome || ''
+    });
   };
 
   const saveEdit = async (user) => {
@@ -99,7 +105,11 @@ export default function Users() {
     }
     try {
       const payload = { empresa_id: editDraft.empresa_id || null, unidade_id: editDraft.unidade_id || null };
-      if (isGestor) payload.role = editDraft.role;
+      if (isGestor) {
+        payload.role = editDraft.role;
+        payload.milvus_email = ['tecnico', 'analista'].includes(editDraft.role) ? editDraft.milvus_email.trim() : null;
+        payload.milvus_nome = ['tecnico', 'analista'].includes(editDraft.role) ? editDraft.milvus_nome.trim() : null;
+      }
       await api.patch(`/users/${user.id}`, payload);
       setEditingId(null);
       load();
@@ -129,6 +139,32 @@ export default function Users() {
           </label>
         ) : (
           <p className="section-text">Como analista, você só pode cadastrar usuários do tipo <strong>Cliente</strong>. Técnicos, analistas e gestores são cadastrados pelo gestor.</p>
+        )}
+        {isGestor && ['tecnico', 'analista'].includes(form.role) && (
+          <div className="milvus-user-fields">
+            <label className="form-field">
+              Nome exibido no Milvus
+              <input
+                className="form-input"
+                value={form.milvus_nome}
+                onChange={(e) => setForm({ ...form, milvus_nome: e.target.value })}
+                placeholder="Ex.: Felipe Matias Miron"
+                required
+              />
+            </label>
+            <label className="form-field">
+              E-mail do usuário no Milvus
+              <input
+                className="form-input"
+                type="email"
+                value={form.milvus_email}
+                onChange={(e) => setForm({ ...form, milvus_email: e.target.value })}
+                placeholder="usuario@mirontec.com.br"
+                required
+              />
+            </label>
+            <span className="form-hint">Copie o nome e o e-mail exatamente como aparecem no cadastro do Milvus. O sistema usa esses dados para atribuir o chamado à pessoa certa.</span>
+          </div>
         )}
         {(isGestor ? form.role === 'cliente' : true) && (
           <>
@@ -167,6 +203,7 @@ export default function Users() {
             <th>Nome</th>
             <th>Email</th>
             <th>Perfil</th>
+            <th>Milvus</th>
             <th>Empresa</th>
             <th>Filial / Sede</th>
             <th>Status</th>
@@ -188,6 +225,32 @@ export default function Users() {
                   </select>
                 ) : (
                   ROLE_LABEL[user.role] || user.role
+                )}
+              </td>
+              <td>
+                {editingId === user.id && isGestor && ['tecnico', 'analista'].includes(editDraft.role) ? (
+                  <div className="milvus-user-fields milvus-user-fields--compact">
+                    <input
+                      className="form-input"
+                      value={editDraft.milvus_nome}
+                      onChange={(e) => setEditDraft({ ...editDraft, milvus_nome: e.target.value })}
+                      placeholder="Nome exibido no Milvus"
+                    />
+                    <input
+                      className="form-input"
+                      type="email"
+                      value={editDraft.milvus_email}
+                      onChange={(e) => setEditDraft({ ...editDraft, milvus_email: e.target.value })}
+                      placeholder="E-mail cadastrado no Milvus"
+                    />
+                  </div>
+                ) : user.milvus_email ? (
+                  <span className="milvus-user-link">
+                    <span className="status-dot status-dot--green" />
+                    <span><strong>{user.milvus_nome || user.nome}</strong><small>{user.milvus_email}</small></span>
+                  </span>
+                ) : (
+                  <span className="detail-muted">Não vinculado</span>
                 )}
               </td>
               <td>

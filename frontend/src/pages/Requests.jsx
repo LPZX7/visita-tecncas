@@ -36,6 +36,7 @@ export default function Requests() {
   const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [analysts, setAnalysts] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [parts, setParts] = useState([]);
   const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal', solicitante_email: '' });
@@ -79,7 +80,10 @@ export default function Requests() {
     api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
     api.get('/equipments').then((res) => setEquipments(res.data)).catch(() => {});
     if (canManage) {
-      api.get('/users').then((res) => setTechnicians(res.data.filter((u) => u.role === 'tecnico'))).catch(() => {});
+      api.get('/users').then((res) => {
+        setTechnicians(res.data.filter((u) => u.role === 'tecnico'));
+        setAnalysts(res.data.filter((u) => u.role === 'analista'));
+      }).catch(() => {});
     }
     if (isTech) {
       api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
@@ -115,7 +119,14 @@ export default function Requests() {
     const eq = equipment(id);
     return eq ? `${eq.modelo} — ${eq.numero_serie}` : '—';
   };
-  const technicianName = (id) => technicians.find((t) => t.id === id)?.nome || (id ? id : 'Não atribuído');
+  const technicianName = (id) => {
+    const technician = technicians.find((item) => item.id === id);
+    return technician?.milvus_nome || technician?.nome || (id ? id : 'Não atribuído');
+  };
+  const analystName = (id) => {
+    const analyst = analysts.find((item) => item.id === id);
+    return analyst?.milvus_nome || analyst?.nome || (id ? id : 'Não atribuído');
+  };
   const partName = (id) => parts.find((p) => p.id === id)?.nome || 'Peça';
   const approvedBudgetFor = (requestId) => budgets.find((b) => b.request_id === requestId && b.status === 'Aprovado');
 
@@ -193,6 +204,7 @@ export default function Requests() {
 
   const draftFor = (req) => drafts[req.id] || {
     status: req.status,
+    assigned_analyst: req.assigned_analyst || '',
     assigned_technician: req.assigned_technician || '',
     agendado_para: req.agendado_para || ''
   };
@@ -205,8 +217,10 @@ export default function Requests() {
     const draft = draftFor(req);
     await api.patch(`/requests/${req.id}`, {
       status: draft.status,
+      assigned_analyst: draft.assigned_analyst || null,
       assigned_technician: draft.assigned_technician || null,
-      agendado_para: draft.agendado_para || null
+      agendado_para: draft.agendado_para || null,
+      sincronizar_responsaveis_milvus: true
     });
     setDrafts((prev) => {
       const next = { ...prev };
@@ -438,7 +452,7 @@ export default function Requests() {
             <th>Equipamento</th>
             <th>Milvus</th>
             <th>Status</th>
-            <th>Técnico</th>
+            <th>Responsáveis</th>
             <th></th>
             {(canManage || isTech) && <th></th>}
           </tr>
@@ -458,7 +472,10 @@ export default function Requests() {
                   <td>{equipmentLabel(req.equipamento_id)}</td>
                   <td>{req.milvus_codigo ? <span className="badge badge-aprovado">#{req.milvus_codigo}</span> : <span className="badge badge-rejeitado">Não vinculado</span>}</td>
                   <td><span className={badgeClass(req.status)}>{req.status}</span></td>
-                  <td>{technicianName(req.assigned_technician)}</td>
+                  <td>
+                    <span className="request-assignee"><small>Analista</small>{analystName(req.assigned_analyst)}</span>
+                    <span className="request-assignee"><small>Técnico</small>{technicianName(req.assigned_technician)}</span>
+                  </td>
                   <td>
                     <button className="btn btn-outline btn-sm" onClick={() => toggleExpanded(req.id)}>
                       {isOpen ? 'Ocultar' : 'Detalhes'}
@@ -467,15 +484,31 @@ export default function Requests() {
                   {canManage && (
                     <td>
                       <div className="row-actions">
-                        <select className="form-select" value={draft.assigned_technician} onChange={(e) => setDraft(req, { assigned_technician: e.target.value })}>
-                          <option value="">Sem técnico</option>
-                          {technicians.map((tech) => (<option key={tech.id} value={tech.id}>{tech.nome}</option>))}
-                        </select>
+                        <div className="request-assignment-fields">
+                          <label>
+                            <span>Analista no Milvus</span>
+                            <select className="form-select" value={draft.assigned_analyst} onChange={(e) => setDraft(req, { assigned_analyst: e.target.value })}>
+                              <option value="">Sem analista</option>
+                              {analysts.filter((analyst) => analyst.ativo && analyst.milvus_email && analyst.milvus_nome).map((analyst) => (
+                                <option key={analyst.id} value={analyst.id}>{analyst.milvus_nome}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>Técnico no Milvus</span>
+                            <select className="form-select" value={draft.assigned_technician} onChange={(e) => setDraft(req, { assigned_technician: e.target.value })}>
+                              <option value="">Sem técnico</option>
+                              {technicians.filter((tech) => tech.ativo && tech.milvus_email && tech.milvus_nome).map((tech) => (
+                                <option key={tech.id} value={tech.id}>{tech.milvus_nome}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                         <input className="form-input" type="date" value={draft.agendado_para ? draft.agendado_para.slice(0, 10) : ''} onChange={(e) => setDraft(req, { agendado_para: e.target.value })} />
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>
-                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)}>Salvar</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)}>Salvar e sincronizar</button>
                         {isGestor && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(req)}>Excluir</button>}
                       </div>
                     </td>

@@ -1,5 +1,12 @@
 const db = require('./db');
-const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado } = require('./milvus');
+const {
+  listarChamadosVisitaTecnica,
+  buscarClientePorDocumento,
+  criarChamado,
+  atualizarResponsavelChamado,
+  criarAcompanhamento,
+  finalizarChamado
+} = require('./milvus');
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 const { buildCompletionSummary } = require('./visitCompletion');
 const { isValidEmail, normalizeEmail } = require('./contact');
@@ -66,6 +73,10 @@ async function ensureRequestInMilvus(request, company, opts = {}) {
   const equipmentLabel = opts.equipment
     ? `${opts.equipment.modelo || 'Equipamento'}${opts.equipment.numero_serie ? ` — série ${opts.equipment.numero_serie}` : ''}`
     : 'não informado';
+  const assigneeEmail = normalizeEmail(opts.assignee?.milvus_email || opts.tecnicoEmail);
+  if (opts.assignee && !isValidEmail(assigneeEmail)) {
+    throw milvusError(`O usuário ${opts.assignee.nome} ainda não está vinculado ao cadastro correspondente no Milvus.`, 422);
+  }
   const descricao = [
     'Chamado aberto automaticamente pelo sistema Mirontec.',
     '',
@@ -86,7 +97,8 @@ async function ensureRequestInMilvus(request, company, opts = {}) {
     descricao,
     email,
     telefone: opts.telefone || company.telefone,
-    contato: opts.contato || company.responsavel
+    contato: opts.contato || company.responsavel,
+    tecnicoEmail: assigneeEmail || null
   });
 
   if (!codigo) {
@@ -95,6 +107,44 @@ async function ensureRequestInMilvus(request, company, opts = {}) {
   const updated = await db.updateRequest(request.id, { milvus_codigo: String(codigo), solicitante_email: email });
   console.log(`[milvus] Chamado #${request.numero} vinculado ao ticket #${codigo}`);
   return updated;
+}
+
+async function syncRequestAssigneeToMilvus(request, { analyst, technician } = {}) {
+  if (!request?.milvus_codigo) {
+    throw milvusError('O chamado ainda não está vinculado ao Milvus.', 409);
+  }
+  if (!process.env.MILVUS_API_TOKEN) {
+    throw milvusError('A integração com o Milvus não está configurada.', 503);
+  }
+
+  const responsible = technician || analyst || null;
+  if (responsible && (!isValidEmail(responsible.milvus_email) || !responsible.milvus_nome?.trim())) {
+    throw milvusError(`O usuário ${responsible.nome} ainda não está vinculado ao cadastro correspondente no Milvus.`, 422);
+  }
+
+  let resolvedMilvusId;
+  try {
+    resolvedMilvusId = await atualizarResponsavelChamado({
+      ticketCodigo: request.milvus_codigo,
+      ticketId: request.milvus_id,
+      tecnicoNome: responsible?.milvus_nome || ''
+    });
+  } catch (error) {
+    throw milvusError(`Não foi possível atribuir ${responsible?.nome || 'o responsável'} ao ticket #${request.milvus_codigo} no Milvus. Confira o vínculo do usuário e tente novamente.`, 502);
+  }
+  if (!request.milvus_id && resolvedMilvusId) {
+    await db.updateRequest(request.id, { milvus_id: resolvedMilvusId });
+  }
+
+  const lines = ['Responsáveis atualizados automaticamente pelo portal Mirontec.'];
+  if (analyst) lines.push(`Analista: ${analyst.nome}.`);
+  if (technician) lines.push(`Técnico de campo: ${technician.nome}.`);
+  if (!analyst && !technician) lines.push('Chamado sem responsável atribuído no portal.');
+  try {
+    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n'), privado: true });
+  } catch (error) {
+    console.warn(`[milvus] Responsável do ticket #${request.milvus_codigo} atualizado, mas o acompanhamento não foi criado: ${error.message}`);
+  }
 }
 
 async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
@@ -162,4 +212,10 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
   }
 }
 
-module.exports = { syncMilvusChamados, ensureRequestInMilvus, pushVisitaTecnicaAprovadaToMilvus, syncRequestUpdateToMilvus };
+module.exports = {
+  syncMilvusChamados,
+  ensureRequestInMilvus,
+  syncRequestAssigneeToMilvus,
+  pushVisitaTecnicaAprovadaToMilvus,
+  syncRequestUpdateToMilvus
+};

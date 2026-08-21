@@ -62,7 +62,7 @@ async function buscarClientePorDocumento(cnpjCpf) {
   return (data.lista && data.lista[0]) || null;
 }
 
-async function criarChamado({ clienteToken, assunto, descricao, email, telefone, contato }) {
+async function criarChamado({ clienteToken, assunto, descricao, email, telefone, contato, tecnicoEmail }) {
   const token = getToken();
   if (!token) return null;
 
@@ -76,6 +76,7 @@ async function criarChamado({ clienteToken, assunto, descricao, email, telefone,
       chamado_email: email || 'contato@mirontec.com.br',
       chamado_telefone: telefone || '',
       chamado_contato: contato || 'Sistema Mirontec',
+      ...(tecnicoEmail ? { chamado_tecnico: tecnicoEmail } : {}),
       chamado_categoria_primaria: CATEGORIA_PRIMARIA_VISITA_TECNICA,
       chamado_categoria_secundaria: CATEGORIA_VISITA_TECNICA,
       categoria_id: CATEGORIA_ID_VISITA_TECNICA
@@ -87,6 +88,47 @@ async function criarChamado({ clienteToken, assunto, descricao, email, telefone,
     throw new Error(`Milvus criarChamado falhou (${res.status}): ${text.slice(0, 200)}`);
   }
   return text.trim().replace(/^"|"$/g, '');
+}
+
+async function buscarChamadoPorCodigo(ticketCodigo) {
+  const token = getToken();
+  if (!token || !ticketCodigo) return null;
+
+  const res = await fetch(`${BASE_URL}/chamado/listagem?total_registros=50`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({ filtro_body: { codigo: String(ticketCodigo), status: 'Todos' } })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Milvus buscarChamadoPorCodigo falhou (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return (data.lista || []).find((ticket) => String(ticket.codigo) === String(ticketCodigo)) || null;
+}
+
+async function atualizarResponsavelChamado({ ticketCodigo, ticketId, tecnicoNome }) {
+  const token = getToken();
+  if (!token || !ticketCodigo) return;
+
+  const resolvedTicketId = ticketId || (await buscarChamadoPorCodigo(ticketCodigo))?.id;
+  if (!resolvedTicketId) {
+    throw new Error(`O ticket #${ticketCodigo} não foi localizado no Milvus para atualizar o responsável.`);
+  }
+
+  const res = await fetch(`${BASE_URL}/chamado/atualizar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: token },
+    body: JSON.stringify({
+      chamado_ids: String(resolvedTicketId),
+      chamado_tecnico: tecnicoNome || ''
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Milvus atualizarResponsavelChamado falhou (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return String(resolvedTicketId);
 }
 
 async function criarAcompanhamento({ ticketCodigo, descricao, privado = false }) {
@@ -128,4 +170,13 @@ async function finalizarChamado({ ticketCodigo, servicoRealizado }) {
   }
 }
 
-module.exports = { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado, CATEGORIA_VISITA_TECNICA };
+module.exports = {
+  listarChamadosVisitaTecnica,
+  buscarClientePorDocumento,
+  buscarChamadoPorCodigo,
+  criarChamado,
+  atualizarResponsavelChamado,
+  criarAcompanhamento,
+  finalizarChamado,
+  CATEGORIA_VISITA_TECNICA
+};

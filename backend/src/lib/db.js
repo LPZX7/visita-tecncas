@@ -62,6 +62,14 @@ const SCHEMA_SQL = `
   ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS liberado_para_chamado INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS milvus_email TEXT;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS milvus_nome TEXT;
+  UPDATE users SET milvus_email = lower(email)
+  WHERE milvus_email IS NULL AND role IN ('tecnico', 'analista');
+  UPDATE users SET milvus_nome = nome
+  WHERE milvus_nome IS NULL AND role IN ('tecnico', 'analista');
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_milvus_email
+  ON users(lower(milvus_email)) WHERE milvus_email IS NOT NULL;
 
   ALTER TABLE empresas ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
   ALTER TABLE empresas ALTER COLUMN endereco DROP NOT NULL;
@@ -130,6 +138,7 @@ const SCHEMA_SQL = `
   );
 
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_id TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cliente TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS data_aprovacao_cliente TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS solicitante_email TEXT;
@@ -140,7 +149,10 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS adicional_descricao TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS custo_adicional REAL NOT NULL DEFAULT 0;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS observacao_final TEXT;
-
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS assigned_analyst TEXT;
+  UPDATE requests AS r SET assigned_analyst = r.aberto_por
+  FROM users AS u
+  WHERE r.assigned_analyst IS NULL AND r.aberto_por = u.id AND u.role = 'analista';
   CREATE TABLE IF NOT EXISTS budgets (
     id TEXT PRIMARY KEY,
     request_id TEXT NOT NULL REFERENCES requests(id),
@@ -223,6 +235,11 @@ const SCHEMA_SQL = `
   SET milvus_codigo = m.milvus_codigo
   FROM milvus_chamados_pendentes AS m
   WHERE m.request_id = r.id AND r.milvus_codigo IS NULL;
+
+  UPDATE requests AS r
+  SET milvus_id = m.milvus_id
+  FROM milvus_chamados_pendentes AS m
+  WHERE m.request_id = r.id AND r.milvus_id IS NULL AND m.milvus_id IS NOT NULL;
 
   UPDATE budgets AS b
   SET milvus_codigo = r.milvus_codigo
@@ -461,11 +478,16 @@ async function findUserByEmail(email) {
   return toUser(rows[0] || null);
 }
 
-async function createUser({ nome, email, senha_hash, role, empresa_id = null, unidade_id = null, ativo = true }) {
-  const user = { id: uuid(), nome, email, senha_hash, role, empresa_id, unidade_id, ativo: ativo ? 1 : 0, criado_em: now() };
+async function findUserByMilvusEmail(email) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE lower(milvus_email) = lower($1)', [email || '']);
+  return toUser(rows[0] || null);
+}
+
+async function createUser({ nome, email, senha_hash, role, empresa_id = null, unidade_id = null, milvus_email = null, milvus_nome = null, ativo = true }) {
+  const user = { id: uuid(), nome, email, senha_hash, role, empresa_id, unidade_id, milvus_email, milvus_nome, ativo: ativo ? 1 : 0, criado_em: now() };
   await pool.query(
-    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, unidade_id, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-    [user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.unidade_id, user.ativo, user.criado_em]
+    'INSERT INTO users (id, nome, email, senha_hash, role, empresa_id, unidade_id, milvus_email, milvus_nome, ativo, criado_em) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+    [user.id, user.nome, user.email, user.senha_hash, user.role, user.empresa_id, user.unidade_id, user.milvus_email, user.milvus_nome, user.ativo, user.criado_em]
   );
   return toUser(user);
 }
@@ -480,12 +502,13 @@ async function updateUser(id, patch) {
   return getUserById(id);
 }
 
-// aberto_por/assigned_technician (requests) e draft_by (budgets) não têm FK
+// aberto_por/assigned_analyst/assigned_technician (requests) e draft_by
+// (budgets) não têm FK
 // de banco para users — checamos na aplicação para não deixar chamado ou
 // orçamento com um autor/técnico "órfão" ao excluir o usuário.
 async function deleteUser(id) {
   const { rows: reqRows } = await pool.query(
-    'SELECT COUNT(*) AS n FROM requests WHERE aberto_por = $1 OR assigned_technician = $1',
+    'SELECT COUNT(*) AS n FROM requests WHERE aberto_por = $1 OR assigned_analyst = $1 OR assigned_technician = $1',
     [id]
   );
   if (Number(reqRows[0].n) > 0) return { deleted: false, blocked: true };
@@ -715,7 +738,8 @@ async function createRequest(request) {
     urgencia: request.urgencia || 'Normal',
     endereco: request.endereco || '',
     status: 'Aberta',
-    assigned_technician: null,
+    assigned_analyst: request.assigned_analyst || null,
+    assigned_technician: request.assigned_technician || null,
     agendado_para: null,
     hora_checkin: null,
     hora_checkout: null,
@@ -725,14 +749,15 @@ async function createRequest(request) {
     aberto_por: request.aberto_por,
     solicitante_email: request.solicitante_email || null,
     milvus_codigo: request.milvus_codigo || null,
+    milvus_id: request.milvus_id || null,
     criado_em: now(),
     atualizado_em: now(),
     concluded_at: null
   });
   await pool.query(
-    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, milvus_codigo, criado_em, atualizado_em, concluded_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
-    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.milvus_codigo, row.criado_em, row.atualizado_em, row.concluded_at]
+    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_analyst, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, milvus_codigo, milvus_id, criado_em, atualizado_em, concluded_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_analyst, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.milvus_codigo, row.milvus_id, row.criado_em, row.atualizado_em, row.concluded_at]
   );
   return getRequestById(row.id);
 }
@@ -1020,6 +1045,7 @@ module.exports = {
   getUsers,
   getUserById,
   findUserByEmail,
+  findUserByMilvusEmail,
   createUser,
   updateUser,
   deleteUser,

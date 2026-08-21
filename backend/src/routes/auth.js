@@ -5,6 +5,7 @@ const { signToken, comparePassword, hashPassword } = require('../lib/auth');
 const { requireRole, verifyToken } = require('../lib/auth');
 const { signResetToken, verifyResetToken } = require('../lib/resetToken');
 const { sendMail, actionEmailHtml } = require('../lib/mailer');
+const { isValidEmail, normalizeEmail } = require('../lib/contact');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const MIN_SENHA_LENGTH = 8;
@@ -112,7 +113,7 @@ router.patch('/me', verifyToken, async (req, res, next) => {
 
 router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    const { nome, email, senha, role, empresa_id, unidade_id, ativo = true } = req.body;
+    const { nome, email, senha, role, empresa_id, unidade_id, milvus_email, milvus_nome, ativo = true } = req.body;
     if (!nome || !email || !senha || !role) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
     }
@@ -126,6 +127,18 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
 
     if (await db.findUserByEmail(email)) {
       return res.status(400).json({ error: 'Email já cadastrado' });
+    }
+
+    const normalizedMilvusEmail = normalizeEmail(milvus_email);
+    const normalizedMilvusName = String(milvus_nome || '').trim();
+    if (['tecnico', 'analista'].includes(role) && !isValidEmail(normalizedMilvusEmail)) {
+      return res.status(400).json({ error: 'Informe o e-mail correspondente ao cadastro deste usuário no Milvus' });
+    }
+    if (['tecnico', 'analista'].includes(role) && !normalizedMilvusName) {
+      return res.status(400).json({ error: 'Informe o nome exibido para este usuário no Milvus' });
+    }
+    if (normalizedMilvusEmail && await db.findUserByMilvusEmail(normalizedMilvusEmail)) {
+      return res.status(409).json({ error: 'Este usuário do Milvus já está vinculado a outra conta' });
     }
 
     if (unidade_id) {
@@ -143,7 +156,17 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
     }
 
     const senha_hash = await hashPassword(senha);
-    const user = await db.createUser({ nome, email, senha_hash, role, empresa_id: empresa_id || null, unidade_id: unidade_id || null, ativo });
+    const user = await db.createUser({
+      nome,
+      email,
+      senha_hash,
+      role,
+      empresa_id: empresa_id || null,
+      unidade_id: unidade_id || null,
+      milvus_email: normalizedMilvusEmail || null,
+      milvus_nome: normalizedMilvusName || null,
+      ativo
+    });
     await db.logAudit({
       user: req.user,
       acao: 'usuario_criado',

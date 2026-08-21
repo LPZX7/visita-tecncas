@@ -7,7 +7,7 @@ const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
-const { ensureRequestInMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 
@@ -141,6 +141,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
 
     const company = await db.getCompanyById(empresa_id);
     const unit = equipment.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+    const actorUser = requesterUser || await db.getUserById(req.user.sub);
     const contactEmail = resolveContactEmail({ provided: solicitante_email, unit, company, user: requesterUser || req.user });
     if (!isValidEmail(contactEmail)) {
       return res.status(400).json({ error: 'Informe um e-mail válido do cliente. Ele é obrigatório para criar e acompanhar o chamado no Milvus.' });
@@ -157,6 +158,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
       aberto_por: req.user.sub,
+      assigned_analyst: actorUser?.role === 'analista' ? actorUser.id : null,
       solicitante_email: contactEmail
     };
 
@@ -166,7 +168,8 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
         email: contactEmail,
         telefone: unit?.telefone || company.telefone,
         contato: unit?.responsavel || company.responsavel || requesterUser?.nome || req.user.name,
-        equipment
+        equipment,
+        assignee: actorUser?.role === 'analista' ? actorUser : null
       });
     } catch (err) {
       await db.deleteRequest(created.id);
@@ -211,12 +214,16 @@ router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, n
     const company = await db.getCompanyById(request.empresa_id);
     const equipment = await db.getEquipmentById(request.equipamento_id);
     const unit = equipment?.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+    const actorUser = await db.getUserById(req.user.sub);
     const contactEmail = resolveContactEmail({ provided: req.body.solicitante_email, request, unit, company });
     if (!isValidEmail(contactEmail)) {
       return res.status(400).json({ error: 'Informe um e-mail válido do cliente para criar o chamado no Milvus.' });
     }
 
-    request = await db.updateRequest(request.id, { solicitante_email: contactEmail });
+    request = await db.updateRequest(request.id, {
+      solicitante_email: contactEmail,
+      ...(actorUser?.role === 'analista' && !request.assigned_analyst ? { assigned_analyst: actorUser.id } : {})
+    });
     if (!company.email) {
       await db.updateCompany(company.id, { email: contactEmail });
       company.email = contactEmail;
@@ -225,7 +232,8 @@ router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, n
       email: contactEmail,
       telefone: unit?.telefone || company.telefone,
       contato: unit?.responsavel || company.responsavel,
-      equipment
+      equipment,
+      assignee: actorUser?.role === 'analista' ? actorUser : null
     });
     const emailConfirmationSent = await sendMilvusConfirmationEmail(linked, company, equipment);
     await db.logAudit({
@@ -254,13 +262,15 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     const {
       status,
+      assigned_analyst,
       assigned_technician,
       agendado_para,
       relatorio_visita,
       teve_adicional,
       adicional_descricao,
       custo_adicional,
-      observacao_final
+      observacao_final,
+      sincronizar_responsaveis_milvus
     } = req.body;
     const patch = {};
     let completionContext = null;
@@ -270,7 +280,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const jaTemAceite = await db.getVisitaAceiteByRequestId(request.id);
-    if (jaTemAceite && (relatorio_visita !== undefined || assigned_technician !== undefined || agendado_para !== undefined)) {
+    if (jaTemAceite && (relatorio_visita !== undefined || assigned_analyst !== undefined || assigned_technician !== undefined || agendado_para !== undefined)) {
       return res.status(409).json({ error: 'Esta visita já tem um termo de conclusão assinado pelo cliente — os dados do atendimento não podem ser alterados diretamente. Fale com o desenvolvedor do sistema se precisar corrigir algo.' });
     }
 
@@ -319,11 +329,26 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         }
         patch.status = status;
       }
+      if (assigned_analyst !== undefined) {
+        if (assigned_analyst) {
+          const analyst = await db.getUserById(assigned_analyst);
+          if (!analyst || analyst.role !== 'analista' || !analyst.ativo) {
+            return res.status(400).json({ error: 'Analista inválido ou inativo' });
+          }
+          if (!isValidEmail(analyst.milvus_email) || !analyst.milvus_nome?.trim()) {
+            return res.status(422).json({ error: `O analista ${analyst.nome} ainda não está vinculado ao Milvus` });
+          }
+        }
+        patch.assigned_analyst = assigned_analyst || null;
+      }
       if (assigned_technician !== undefined) {
         if (assigned_technician) {
           const tech = await db.getUserById(assigned_technician);
-          if (!tech || tech.role !== 'tecnico') {
-            return res.status(400).json({ error: 'Técnico inválido' });
+          if (!tech || tech.role !== 'tecnico' || !tech.ativo) {
+            return res.status(400).json({ error: 'Técnico inválido ou inativo' });
+          }
+          if (!isValidEmail(tech.milvus_email) || !tech.milvus_nome?.trim()) {
+            return res.status(422).json({ error: `O técnico ${tech.nome} ainda não está vinculado ao Milvus` });
           }
         }
         patch.assigned_technician = assigned_technician || null;
@@ -335,6 +360,24 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    const assigneeChanged = (
+      ('assigned_analyst' in patch && patch.assigned_analyst !== request.assigned_analyst)
+      || ('assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician)
+    );
+    const assigneeSyncRequested = assigneeChanged || sincronizar_responsaveis_milvus === true;
+    if (assigneeSyncRequested && req.user.role !== 'tecnico') {
+      if (!request.milvus_codigo) {
+        return res.status(409).json({ error: 'Vincule o chamado ao Milvus antes de definir os responsáveis' });
+      }
+      const effectiveAnalystId = 'assigned_analyst' in patch ? patch.assigned_analyst : request.assigned_analyst;
+      const effectiveTechnicianId = 'assigned_technician' in patch ? patch.assigned_technician : request.assigned_technician;
+      const [analyst, technician] = await Promise.all([
+        effectiveAnalystId ? db.getUserById(effectiveAnalystId) : Promise.resolve(null),
+        effectiveTechnicianId ? db.getUserById(effectiveTechnicianId) : Promise.resolve(null)
+      ]);
+      await syncRequestAssigneeToMilvus(request, { analyst, technician });
     }
 
     const updated = await db.updateRequest(request.id, patch);
@@ -399,6 +442,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     res.json(updated);
   } catch (err) {
+    if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
     next(err);
   }
 });

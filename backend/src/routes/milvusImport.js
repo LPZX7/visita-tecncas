@@ -76,6 +76,20 @@ router.post('/:id/importar', async (req, res, next) => {
     }
 
     const descricao = [pendente.assunto, pendente.descricao].filter(Boolean).join(' — ') || `Chamado Milvus #${pendente.milvus_codigo}`;
+    let rawTicket = {};
+    try {
+      rawTicket = JSON.parse(pendente.raw_json || '{}');
+    } catch {
+      rawTicket = {};
+    }
+    const milvusUser = rawTicket.email_tecnico
+      ? await db.findUserByMilvusEmail(rawTicket.email_tecnico)
+      : null;
+    const importingUser = await db.getUserById(req.user.sub);
+    const assignedAnalyst = milvusUser?.role === 'analista'
+      ? milvusUser.id
+      : (importingUser?.role === 'analista' ? importingUser.id : null);
+    const assignedTechnician = milvusUser?.role === 'tecnico' ? milvusUser.id : null;
 
     const request = await db.createRequest({
       empresa_id,
@@ -84,8 +98,11 @@ router.post('/:id/importar', async (req, res, next) => {
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
       aberto_por: req.user.sub,
+      assigned_analyst: assignedAnalyst,
+      assigned_technician: assignedTechnician,
       solicitante_email: contactEmail,
-      milvus_codigo: pendente.milvus_codigo
+      milvus_codigo: pendente.milvus_codigo,
+      milvus_id: pendente.milvus_id
     });
 
     await db.updateMilvusPendente(pendente.id, { status: 'importado', request_id: request.id });
