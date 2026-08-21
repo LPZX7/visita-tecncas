@@ -54,28 +54,56 @@ async function approvedContextForRequest(requestId) {
 }
 
 async function attachTechnicalRecords(requests) {
-  return Promise.all(requests.map(async (request) => {
+  const completed = requests.filter((request) => request.relatorio_visita);
+  if (!completed.length) return requests;
+
+  const requestIds = new Set(completed.map((request) => request.id));
+  const budgets = await db.getBudgets();
+  const approvedByRequest = new Map();
+  for (const budget of budgets) {
+    if (budget.status === 'Aprovado' && requestIds.has(budget.request_id) && !approvedByRequest.has(budget.request_id)) {
+      approvedByRequest.set(budget.request_id, budget);
+    }
+  }
+
+  const partIds = new Set();
+  for (const budget of approvedByRequest.values()) {
+    for (const item of budget.items || []) partIds.add(item.peca_id);
+  }
+  const technicianIds = new Set(completed.map((request) => request.assigned_technician).filter(Boolean));
+  const [partEntries, technicianEntries] = await Promise.all([
+    Promise.all([...partIds].map(async (id) => [id, await db.getPartById(id)])),
+    Promise.all([...technicianIds].map(async (id) => [id, await db.getUserById(id)]))
+  ]);
+  const partsById = new Map(partEntries);
+  const techniciansById = new Map(technicianEntries);
+
+  return requests.map((request) => {
     if (!request.relatorio_visita) return request;
-    const [approvedContext, technician] = await Promise.all([
-      approvedContextForRequest(request.id),
-      request.assigned_technician ? db.getUserById(request.assigned_technician) : Promise.resolve(null)
-    ]);
+    const budget = approvedByRequest.get(request.id);
+    const approvedParts = (budget?.items || []).map((item) => ({
+      nome: partsById.get(item.peca_id)?.nome || 'Peça',
+      quantidade: item.quantidade,
+      valor_unitario: item.valor_unitario
+    }));
+    const technician = techniciansById.get(request.assigned_technician);
     return {
       ...request,
-      registro_tecnico: buildCompletionSummary({ request, approvedParts: approvedContext.parts, technician: technician?.nome })
+      registro_tecnico: buildCompletionSummary({ request, approvedParts, technician: technician?.nome })
     };
-  }));
+  });
 }
 
 router.get('/', async (req, res, next) => {
   try {
     const user = req.user;
-    const requests = await attachTechnicalRecords(await db.getRequests());
+    const requests = await db.getRequests();
     if (user.role === 'cliente') {
       const equipments = await db.getEquipments();
-      return res.json(scopeRequestsForClient(requests, equipments, user));
+      const visibleRequests = scopeRequestsForClient(requests, equipments, user);
+      return res.json(await attachTechnicalRecords(visibleRequests));
     }
-    res.json(requests);
+    res.json(await attachTechnicalRecords(requests));
   } catch (err) {
     next(err);
   }
