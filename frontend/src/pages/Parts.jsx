@@ -9,35 +9,14 @@ export default function Parts() {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('Todas');
-  const [origin, setOrigin] = useState('Todas');
 
   const load = () => api.get('/parts').then((res) => setParts(res.data));
 
   useEffect(() => {
     load();
-    api.get('/parts/bomcontrole/status').then((res) => setSyncStatus(res.data)).catch(() => {});
   }, []);
-
-  const syncBomControle = async () => {
-    setError('');
-    setSuccess('');
-    setSyncing(true);
-    try {
-      const res = await api.post('/parts/bomcontrole/sync');
-      setSyncStatus({ ...res.data, configured: true });
-      setSuccess(`Estoque atualizado: ${res.data.created} produto(s) novo(s) e ${res.data.updated} atualizado(s).`);
-      await load();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Não foi possível sincronizar o estoque do BomControle.');
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -100,8 +79,7 @@ export default function Parts() {
     const text = `${part.codigo} ${part.nome} ${part.categoria}`.toLowerCase();
     const matchesSearch = text.includes(search.toLowerCase().trim());
     const matchesCategory = category === 'Todas' || part.categoria === category;
-    const matchesOrigin = origin === 'Todas' || (origin === 'BomControle' ? part.bomcontrole_id : !part.bomcontrole_id);
-    return matchesSearch && matchesCategory && matchesOrigin;
+    return matchesSearch && matchesCategory;
   });
   const totalStock = parts.reduce((sum, part) => sum + Number(part.estoque || 0), 0);
   const stockedItems = parts.filter((part) => Number(part.estoque) > 0).length;
@@ -113,33 +91,23 @@ export default function Parts() {
         <div>
           <span className="page-eyebrow">ESTOQUE E MANUTENÇÃO</span>
           <h2 className="page-title">Catálogo de Peças</h2>
-          <p className="section-text">Componentes para manutenção de catracas e itens sincronizados com o BomControle.</p>
+          <p className="section-text">Componentes e peças disponíveis para manutenção dos equipamentos.</p>
         </div>
       </div>
 
-      <div className="parts-summary">
+      <div className="parts-summary parts-summary--three">
         <article><span>Itens cadastrados</span><strong>{parts.length}</strong><small>catálogo completo</small></article>
         <article><span>Unidades em estoque</span><strong>{totalStock}</strong><small>{stockedItems} item(ns) disponível(is)</small></article>
         <article><span>Valores pendentes</span><strong>{pendingPrices}</strong><small>preencher quando definido</small></article>
-        <article><span>Integração</span><strong>{syncStatus?.configured ? 'Ativa' : 'Manual'}</strong><small>BomControle</small></article>
       </div>
 
       {!showForm && (
         <div className="row-actions" style={{ marginBottom: 20 }}>
           <button type="button" className="btn btn-primary" onClick={openCreate}>+ Criar Peça</button>
-          <button type="button" className="btn btn-outline" onClick={syncBomControle} disabled={syncing || syncStatus?.status === 'running'}>
-            {syncing || syncStatus?.status === 'running' ? 'Sincronizando...' : 'Atualizar estoque do BomControle'}
-          </button>
         </div>
       )}
 
       {error && !showForm && <div className="alert alert-error" style={{ maxWidth: 720, marginBottom: 20 }}>{error}</div>}
-      {success && <div className="alert alert-success" role="status" style={{ maxWidth: 720, marginBottom: 20 }}>{success}</div>}
-      {syncStatus?.syncedAt && !showForm && (
-        <p className="section-text" style={{ marginBottom: 18 }}>
-          Estoque sincronizado em {new Date(syncStatus.syncedAt).toLocaleString('pt-BR')} · atualização automática a cada 15 minutos.
-        </p>
-      )}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="card-form">
@@ -163,9 +131,6 @@ export default function Parts() {
         <select className="form-select" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filtrar por categoria">
           {categories.map((item) => <option key={item}>{item}</option>)}
         </select>
-        <select className="form-select" value={origin} onChange={(e) => setOrigin(e.target.value)} aria-label="Filtrar por origem">
-          <option>Todas</option><option>BomControle</option><option>Manual</option>
-        </select>
         <span className="parts-results">{filteredParts.length} resultado(s)</span>
       </div>}
 
@@ -177,7 +142,6 @@ export default function Parts() {
             <th>Nome</th>
             <th>Preço</th>
             <th>Estoque</th>
-            <th>Origem</th>
             <th></th>
           </tr>
         </thead>
@@ -188,22 +152,15 @@ export default function Parts() {
               <td><strong>{part.nome}</strong><small>{part.categoria}</small></td>
               <td>{Number(part.preco_unitario) > 0 ? `R$ ${Number(part.preco_unitario).toFixed(2)}` : <span className="price-pending">A definir</span>}</td>
               <td><span className={`stock-pill ${Number(part.estoque) > 0 ? 'has-stock' : 'no-stock'}`}>{part.estoque}</span></td>
-              <td>{part.bomcontrole_id ? <span className="badge badge-aprovado">BomControle</span> : 'Manual'}</td>
               <td>
                 <div className="row-actions">
-                  {part.bomcontrole_id ? (
-                    <span className="detail-muted">Gerenciado automaticamente</span>
-                  ) : (
-                    <>
-                      <button className="btn btn-outline btn-sm" onClick={() => handleEdit(part)}>Editar</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(part.id)}>Excluir</button>
-                    </>
-                  )}
+                  <button className="btn btn-outline btn-sm" onClick={() => handleEdit(part)}>Editar</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(part.id)}>Excluir</button>
                 </div>
               </td>
             </tr>
           ))}
-          {filteredParts.length === 0 && <tr><td colSpan="6"><div className="empty-state"><h4>Nenhuma peça encontrada</h4><p>Tente limpar os filtros ou buscar por outro termo.</p></div></td></tr>}
+          {filteredParts.length === 0 && <tr><td colSpan="5"><div className="empty-state"><h4>Nenhuma peça encontrada</h4><p>Tente limpar os filtros ou buscar por outro termo.</p></div></td></tr>}
         </tbody>
       </table>
       </div>
