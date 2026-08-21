@@ -95,11 +95,13 @@ async function sendViaGmailApi({ to, subject, text, html }) {
     const data = await res.json();
     if (!res.ok) {
       console.error(`[mailer] Falha ao enviar email via Gmail (${res.status}):`, JSON.stringify(data));
-      return;
+      return false;
     }
     console.log(`[mailer] Email enviado via Gmail — id: ${data.id}`);
+    return true;
   } catch (err) {
     console.error('[mailer] Falha ao enviar email via Gmail:', err.message);
+    return false;
   }
 }
 
@@ -107,15 +109,17 @@ async function sendViaSmtp({ to, subject, text, html }) {
   try {
     const info = await smtpTransport.sendMail({ from, to, subject, text, ...(html ? { html } : {}) });
     console.log(`[mailer] Email enviado via SMTP — id: ${info.messageId}`);
+    return true;
   } catch (err) {
     console.error('[mailer] Falha ao enviar email via SMTP:', err.message);
+    return false;
   }
 }
 
 async function sendViaResend({ to, subject, text, html }) {
   if (!RESEND_API_KEY) {
     console.warn(`[mailer] Nenhum provedor de email configurado — email não enviado: "${subject}" para ${to}`);
-    return;
+    return false;
   }
 
   try {
@@ -131,16 +135,18 @@ async function sendViaResend({ to, subject, text, html }) {
     const data = await res.json();
     if (!res.ok) {
       console.error(`[mailer] Falha ao enviar email (${res.status}):`, JSON.stringify(data));
-      return;
+      return false;
     }
     console.log(`[mailer] Email aceito pelo Resend — id: ${data.id}`);
+    return true;
   } catch (err) {
     console.error('[mailer] Falha ao enviar email:', err.message);
+    return false;
   }
 }
 
 async function sendMail({ to, subject, text, html }) {
-  if (!to) return;
+  if (!to) return false;
 
   if (GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN && GMAIL_SENDER) {
     return sendViaGmailApi({ to, subject, text, html });

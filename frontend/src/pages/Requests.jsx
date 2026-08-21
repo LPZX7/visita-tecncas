@@ -156,7 +156,9 @@ export default function Requests() {
       const resetEndereco = user?.role === 'cliente' ? addressFor(user.empresa_id, user.unidade_id) : '';
       const resetEmail = user?.role === 'cliente' ? contactEmailFor(user.empresa_id, user.unidade_id) || user.email || '' : '';
       setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal', solicitante_email: resetEmail });
-      setSuccess(`Chamado criado e vinculado ao Milvus #${res.data.milvus_codigo}. A confirmação foi enviada por e-mail.`);
+      setSuccess(res.data.email_confirmacao_enviado
+        ? `Chamado criado e vinculado ao Milvus #${res.data.milvus_codigo}. A confirmação foi enviada por e-mail.`
+        : `Chamado criado e vinculado ao Milvus #${res.data.milvus_codigo}. O e-mail foi registrado no ticket; o envio direto aguarda a configuração do domínio remetente.`);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao abrir chamado');
@@ -177,7 +179,9 @@ export default function Requests() {
     setMilvusSaving(req.id);
     try {
       const res = await api.post(`/requests/${req.id}/milvus`, { solicitante_email: solicitanteEmail });
-      setSuccess(`Chamado #${req.numero} vinculado ao Milvus #${res.data.milvus_codigo}. O cliente recebeu a confirmação por e-mail.`);
+      setSuccess(res.data.email_confirmacao_enviado
+        ? `Chamado #${req.numero} vinculado ao Milvus #${res.data.milvus_codigo}. O cliente recebeu a confirmação por e-mail.`
+        : `Chamado #${req.numero} vinculado ao Milvus #${res.data.milvus_codigo}. O e-mail foi registrado no ticket; o envio direto aguarda a configuração do domínio remetente.`);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível criar o chamado no Milvus.');
@@ -549,7 +553,7 @@ export default function Requests() {
                             <div>
                               <span className="page-eyebrow">AÇÃO NECESSÁRIA</span>
                               <strong>Criar este chamado no Milvus</strong>
-                              <p>Informe o e-mail do cliente. O sistema criará o ticket, salvará o número aqui e enviará uma confirmação completa ao contato.</p>
+                              <p>Informe o e-mail do cliente. O sistema criará o ticket, salvará o número aqui e registrará o contato para as notificações.</p>
                             </div>
                             <label className="form-field">
                               E-mail do cliente
@@ -562,7 +566,7 @@ export default function Requests() {
                               />
                             </label>
                             <button type="button" className="btn btn-primary" onClick={() => connectToMilvus(req)} disabled={milvusSaving === req.id}>
-                              {milvusSaving === req.id ? 'Criando no Milvus...' : 'Criar e enviar confirmação'}
+                              {milvusSaving === req.id ? 'Criando no Milvus...' : 'Criar e vincular'}
                             </button>
                           </div>
                         )}

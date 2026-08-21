@@ -137,7 +137,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       await db.updateUser(req.user.sub, { liberado_para_chamado: false });
     }
 
-    sendMilvusConfirmationEmail(created, company, equipment);
+    const emailConfirmationSent = await sendMilvusConfirmationEmail(created, company, equipment);
     if (req.user.role !== 'cliente') {
       sendVisitApprovalEmail(created, company);
     }
@@ -155,7 +155,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       detalhes: `Chamado #${created.numero} — ${created.descricao}`
     });
 
-    res.status(201).json(created);
+    res.status(201).json({ ...created, email_confirmacao_enviado: emailConfirmationSent });
   } catch (err) {
     next(err);
   }
@@ -185,7 +185,7 @@ router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, n
       contato: unit?.responsavel || company.responsavel,
       equipment
     });
-    sendMilvusConfirmationEmail(linked, company, equipment);
+    const emailConfirmationSent = await sendMilvusConfirmationEmail(linked, company, equipment);
     await db.logAudit({
       user: req.user,
       acao: 'chamado_vinculado_milvus',
@@ -193,7 +193,7 @@ router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, n
       entidade_id: linked.id,
       detalhes: `Chamado #${linked.numero} vinculado ao Milvus #${linked.milvus_codigo} — contato ${contactEmail}`
     });
-    res.json(linked);
+    res.json({ ...linked, email_confirmacao_enviado: emailConfirmationSent });
   } catch (err) {
     if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
     next(err);
