@@ -1,13 +1,10 @@
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
 const { drawHeader } = require('./pdfHeader');
+const { buildCompletionSummary } = require('./visitCompletion');
+const { formatDateTime } = require('./technicalWriting');
 
-function formatDateTime(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString('pt-BR');
-}
-
-async function generateTermoConclusaoPdf({ request, company, unit, technician, contract, aceite, validationUrl }) {
+async function generateTermoConclusaoPdf({ request, company, unit, technician, contract, aceite, validationUrl, approvedParts = [] }) {
   const qrDataUrl = await QRCode.toDataURL(validationUrl, { margin: 1, width: 160 });
 
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
@@ -30,9 +27,9 @@ async function generateTermoConclusaoPdf({ request, company, unit, technician, c
   doc.moveDown(0.8);
 
   const rows = [
-    ['Serviço', request.descricao],
-    ['Check-in', formatDateTime(request.hora_checkin)],
-    ['Check-out', formatDateTime(request.hora_checkout)]
+    ['Problema informado', request.descricao],
+    ['Check-in', formatDateTime(request.hora_checkin) || '—'],
+    ['Check-out', formatDateTime(request.hora_checkout) || '—']
   ];
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('DADOS DO ATENDIMENTO');
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
@@ -42,13 +39,21 @@ async function generateTermoConclusaoPdf({ request, company, unit, technician, c
   doc.moveDown(0.6);
 
   if (request.relatorio_visita) {
-    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0F2747').text('Relatório da visita');
-    doc.font('Helvetica').fontSize(9.5).fillColor('#1B1E22').text(request.relatorio_visita, 56, doc.y, { width: 483, align: 'justify' });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor('#0F2747').text('Registro técnico');
+    doc.font('Helvetica').fontSize(9.5).fillColor('#1B1E22').text(
+      buildCompletionSummary({ request, approvedParts, technician: technician?.nome, includeStatusIcon: false }),
+      56, doc.y, { width: 483 }
+    );
   }
   doc.moveDown(1);
 
-  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(56, doc.y).lineTo(539, doc.y).stroke();
-  doc.moveDown(1);
+  if (doc.y > 430) {
+    doc.addPage();
+    drawHeader(doc, 'Termo de Conclusão — Continuação');
+  } else {
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(56, doc.y).lineTo(539, doc.y).stroke();
+    doc.moveDown(1);
+  }
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('DECLARAÇÃO E ACEITE');
   doc.moveDown(0.3);
@@ -63,7 +68,7 @@ async function generateTermoConclusaoPdf({ request, company, unit, technician, c
     ['Documento', aceite.documento_aceitante || '—'],
     ['Cargo/função', aceite.cargo_aceitante || '—'],
     ['E-mail', aceite.email_aceitante || '—'],
-    ['Data/hora do aceite', formatDateTime(aceite.criado_em)],
+    ['Data/hora do aceite', formatDateTime(aceite.criado_em) || '—'],
     ['Endereço IP', aceite.ip || '—'],
     ['Código de validação', aceite.codigo_validacao],
     ['Versão do termo', aceite.versao_termo],
@@ -76,6 +81,10 @@ async function generateTermoConclusaoPdf({ request, company, unit, technician, c
   });
 
   doc.moveDown(1.2);
+  if (doc.y > doc.page.height - doc.page.margins.bottom - 110) {
+    doc.addPage();
+    drawHeader(doc, 'Termo de Conclusão — Validação');
+  }
   const qrY = doc.y;
   doc.image(qrDataUrl, 56, qrY, { width: 90 });
   doc.font('Helvetica-Bold').fontSize(9).fillColor('#0F2747').text('Validar este documento', 156, qrY + 30, { width: 300 });

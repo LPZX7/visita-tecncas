@@ -1,6 +1,14 @@
-function money(value) {
-  return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
+const {
+  composeSections,
+  formatDateTime,
+  isRepeated,
+  joinNatural,
+  money,
+  partInSentence,
+  partWithQuantity,
+  section,
+  sentence
+} = require('./technicalWriting');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -12,42 +20,47 @@ function escapeHtml(value) {
 }
 
 function formatApprovedParts(items = []) {
-  if (!items.length) return 'Nenhuma peça registrada no orçamento aprovado.';
-  return items
-    .map((item) => `${item.nome}${Number(item.quantidade || 0) > 1 ? ` (x${item.quantidade})` : ''}`)
-    .join(', ');
+  return items.map(partWithQuantity).join('\n');
 }
 
 function buildAutomaticServiceReport(approvedParts = []) {
-  const parts = formatApprovedParts(approvedParts);
   if (!approvedParts.length) {
-    return 'Atendimento técnico realizado e concluído no local.';
+    return 'Atendimento concluído no local.';
   }
-  return `Substituição de ${parts} e conclusão do atendimento técnico no local.`;
+  const parts = joinNatural(approvedParts.map(partInSentence));
+  return sentence(approvedParts.length === 1
+    ? `Foi substituída ${parts}`
+    : `Foram substituídas ${parts}`);
 }
 
-function buildCompletionSummary({ request, approvedParts = [] }) {
+function buildCompletionSummary({ request, approvedParts = [], technician, includeStatusIcon = true }) {
   const hadAdditional = Boolean(request.teve_adicional);
-  const lines = [
-    `Serviço realizado: ${request.relatorio_visita}`,
-    `Peças previstas/aprovadas: ${formatApprovedParts(approvedParts)}`,
-    `Houve peça ou custo adicional: ${hadAdditional ? 'Sim' : 'Não'}`
-  ];
-
+  const problem = sentence(request.descricao);
+  const service = sentence(request.relatorio_visita);
+  const observation = sentence(request.observacao_final);
+  const additionalLines = [];
   if (hadAdditional) {
-    lines.push(`Item/custo adicional informado: ${request.adicional_descricao}`);
-    lines.push(`Valor adicional informado: ${money(request.custo_adicional)}`);
+    additionalLines.push(sentence(request.adicional_descricao));
+    if (Number(request.custo_adicional || 0) > 0) additionalLines.push(`Valor informado: ${money(request.custo_adicional)}`);
   }
+  const completedAt = formatDateTime(request.hora_checkout || request.concluded_at);
+  const registration = technician
+    ? `Atendimento concluído por ${technician}${completedAt ? ` em ${completedAt}` : ''}.`
+    : (completedAt ? `Atendimento concluído em ${completedAt}.` : '');
 
-  if (request.observacao_final) {
-    lines.push(`Observação do técnico: ${request.observacao_final}`);
-  }
-
-  return lines.join('\n');
+  return composeSections([
+    section('Problema identificado', problem),
+    section('Serviço realizado', service),
+    section(approvedParts.length === 1 ? 'Peça utilizada' : 'Peças utilizadas', formatApprovedParts(approvedParts)),
+    section('Item ou custo adicional', additionalLines),
+    observation && !isRepeated(observation, [problem, service]) ? section('Observações finais', observation) : '',
+    section('Status', `${includeStatusIcon ? '🟢 ' : ''}Visita concluída`),
+    section('Registro', registration)
+  ]);
 }
 
 function buildCompletionEmail({ request, company, unit, equipment, technician, approvedParts = [], portalUrl }) {
-  const summary = buildCompletionSummary({ request, approvedParts });
+  const summary = buildCompletionSummary({ request, approvedParts, technician: technician?.nome });
   const destination = unit ? `${unit.tipo} — ${unit.nome}` : company?.razao_social;
   const equipmentLabel = equipment ? `${equipment.modelo} — Série ${equipment.numero_serie}` : 'Não informado';
   const subject = `Visita técnica concluída — chamado #${request.numero}`;
@@ -65,12 +78,7 @@ function buildCompletionEmail({ request, company, unit, equipment, technician, a
     `Acompanhe o atendimento: ${portalUrl}`
   ].join('\n');
 
-  const summaryRows = summary.split('\n').map((line) => {
-    const separator = line.indexOf(':');
-    const label = separator >= 0 ? line.slice(0, separator) : line;
-    const value = separator >= 0 ? line.slice(separator + 1).trim() : '';
-    return `<tr><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:13px;vertical-align:top;width:38%;"><strong>${escapeHtml(label)}</strong></td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:14px;white-space:pre-wrap;">${escapeHtml(value)}</td></tr>`;
-  }).join('');
+  const summaryHtml = escapeHtml(summary).replaceAll('\n', '<br />');
 
   const html = `
   <div style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
@@ -87,7 +95,7 @@ function buildCompletionEmail({ request, company, unit, equipment, technician, a
           Equipamento: ${escapeHtml(equipmentLabel)}<br />
           Técnico: ${escapeHtml(technician?.nome || 'Não informado')}
         </div>
-        <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">${summaryRows}</table>
+        <div style="padding:18px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#334155;font-size:14px;line-height:1.65;">${summaryHtml}</div>
         <p style="margin:20px 0;color:#64748b;font-size:13px;line-height:1.5;">Caso exista valor adicional, ele foi registrado para conferência da equipe.</p>
         <div style="text-align:center;margin-top:24px;"><a href="${escapeHtml(portalUrl)}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:600;display:inline-block;">Acompanhar atendimento</a></div>
       </div>

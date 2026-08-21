@@ -1,46 +1,104 @@
+const {
+  composeSections,
+  formatDateTime,
+  isRepeated,
+  joinNatural,
+  money,
+  partInSentence,
+  partWithQuantity,
+  section,
+  sentence
+} = require('./technicalWriting');
+
 const TITULO_VISITA_TECNICA = 'VISITA TÉCNICA';
 
-function money(value) {
-  return `R$ ${Number(value || 0).toFixed(2)}`;
+function buildAuthorizedService(items = []) {
+  if (!items.length) return 'O cliente autorizou a realização da visita técnica.';
+  const parts = joinNatural(items.map(partInSentence));
+  return sentence(items.length === 1
+    ? `Foi autorizada a substituição de ${parts}`
+    : `Foram autorizadas as substituições de ${parts}`);
 }
 
-function pecasLabel(items) {
-  return items.map((item) => `${item.nome}${item.quantidade > 1 ? ` (x${item.quantidade})` : ''}`).join(', ');
-}
-
-function buildDescricao({ budget, items, request }) {
-  const linhas = [
-    `Peça: ${pecasLabel(items) || 'não informado'}`,
-    `Quantidade: ${items.reduce((sum, item) => sum + Number(item.quantidade || 0), 0)}`,
-    `Motivo da troca: ${budget.motivo_troca || 'não informado'}`,
-    `Informações relevantes: ${budget.observacoes_tecnicas || 'nenhuma'}`,
-    `Valor da peça: ${money(budget.pecas_total)}`,
-    `Valor da visita técnica: ${money(budget.deslocamento)}`,
-    `Valor total: ${money(budget.total)}`
-  ];
-  if (request?.descricao) {
-    linhas.unshift(`Problema identificado: ${request.descricao}`);
+function buildPartsSection(items = []) {
+  if (!items.length) return '';
+  const blocks = [];
+  for (const item of items) {
+    const lines = [partWithQuantity(item)];
+    const unitPrice = Number(item.valor_unitario || 0);
+    if (unitPrice > 0) {
+      lines.push(`Valor unitário: ${money(unitPrice)}`);
+      if (Number(item.quantidade || 0) > 1) lines.push(`Subtotal: ${money(unitPrice * Number(item.quantidade))}`);
+    }
+    blocks.push(lines.join('\n'));
   }
-  return linhas.join('\n');
+  return section(items.length === 1 ? 'Peça autorizada' : 'Peças autorizadas', blocks.join('\n\n'));
 }
 
-function buildRealizado(items) {
-  const nomes = pecasLabel(items) || 'peça informada';
-  return `REALIZADO: Substituição da peça ${nomes} e realização dos procedimentos técnicos necessários para conclusão do serviço.`;
+function buildValuesSection(budget) {
+  const lines = [];
+  if (Number(budget.deslocamento || 0) > 0) lines.push(`Visita técnica: ${money(budget.deslocamento)}`);
+  if (Number(budget.pecas_total || 0) > 0) lines.push(`Peças: ${money(budget.pecas_total)}`);
+  if (Number(budget.total || 0) > 0) lines.push(`Total: ${money(budget.total)}`);
+  return section('Valores do atendimento', lines);
 }
 
-function buildMilvusPayload({ budget, items, request }) {
-  const descricao = buildDescricao({ budget, items, request });
-  const realizado = buildRealizado(items);
-  const quemAutorizou = budget.aprovacao_nome
-    ? `${budget.aprovacao_nome} (CPF ${budget.aprovacao_cpf || 'não informado'}, tel ${budget.aprovacao_telefone || 'não informado'})`
-    : (budget.autorizado_por || 'autorização registrada');
-  const autorizacao = `AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça. Autorizado por ${quemAutorizou} em ${new Date(budget.aprovado_em || Date.now()).toLocaleString('pt-BR')}.`;
+function buildDescricao({ budget, items = [], request }) {
+  const problem = sentence(request?.descricao);
+  const reason = sentence(budget?.motivo_troca);
+  const notes = sentence(budget?.observacoes_tecnicas);
+  const seen = [problem];
+  const diagnosisSection = reason && !isRepeated(reason, seen) ? section('Motivo da troca', reason) : '';
+  if (reason) seen.push(reason);
+  const notesSection = notes && !isRepeated(notes, seen) ? section('Informações do atendimento', notes) : '';
 
+  return composeSections([
+    section('Problema identificado', problem),
+    diagnosisSection,
+    section('Serviço autorizado', buildAuthorizedService(items)),
+    buildPartsSection(items),
+    notesSection,
+    buildValuesSection(budget || {})
+  ]);
+}
+
+// Alias mantido para os consumidores existentes. Nesta etapa o serviço foi
+// autorizado pelo cliente, mas ainda não foi executado pelo técnico.
+function buildRealizado(items = []) {
+  return buildAuthorizedService(items);
+}
+
+function buildAuthorization(budget, items = []) {
+  const authorization = items.length
+    ? 'O cliente autorizou a realização da visita técnica e a substituição das peças descritas neste registro.'
+    : 'O cliente autorizou a realização da visita técnica.';
+  const responsible = budget.aprovacao_nome || budget.autorizado_por;
+  const approvedAt = formatDateTime(budget.aprovado_em);
+  const responsibleLine = responsible
+    ? `Autorizado por ${responsible}${approvedAt ? ` em ${approvedAt}` : ''}.`
+    : (approvedAt ? `Autorização registrada em ${approvedAt}.` : '');
+  return section('Autorização', [authorization, responsibleLine]);
+}
+
+function buildMilvusPayload({ budget, items = [], request }) {
   return {
     assunto: TITULO_VISITA_TECNICA,
-    descricao: [descricao, '', realizado, '', 'STATUS: APROVADO PELO CLIENTE', autorizacao].join('\n')
+    descricao: composeSections([
+      TITULO_VISITA_TECNICA,
+      buildDescricao({ budget, items, request }),
+      section('Status', '🟢 Aprovado pelo cliente'),
+      buildAuthorization(budget, items)
+    ])
   };
 }
 
-module.exports = { TITULO_VISITA_TECNICA, buildDescricao, buildRealizado, buildMilvusPayload };
+module.exports = {
+  TITULO_VISITA_TECNICA,
+  buildAuthorization,
+  buildAuthorizedService,
+  buildDescricao,
+  buildMilvusPayload,
+  buildPartsSection,
+  buildRealizado,
+  buildValuesSection
+};

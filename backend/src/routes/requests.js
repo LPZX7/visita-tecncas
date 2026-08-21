@@ -8,7 +8,7 @@ const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 const { ensureRequestInMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
-const { buildAutomaticServiceReport, buildCompletionEmail } = require('../lib/visitCompletion');
+const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
@@ -53,10 +53,24 @@ async function approvedContextForRequest(requestId) {
   return { budget: approved, parts };
 }
 
+async function attachTechnicalRecords(requests) {
+  return Promise.all(requests.map(async (request) => {
+    if (!request.relatorio_visita) return request;
+    const [approvedContext, technician] = await Promise.all([
+      approvedContextForRequest(request.id),
+      request.assigned_technician ? db.getUserById(request.assigned_technician) : Promise.resolve(null)
+    ]);
+    return {
+      ...request,
+      registro_tecnico: buildCompletionSummary({ request, approvedParts: approvedContext.parts, technician: technician?.nome })
+    };
+  }));
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const user = req.user;
-    const requests = await db.getRequests();
+    const requests = await attachTechnicalRecords(await db.getRequests());
     if (user.role === 'cliente') {
       const equipments = await db.getEquipments();
       return res.json(scopeRequestsForClient(requests, equipments, user));
@@ -339,7 +353,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         });
 
         await Promise.all([
-          syncRequestUpdateToMilvus(updated, { tipo: 'concluida', approvedParts }),
+          syncRequestUpdateToMilvus(updated, { tipo: 'concluida', approvedParts, technician: technician?.nome }),
           emailDestino
             ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html })
             : Promise.resolve()
@@ -495,11 +509,12 @@ router.get('/:id/relatorio-pdf', async (req, res, next) => {
     const company = await db.getCompanyById(request.empresa_id);
     const equipment = await db.getEquipmentById(request.equipamento_id);
     const technician = request.assigned_technician ? await db.getUserById(request.assigned_technician) : null;
+    const approvedContext = await approvedContextForRequest(request.id);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="relatorio-visita.pdf"');
 
-    const doc = generateVisitReportPdf({ request, company, equipment, technician });
+    const doc = generateVisitReportPdf({ request, company, equipment, technician, approvedParts: approvedContext.parts });
     doc.pipe(res);
     doc.end();
   } catch (err) {
@@ -536,18 +551,20 @@ async function loadTermoContext(req, res) {
   }
 
   const company = await db.getCompanyById(request.empresa_id);
-  const unit = request.unidade_id ? await db.getUnitById(request.unidade_id) : null;
+  const approvedContext = await approvedContextForRequest(request.id);
+  const unitId = approvedContext.budget?.unidade_id || request.unidade_id;
+  const unit = unitId ? await db.getUnitById(unitId) : null;
   const technician = request.assigned_technician ? await db.getUserById(request.assigned_technician) : null;
   const contract = await findContractForRequest(request.id);
 
-  return { request, company, unit, technician, contract };
+  return { request, company, unit, technician, contract, approvedParts: approvedContext.parts };
 }
 
 router.get('/:id/termo-conclusao', async (req, res, next) => {
   try {
     const ctx = await loadTermoContext(req, res);
     if (!ctx) return;
-    const { request, company, unit, technician, contract } = ctx;
+    const { request, company, unit, technician, contract, approvedParts } = ctx;
 
     const aceite = await db.getVisitaAceiteByRequestId(request.id);
 
@@ -556,6 +573,7 @@ router.get('/:id/termo-conclusao', async (req, res, next) => {
         numero: request.numero,
         descricao: request.descricao,
         relatorio_visita: request.relatorio_visita,
+        registro_tecnico: buildCompletionSummary({ request, approvedParts, technician: technician?.nome }),
         hora_checkin: request.hora_checkin,
         hora_checkout: request.hora_checkout,
         endereco: request.endereco
@@ -581,7 +599,7 @@ router.post('/:id/termo-conclusao', requireRole('cliente'), async (req, res, nex
   try {
     const ctx = await loadTermoContext(req, res);
     if (!ctx) return;
-    const { request, company, unit, technician, contract } = ctx;
+    const { request, company, unit, technician, contract, approvedParts } = ctx;
 
     const existing = await db.getVisitaAceiteByRequestId(request.id);
     if (existing) {
@@ -604,6 +622,7 @@ router.post('/:id/termo-conclusao', requireRole('cliente'), async (req, res, nex
         numero: request.numero,
         descricao: request.descricao,
         relatorio_visita: request.relatorio_visita,
+        registro_tecnico: buildCompletionSummary({ request, approvedParts, technician: technician?.nome }),
         hora_checkin: request.hora_checkin,
         hora_checkout: request.hora_checkout,
         endereco: request.endereco
@@ -665,7 +684,7 @@ router.get('/:id/termo-conclusao/pdf', async (req, res, next) => {
   try {
     const ctx = await loadTermoContext(req, res);
     if (!ctx) return;
-    const { request, company, unit, technician, contract } = ctx;
+    const { request, company, unit, technician, contract, approvedParts } = ctx;
 
     const aceite = await db.getVisitaAceiteByRequestId(request.id);
     if (!aceite) {
@@ -677,7 +696,7 @@ router.get('/:id/termo-conclusao/pdf', async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="termo-conclusao.pdf"');
 
-    const doc = await generateTermoConclusaoPdf({ request, company, unit, technician, contract, aceite, validationUrl });
+    const doc = await generateTermoConclusaoPdf({ request, company, unit, technician, contract, aceite, validationUrl, approvedParts });
     doc.pipe(res);
     doc.end();
   } catch (err) {

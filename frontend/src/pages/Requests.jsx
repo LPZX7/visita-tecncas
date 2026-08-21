@@ -5,6 +5,7 @@ import { getUser } from '../utils/auth';
 import MapLink from '../components/MapLink';
 import SearchableSelect from '../components/SearchableSelect';
 import Pagination from '../components/Pagination';
+import TechnicalRecord from '../components/TechnicalRecord';
 
 const PAGE_SIZE = 25;
 
@@ -603,12 +604,8 @@ export default function Requests() {
                         )}
                         {req.relatorio_visita && (
                           <div className="detail-report">
-                            <strong>Relatório da visita</strong>
-                            <p>{req.relatorio_visita}</p>
-                            <p>Peça ou custo adicional: {req.teve_adicional ? 'Sim' : 'Não'}</p>
-                            {req.teve_adicional && req.adicional_descricao && <p>Adicional informado: {req.adicional_descricao}</p>}
-                            {req.teve_adicional && <p>Valor adicional: {Number(req.custo_adicional || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>}
-                            {req.observacao_final && <p>Observação do técnico: {req.observacao_final}</p>}
+                            <strong>Registro técnico da visita</strong>
+                            <TechnicalRecord value={req.registro_tecnico || req.relatorio_visita} />
                           </div>
                         )}
                         {req.status === 'Concluída' && (user?.role === 'cliente' || canManage) && (

@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { drawHeader, money } = require('./pdfHeader');
-const { buildRealizado } = require('./visitaTecnicaFormat');
+const { buildAuthorizedService } = require('./visitaTecnicaFormat');
+const { formatDateTime, sentence } = require('./technicalWriting');
 
 function generateBudgetPdf({ budget, request, company, unit, items }) {
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
@@ -9,7 +10,7 @@ function generateBudgetPdf({ budget, request, company, unit, items }) {
 
   const statusLabel = budget.status === 'Aprovado' ? 'APROVADO PELO CLIENTE' : budget.status;
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#0F2747').text(`Orçamento — ${request.descricao}`);
-  doc.font('Helvetica').fontSize(9).fillColor('#64748b').text(`Status: ${statusLabel} · Gerado em ${new Date(budget.criado_em).toLocaleDateString('pt-BR')}`);
+  doc.font('Helvetica').fontSize(9).fillColor('#64748b').text(`Status: ${statusLabel} · Gerado em ${formatDateTime(budget.criado_em)}`);
   doc.moveDown(1.2);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('CLIENTE');
@@ -56,37 +57,51 @@ function generateBudgetPdf({ budget, request, company, unit, items }) {
     doc.moveDown(1);
   }
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('SERVIÇO', 56, doc.y);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('PROBLEMA IDENTIFICADO', 56, doc.y);
   doc.moveDown(0.3);
-  doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
-  doc.text(`Motivo da troca: ${budget.motivo_troca || 'não informado'}`, 56);
-  doc.text(`Informações relevantes: ${budget.observacoes_tecnicas || 'nenhuma'}`, 56);
+  doc.font('Helvetica').fontSize(10).fillColor('#1B1E22').text(sentence(request.descricao), 56, doc.y, { width: 483 });
+  if (budget.motivo_troca) {
+    doc.moveDown(0.8);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('MOTIVO DA TROCA', 56, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#1B1E22').text(sentence(budget.motivo_troca), 56, doc.y, { width: 483 });
+  }
+  if (budget.observacoes_tecnicas) {
+    doc.moveDown(0.8);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('INFORMAÇÕES DO ATENDIMENTO', 56, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor('#1B1E22').text(sentence(budget.observacoes_tecnicas), 56, doc.y, { width: 483 });
+  }
   doc.moveDown(1);
 
   if (budget.status === 'Aprovado') {
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('REALIZADO', 56, doc.y);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('SERVIÇO AUTORIZADO', 56, doc.y);
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(10).fillColor('#1B1E22')
-      .text(buildRealizado(items || []).replace(/^REALIZADO:\s*/, ''), 56, doc.y, { width: 483 });
-    doc.moveDown(0.6);
+      .text(buildAuthorizedService(items || []), 56, doc.y, { width: 483 });
+    doc.moveDown(0.8);
 
-    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('STATUS: APROVADO PELO CLIENTE', 56, doc.y);
+    const statusY = doc.y;
+    doc.roundedRect(56, statusY, 155, 23, 7).fill('#DCFCE7');
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#16734A').text('APROVADO PELO CLIENTE', 68, statusY + 7);
+    doc.y = statusY + 34;
+
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('AUTORIZAÇÃO', 56, doc.y);
     doc.moveDown(0.3);
+    const authorizationText = items?.length
+      ? `O cliente autorizou a realização da visita técnica e a substituição ${items.length === 1 ? 'da peça descrita' : 'das peças descritas'} neste orçamento.`
+      : 'O cliente autorizou a realização da visita técnica.';
     doc.font('Helvetica').fontSize(9.5).fillColor('#1B1E22')
-      .text('AUTORIZAÇÃO: Cliente autorizou a realização da visita técnica e a substituição da peça.', 56, doc.y, { width: 483 });
-    if (budget.aprovacao_nome) {
-      doc.text(`Autorizado por: ${budget.aprovacao_nome} — CPF ${budget.aprovacao_cpf || 'não informado'} — Tel ${budget.aprovacao_telefone || 'não informado'}`, 56);
-    } else if (budget.autorizado_por) {
-      doc.text(`Autorizado por: ${budget.autorizado_por}`, 56);
-    }
-    if (budget.aprovado_em) {
-      doc.text(`Data/hora da autorização: ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`, 56);
-    }
+      .text(authorizationText, 56, doc.y, { width: 483 });
+    const responsible = budget.aprovacao_nome || budget.autorizado_por;
+    if (responsible) doc.text(`Autorizado por ${responsible}${budget.aprovado_em ? ` em ${formatDateTime(budget.aprovado_em)}` : ''}.`, 56);
     doc.moveDown(1);
   }
 
-  doc.font('Helvetica').fontSize(8.5).fillColor('#94a3b8')
-    .text('Este documento é um orçamento e não constitui cobrança. Valores sujeitos a confirmação após aprovação.', 56, doc.y, { width: 483 });
+  const footer = budget.status === 'Aprovado'
+    ? 'Este documento registra o orçamento aprovado pelo cliente e não constitui cobrança.'
+    : 'Este documento é um orçamento e não constitui cobrança. Valores sujeitos à aprovação do cliente.';
+  doc.font('Helvetica').fontSize(8.5).fillColor('#94a3b8').text(footer, 56, doc.y, { width: 483 });
 
   return doc;
 }

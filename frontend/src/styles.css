@@ -2336,6 +2336,44 @@ a:hover {
 .milvus-link-card > div p { margin: 0; color: #6f6042; font-size: .76rem; line-height: 1.55; }
 .milvus-link-card .form-field { margin: 0; }
 .milvus-link-card .btn { min-height: 42px; white-space: nowrap; }
+.technical-record {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  line-height: 1.65;
+}
+
+.technical-record__section {
+  display: grid;
+  gap: 3px;
+}
+
+.technical-record__section > strong,
+.detail-report .technical-record__section > strong {
+  margin: 0;
+  color: #334155;
+  font-size: .76rem;
+  font-weight: 750;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.technical-record__section > p,
+.detail-report .technical-record__section > p {
+  margin: 0;
+  color: #0f172a;
+  white-space: pre-line;
+}
+
+.technical-record__section--status > p,
+.detail-report .technical-record__section--status > p {
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #16734a;
+  font-weight: 700;
+}
 
 .item-list {
   display: grid;

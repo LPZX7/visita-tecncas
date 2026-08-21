@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser } from '../utils/auth';
+import TechnicalRecord from '../components/TechnicalRecord';
 
 const DECLARACAO = 'Declaro que acompanhei e/ou estou autorizado a representar o contratante para confirmar a conclusão do serviço descrito acima. Declaro ainda que as informações apresentadas correspondem ao atendimento realizado nesta visita técnica.';
 
@@ -136,12 +137,12 @@ export default function TermoConclusao() {
           <div><dt>Técnico responsável</dt><dd>{data.tecnico?.nome || '—'}</dd></div>
           <div><dt>Check-in</dt><dd>{formatDateTime(data.visita.hora_checkin)}</dd></div>
           <div><dt>Check-out</dt><dd>{formatDateTime(data.visita.hora_checkout)}</dd></div>
-          <div><dt>Serviço</dt><dd>{data.visita.descricao}</dd></div>
+          <div><dt>Problema informado</dt><dd>{data.visita.descricao}</dd></div>
         </dl>
-        {data.visita.relatorio_visita && (
+        {(data.visita.registro_tecnico || data.visita.relatorio_visita) && (
           <div style={{ marginTop: 12 }}>
-            <strong>Relatório da visita</strong>
-            <p className="section-text">{data.visita.relatorio_visita}</p>
+            <strong>Registro técnico</strong>
+            <TechnicalRecord value={data.visita.registro_tecnico || data.visita.relatorio_visita} />
           </div>
         )}
       </div>

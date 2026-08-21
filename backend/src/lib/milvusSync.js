@@ -149,7 +149,7 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
       });
       console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${ticketCodigo}`);
     } else if (tipo === 'concluida') {
-      const resumo = buildCompletionSummary({ request, approvedParts });
+      const resumo = buildCompletionSummary({ request, approvedParts, technician });
       await criarAcompanhamento({
         ticketCodigo,
         descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\n${resumo}`

@@ -1,12 +1,9 @@
 const PDFDocument = require('pdfkit');
 const { drawHeader } = require('./pdfHeader');
+const { buildCompletionSummary } = require('./visitCompletion');
+const { formatDateTime } = require('./technicalWriting');
 
-function formatDateTime(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString('pt-BR');
-}
-
-function generateVisitReportPdf({ request, company, equipment, technician }) {
+function generateVisitReportPdf({ request, company, equipment, technician, approvedParts = [] }) {
   const doc = new PDFDocument({ size: 'A4', margin: 56 });
 
   drawHeader(doc, 'Relatório de Visita Técnica');
@@ -28,8 +25,8 @@ function generateVisitReportPdf({ request, company, equipment, technician }) {
   doc.moveDown(1);
 
   const rows = [
-    ['Check-in', formatDateTime(request.hora_checkin)],
-    ['Check-out', formatDateTime(request.hora_checkout)]
+    ['Check-in', formatDateTime(request.hora_checkin) || '—'],
+    ['Check-out', formatDateTime(request.hora_checkout) || '—']
   ];
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22');
   rows.forEach(([label, value]) => {
@@ -40,10 +37,10 @@ function generateVisitReportPdf({ request, company, equipment, technician }) {
   doc.x = 56;
   doc.moveDown(1);
 
-  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('RELATÓRIO', 56, doc.y);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor('#0F2747').text('REGISTRO TÉCNICO', 56, doc.y);
   doc.moveDown(0.3);
   doc.font('Helvetica').fontSize(10).fillColor('#1B1E22')
-    .text(request.relatorio_visita || 'Nenhum relatório registrado.', 56, doc.y, { width: 483, align: 'justify' });
+    .text(buildCompletionSummary({ request, approvedParts, technician: technician?.nome, includeStatusIcon: false }) || 'Nenhum relatório registrado.', 56, doc.y, { width: 483 });
 
   if (request.avaliacao) {
     doc.moveDown(1.2);
