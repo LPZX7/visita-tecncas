@@ -3,7 +3,7 @@ const { signVisitApprovalToken } = require('./approvalToken');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
-function sendVisitApprovalEmail(request, company) {
+function sendVisitApprovalEmail(request, company, signatureUser) {
   const to = request.solicitante_email || company?.email;
   if (!to) return;
 
@@ -20,7 +20,8 @@ function sendVisitApprovalEmail(request, company) {
       buttonLabel: 'Ver e autorizar visita',
       buttonUrl: link,
       footnote: 'Este link expira em 14 dias. Se você não reconhece esta solicitação, ignore este email.'
-    })
+    }),
+    signatureUser
   });
 }
 

@@ -237,7 +237,10 @@ router.patch('/:id/status', async (req, res, next) => {
     });
 
     if (status === 'Enviado' && request) {
-      const company = await db.getCompanyById(request.empresa_id);
+      const [company, draftUser] = await Promise.all([
+        db.getCompanyById(request.empresa_id),
+        db.getUserById(updated.draft_by)
+      ]);
       const emailDestino = request.solicitante_email || company?.email;
       if (emailDestino) {
         const token = signApprovalToken(updated.id);
@@ -252,7 +255,8 @@ router.patch('/:id/status', async (req, res, next) => {
             buttonLabel: 'Ver orçamento',
             buttonUrl: link,
             footnote: 'Este link expira em 14 dias.'
-          })
+          }),
+          signatureUser: draftUser
         });
       }
       await db.createNotification({
@@ -290,7 +294,8 @@ router.patch('/:id/status', async (req, res, next) => {
         sendMail({
           to: emailContrato,
           subject: `Contrato ${contract.numero} gerado`,
-          text: `Seu orçamento foi aprovado e o contrato ${contract.numero} foi gerado automaticamente.\n\nVocê pode acessá-lo e baixar o PDF pelo portal Mirontec, na seção Contratos.`
+          text: `Seu orçamento foi aprovado e o contrato ${contract.numero} foi gerado automaticamente.\n\nVocê pode acessá-lo e baixar o PDF pelo portal Mirontec, na seção Contratos.`,
+          signatureUser: draftUser
         });
       }
       if (request) {

@@ -18,7 +18,7 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
 
-function sendMilvusConfirmationEmail(request, company, equipment) {
+function sendMilvusConfirmationEmail(request, company, equipment, signatureUser) {
   const to = request.solicitante_email;
   if (!to) return;
   const portalUrl = `${FRONTEND_URL}/requests`;
@@ -33,7 +33,8 @@ function sendMilvusConfirmationEmail(request, company, equipment) {
       buttonLabel: 'Acompanhar chamado',
       buttonUrl: portalUrl,
       footnote: 'Guarde o número do chamado Milvus para facilitar o atendimento.'
-    })
+    }),
+    signatureUser
   });
 }
 
@@ -182,9 +183,9 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       await db.updateUser(req.user.sub, { liberado_para_chamado: false });
     }
 
-    const emailConfirmationSent = await sendMilvusConfirmationEmail(created, company, equipment);
+    const emailConfirmationSent = await sendMilvusConfirmationEmail(created, company, equipment, actorUser?.role === 'cliente' ? null : actorUser);
     if (req.user.role !== 'cliente') {
-      sendVisitApprovalEmail(created, company);
+      sendVisitApprovalEmail(created, company, actorUser);
     }
     await db.createNotification({
       empresa_id,
@@ -235,7 +236,7 @@ router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, n
       equipment,
       assignee: actorUser?.role === 'analista' ? actorUser : null
     });
-    const emailConfirmationSent = await sendMilvusConfirmationEmail(linked, company, equipment);
+    const emailConfirmationSent = await sendMilvusConfirmationEmail(linked, company, equipment, actorUser);
     await db.logAudit({
       user: req.user,
       acao: 'chamado_vinculado_milvus',
@@ -384,13 +385,17 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     if (patch.status) {
       const company = await db.getCompanyById(updated.empresa_id);
+      const signatureUser = updated.assigned_technician
+        ? await db.getUserById(updated.assigned_technician)
+        : (updated.assigned_analyst ? await db.getUserById(updated.assigned_analyst) : await db.getUserById(req.user.sub));
       const isTechnicalCompletion = patch.status === 'Concluída' && Boolean(patch.hora_checkout);
       const statusEmail = updated.solicitante_email || company?.email;
       if (statusEmail && !isTechnicalCompletion) {
         sendMail({
           to: statusEmail,
           subject: `Atualização do chamado — ${updated.status}`,
-          text: `O status do seu chamado "${updated.descricao}" foi atualizado para: ${updated.status}.`
+          text: `O status do seu chamado "${updated.descricao}" foi atualizado para: ${updated.status}.`,
+          signatureUser
         });
       }
       await db.createNotification({
@@ -426,7 +431,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         await Promise.all([
           syncRequestUpdateToMilvus(updated, { tipo: 'concluida', approvedParts, technician: technician?.nome }),
           emailDestino
-            ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html })
+            ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html, signatureUser: technician || signatureUser })
             : Promise.resolve()
         ]);
 
