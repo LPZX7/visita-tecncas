@@ -4,6 +4,7 @@ const { verifyToken, requireRole } = require('../lib/auth');
 const { syncMilvusChamados } = require('../lib/milvusSync');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 const { calculateBudgetTotal } = require('../lib/pricing');
+const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 
 const TAXA_MOTORISTA = 100;
 
@@ -53,7 +54,7 @@ router.post('/:id/importar', async (req, res, next) => {
       return res.status(409).json({ error: 'Este ticket já foi processado' });
     }
 
-    const { empresa_id, equipamento_id, unidade_id, urgencia, endereco } = req.body;
+    const { empresa_id, equipamento_id, unidade_id, urgencia, endereco, solicitante_email } = req.body;
     if (!empresa_id || !equipamento_id) {
       return res.status(400).json({ error: 'Selecione a empresa e o equipamento' });
     }
@@ -61,6 +62,17 @@ router.post('/:id/importar', async (req, res, next) => {
     const equipment = await db.getEquipmentById(equipamento_id);
     if (!equipment || equipment.empresa_id !== empresa_id) {
       return res.status(400).json({ error: 'Equipamento inválido para esta empresa' });
+    }
+
+    const company = await db.getCompanyById(empresa_id);
+    const unit = unidade_id ? await db.getUnitById(unidade_id) : (equipment.unidade_id ? await db.getUnitById(equipment.unidade_id) : null);
+    const contactEmail = resolveContactEmail({ provided: solicitante_email, request: { solicitante_email: pendente.cliente_email }, unit, company });
+    if (!isValidEmail(contactEmail)) {
+      return res.status(400).json({ error: 'Informe um e-mail válido do cliente antes de importar o chamado.' });
+    }
+    if (!company.email) {
+      await db.updateCompany(company.id, { email: contactEmail });
+      company.email = contactEmail;
     }
 
     const descricao = [pendente.assunto, pendente.descricao].filter(Boolean).join(' — ') || `Chamado Milvus #${pendente.milvus_codigo}`;
@@ -72,13 +84,12 @@ router.post('/:id/importar', async (req, res, next) => {
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
       aberto_por: req.user.sub,
-      solicitante_email: pendente.cliente_email || null,
+      solicitante_email: contactEmail,
       milvus_codigo: pendente.milvus_codigo
     });
 
     await db.updateMilvusPendente(pendente.id, { status: 'importado', request_id: request.id });
 
-    const company = await db.getCompanyById(empresa_id);
     sendVisitApprovalEmail(request, company);
 
     await db.logAudit({
@@ -96,7 +107,6 @@ router.post('/:id/importar', async (req, res, next) => {
     const matchedParts = matchPartsFromText(`${pendente.assunto || ''} ${pendente.descricao || ''}`, allParts);
     const items = matchedParts.map((part) => ({ peca_id: part.id, valor_unitario: part.preco_unitario, quantidade: 1 }));
 
-    const unit = unidade_id ? await db.getUnitById(unidade_id) : null;
     const deslocamento = unit?.valor_deslocamento_padrao != null ? Number(unit.valor_deslocamento_padrao) + TAXA_MOTORISTA : 0;
     const { pecasTotal, deslocamentoTotal, total } = calculateBudgetTotal({ items, deslocamento });
 

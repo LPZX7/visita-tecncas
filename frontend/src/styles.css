@@ -2320,6 +2320,23 @@ a:hover {
 .budget-part-remove:hover { color: #fff; background: var(--vermelho); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
+.milvus-link-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(220px, .7fr) auto;
+  align-items: end;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #f3cf72;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffdf5, #fff8df);
+}
+.milvus-link-card > div { display: grid; gap: 5px; }
+.milvus-link-card > div strong { color: var(--grafite); font-size: .9rem; }
+.milvus-link-card > div p { margin: 0; color: #6f6042; font-size: .76rem; line-height: 1.55; }
+.milvus-link-card .form-field { margin: 0; }
+.milvus-link-card .btn { min-height: 42px; white-space: nowrap; }
+
 .item-list {
   display: grid;
   gap: 6px;
@@ -3394,6 +3411,7 @@ a:hover {
   .part-combobox__option { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 9px 8px; }
   .part-combobox__price { font-size: .72rem; }
   .budget-parts-table { min-width: 570px; }
+  .milvus-link-card { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .item-list li { align-items: flex-start; flex-direction: column; gap: 4px; }
   .units-form { align-items: stretch; flex-direction: column; }
   .units-form .form-input, .units-form .form-select { width: 100%; min-width: 0; }

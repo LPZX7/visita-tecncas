@@ -2,6 +2,14 @@ const db = require('./db');
 const { listarChamadosVisitaTecnica, buscarClientePorDocumento, criarChamado, criarAcompanhamento, finalizarChamado } = require('./milvus');
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 const { buildCompletionSummary } = require('./visitCompletion');
+const { isValidEmail, normalizeEmail } = require('./contact');
+
+function milvusError(message, statusCode = 502) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.expose = true;
+  return error;
+}
 
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
@@ -32,41 +40,61 @@ async function syncMilvusChamados() {
   return { encontrados: lista.length, novos };
 }
 
-async function pushChamadoToMilvus(request, company, opts = {}) {
-  if (!process.env.MILVUS_API_TOKEN) return;
+async function ensureRequestInMilvus(request, company, opts = {}) {
+  if (request?.milvus_codigo) return request;
+  if (!process.env.MILVUS_API_TOKEN) {
+    throw milvusError('A integração com o Milvus não está configurada. O chamado não foi aberto.', 503);
+  }
+  const email = normalizeEmail(opts.email || request?.solicitante_email || company?.email);
+  if (!isValidEmail(email)) {
+    throw milvusError('Informe um e-mail válido do cliente para criar o chamado no Milvus.', 400);
+  }
   if (!company?.cnpj) {
-    console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível espelhar o chamado #${request.numero} no Milvus`);
-    return;
+    throw milvusError('A empresa precisa ter um CNPJ cadastrado para criar o chamado no Milvus.', 422);
   }
 
-  try {
-    let clienteToken = company.milvus_cliente_token;
-    if (!clienteToken) {
-      const cliente = await buscarClientePorDocumento(company.cnpj);
-      if (!cliente) {
-        console.warn(`[milvus] Cliente com CNPJ ${company.cnpj} (${company.razao_social}) não encontrado no Milvus — chamado #${request.numero} não foi espelhado`);
-        return;
-      }
-      clienteToken = cliente.token;
-      await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
+  let clienteToken = company.milvus_cliente_token;
+  if (!clienteToken) {
+    const cliente = await buscarClientePorDocumento(company.cnpj);
+    if (!cliente) {
+      throw milvusError(`A empresa ${company.razao_social} não foi encontrada no Milvus pelo CNPJ. Cadastre o cliente no Milvus e tente novamente.`, 422);
     }
-
-    const codigo = await criarChamado({
-      clienteToken,
-      assunto: `Chamado #${request.numero} — ${request.descricao}`.slice(0, 180),
-      descricao: `Aberto via sistema Mirontec.\n\nDescrição: ${request.descricao}\nUrgência: ${request.urgencia}\nEndereço: ${request.endereco || 'não informado'}`,
-      email: opts.email,
-      telefone: opts.telefone,
-      contato: opts.contato
-    });
-
-    if (codigo) {
-      await db.updateRequest(request.id, { milvus_codigo: codigo });
-      console.log(`[milvus] Chamado #${request.numero} espelhado no Milvus como ticket #${codigo}`);
-    }
-  } catch (err) {
-    console.error(`[milvus] Falha ao espelhar chamado #${request.numero} no Milvus:`, err.message);
+    clienteToken = cliente.token;
+    await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
   }
+
+  const equipmentLabel = opts.equipment
+    ? `${opts.equipment.modelo || 'Equipamento'}${opts.equipment.numero_serie ? ` — série ${opts.equipment.numero_serie}` : ''}`
+    : 'não informado';
+  const descricao = [
+    'Chamado aberto automaticamente pelo sistema Mirontec.',
+    '',
+    `Chamado interno: #${request.numero}`,
+    `Cliente: ${company.razao_social}`,
+    `Contato: ${opts.contato || company.responsavel || 'não informado'}`,
+    `E-mail: ${email}`,
+    `Telefone: ${opts.telefone || company.telefone || 'não informado'}`,
+    `Equipamento: ${equipmentLabel}`,
+    `Descrição: ${request.descricao}`,
+    `Urgência: ${request.urgencia}`,
+    `Endereço: ${request.endereco || 'não informado'}`
+  ].join('\n');
+
+  const codigo = await criarChamado({
+    clienteToken,
+    assunto: `VISITA TÉCNICA — Chamado #${request.numero}`,
+    descricao,
+    email,
+    telefone: opts.telefone || company.telefone,
+    contato: opts.contato || company.responsavel
+  });
+
+  if (!codigo) {
+    throw milvusError('O Milvus não retornou o número do chamado. Tente novamente.', 502);
+  }
+  const updated = await db.updateRequest(request.id, { milvus_codigo: String(codigo), solicitante_email: email });
+  console.log(`[milvus] Chamado #${request.numero} vinculado ao ticket #${codigo}`);
+  return updated;
 }
 
 async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
@@ -75,44 +103,27 @@ async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items
   try {
     const { assunto, descricao } = buildMilvusPayload({ budget, items, request });
 
-    if (budget.milvus_codigo) {
+    const existingTicket = request?.milvus_codigo || budget.milvus_codigo;
+    if (existingTicket) {
       await criarAcompanhamento({
-        ticketCodigo: budget.milvus_codigo,
+        ticketCodigo: existingTicket,
         descricao: `${assunto}\n\n${descricao}`
       });
-      console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) atualizada no ticket existente #${budget.milvus_codigo}`);
-      return;
-    }
-
-    if (!company?.cnpj) {
-      console.warn(`[milvus] Empresa "${company?.razao_social}" sem CNPJ — não foi possível enviar a visita técnica aprovada (orçamento #${budget.id}) ao Milvus`);
-      return;
-    }
-
-    let clienteToken = company.milvus_cliente_token;
-    if (!clienteToken) {
-      const cliente = await buscarClientePorDocumento(company.cnpj);
-      if (!cliente) {
-        console.warn(`[milvus] Cliente com CNPJ ${company.cnpj} (${company.razao_social}) não encontrado no Milvus — visita técnica (orçamento #${budget.id}) não foi enviada`);
-        return;
+      if (budget.milvus_codigo !== existingTicket) {
+        await db.updateBudget(budget.id, { milvus_codigo: existingTicket });
       }
-      clienteToken = cliente.token;
-      await db.updateCompany(company.id, { milvus_cliente_token: clienteToken });
+      console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) atualizada no ticket existente #${existingTicket}`);
+      return;
     }
 
-    const codigo = await criarChamado({
-      clienteToken,
-      assunto,
-      descricao,
+    const linkedRequest = await ensureRequestInMilvus(request, company, {
       email: opts.email,
       telefone: opts.telefone,
       contato: opts.contato
     });
-
-    if (codigo) {
-      await db.updateBudget(budget.id, { milvus_codigo: codigo });
-      console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) enviada ao Milvus como ticket #${codigo}`);
-    }
+    await criarAcompanhamento({ ticketCodigo: linkedRequest.milvus_codigo, descricao: `${assunto}\n\n${descricao}` });
+    await db.updateBudget(budget.id, { milvus_codigo: linkedRequest.milvus_codigo });
+    console.log(`[milvus] Visita técnica aprovada (orçamento #${budget.id}) vinculada ao ticket #${linkedRequest.milvus_codigo}`);
   } catch (err) {
     console.error(`[milvus] Falha ao enviar visita técnica aprovada (orçamento #${budget.id}) ao Milvus:`, err.message);
   }
@@ -127,27 +138,28 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
 
   try {
     const budgets = await db.getBudgets();
-    const aprovado = budgets.find((b) => b.request_id === request.id && b.status === 'Aprovado' && b.milvus_codigo);
-    if (!aprovado) return;
+    const aprovado = budgets.find((b) => b.request_id === request.id && b.status === 'Aprovado');
+    const ticketCodigo = request.milvus_codigo || aprovado?.milvus_codigo;
+    if (!aprovado || !ticketCodigo) return;
 
     if (tipo === 'checkin') {
       await criarAcompanhamento({
-        ticketCodigo: aprovado.milvus_codigo,
+        ticketCodigo,
         descricao: `Check-in realizado${technician ? ` pelo técnico ${technician}` : ''} em ${new Date(request.hora_checkin).toLocaleString('pt-BR')}.`
       });
-      console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${aprovado.milvus_codigo}`);
+      console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${ticketCodigo}`);
     } else if (tipo === 'concluida') {
       const resumo = buildCompletionSummary({ request, approvedParts });
       await criarAcompanhamento({
-        ticketCodigo: aprovado.milvus_codigo,
+        ticketCodigo,
         descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\n${resumo}`
       });
-      await finalizarChamado({ ticketCodigo: aprovado.milvus_codigo, servicoRealizado: resumo });
-      console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${aprovado.milvus_codigo}`);
+      await finalizarChamado({ ticketCodigo, servicoRealizado: resumo });
+      console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${ticketCodigo}`);
     }
   } catch (err) {
     console.error(`[milvus] Falha ao sincronizar atualização do chamado #${request.numero}:`, err.message);
   }
 }
 
-module.exports = { syncMilvusChamados, pushChamadoToMilvus, pushVisitaTecnicaAprovadaToMilvus, syncRequestUpdateToMilvus };
+module.exports = { syncMilvusChamados, ensureRequestInMilvus, pushVisitaTecnicaAprovadaToMilvus, syncRequestUpdateToMilvus };

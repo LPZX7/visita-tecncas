@@ -2,16 +2,40 @@ const crypto = require('crypto');
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
-const { sendMail } = require('../lib/mailer');
+const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
 const { sendVisitApprovalEmail } = require('../lib/visitApproval');
-const { syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail } = require('../lib/visitCompletion');
+const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+}
+
+function sendMilvusConfirmationEmail(request, company, equipment) {
+  const to = request.solicitante_email;
+  if (!to) return;
+  const portalUrl = `${FRONTEND_URL}/requests`;
+  const details = `Chamado Mirontec: #${request.numero}\nChamado Milvus: #${request.milvus_codigo}\nCliente: ${company?.razao_social || 'não informado'}\nEquipamento: ${equipment ? `${equipment.modelo} — série ${equipment.numero_serie}` : 'não informado'}\nDescrição: ${request.descricao}\nUrgência: ${request.urgencia}\nEndereço: ${request.endereco || 'não informado'}`;
+  return sendMail({
+    to,
+    subject: `Chamado #${request.milvus_codigo} criado no Milvus`,
+    text: `Olá,\n\nSeu atendimento foi registrado no portal Mirontec e no Milvus.\n\n${details}\n\nAcompanhe pelo portal: ${portalUrl}`,
+    html: actionEmailHtml({
+      title: `Chamado registrado no Milvus #${escapeHtml(request.milvus_codigo)}`,
+      message: `Seu atendimento foi registrado com sucesso.<br><br><strong>Chamado Mirontec:</strong> #${request.numero}<br><strong>Cliente:</strong> ${escapeHtml(company?.razao_social || 'não informado')}<br><strong>Equipamento:</strong> ${escapeHtml(equipment ? `${equipment.modelo} — série ${equipment.numero_serie}` : 'não informado')}<br><strong>Descrição:</strong> ${escapeHtml(request.descricao)}<br><strong>Urgência:</strong> ${escapeHtml(request.urgencia)}<br><strong>Endereço:</strong> ${escapeHtml(request.endereco || 'não informado')}`,
+      buttonLabel: 'Acompanhar chamado',
+      buttonUrl: portalUrl,
+      footnote: 'Guarde o número do chamado Milvus para facilitar o atendimento.'
+    })
+  });
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -45,7 +69,7 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, next) => {
   try {
-    const { equipamento_id, descricao, urgencia, endereco } = req.body;
+    const { equipamento_id, descricao, urgencia, endereco, solicitante_email } = req.body;
     let empresa_id = req.body.empresa_id;
 
     let requesterUser = null;
@@ -73,32 +97,48 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       return res.status(400).json({ error: 'Equipamento inválido para sua filial/sede' });
     }
 
+    const company = await db.getCompanyById(empresa_id);
+    const unit = equipment.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+    const contactEmail = resolveContactEmail({ provided: solicitante_email, unit, company, user: requesterUser || req.user });
+    if (!isValidEmail(contactEmail)) {
+      return res.status(400).json({ error: 'Informe um e-mail válido do cliente. Ele é obrigatório para criar e acompanhar o chamado no Milvus.' });
+    }
+    if (!company.email) {
+      await db.updateCompany(company.id, { email: contactEmail });
+      company.email = contactEmail;
+    }
+
     const request = {
       empresa_id,
       equipamento_id,
       descricao,
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
-      aberto_por: req.user.sub
+      aberto_por: req.user.sub,
+      solicitante_email: contactEmail
     };
 
-    const created = await db.createRequest(request);
+    let created = await db.createRequest(request);
+    try {
+      created = await ensureRequestInMilvus(created, company, {
+        email: contactEmail,
+        telefone: unit?.telefone || company.telefone,
+        contato: unit?.responsavel || company.responsavel || requesterUser?.nome || req.user.name,
+        equipment
+      });
+    } catch (err) {
+      await db.deleteRequest(created.id);
+      if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
+      throw err;
+    }
 
     if (req.user.role === 'cliente') {
       // Liberação é de uso único — precisa passar pelo suporte de novo pro próximo chamado.
       await db.updateUser(req.user.sub, { liberado_para_chamado: false });
     }
 
-    const company = await db.getCompanyById(empresa_id);
-    if (req.user.role === 'cliente') {
-      if (company?.email) {
-        sendMail({
-          to: company.email,
-          subject: `Chamado aberto — ${created.descricao}`,
-          text: `Olá,\n\nSeu chamado foi registrado com sucesso.\n\nDescrição: ${created.descricao}\nUrgência: ${created.urgencia}\nStatus: ${created.status}\n\nVocê pode acompanhar o atendimento pelo portal Mirontec.`
-        });
-      }
-    } else {
+    sendMilvusConfirmationEmail(created, company, equipment);
+    if (req.user.role !== 'cliente') {
       sendVisitApprovalEmail(created, company);
     }
     await db.createNotification({
@@ -115,11 +155,47 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
       detalhes: `Chamado #${created.numero} — ${created.descricao}`
     });
 
-    // Não sincronizar com o Milvus aqui: a visita técnica só é enviada ao Milvus
-    // depois que o cliente autorizar o orçamento (ver budgets.js / publicBudgets.js).
-
     res.status(201).json(created);
   } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/milvus', requireRole('analista', 'gestor'), async (req, res, next) => {
+  try {
+    let request = await db.getRequestById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Chamado não encontrado' });
+
+    const company = await db.getCompanyById(request.empresa_id);
+    const equipment = await db.getEquipmentById(request.equipamento_id);
+    const unit = equipment?.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+    const contactEmail = resolveContactEmail({ provided: req.body.solicitante_email, request, unit, company });
+    if (!isValidEmail(contactEmail)) {
+      return res.status(400).json({ error: 'Informe um e-mail válido do cliente para criar o chamado no Milvus.' });
+    }
+
+    request = await db.updateRequest(request.id, { solicitante_email: contactEmail });
+    if (!company.email) {
+      await db.updateCompany(company.id, { email: contactEmail });
+      company.email = contactEmail;
+    }
+    const linked = await ensureRequestInMilvus(request, company, {
+      email: contactEmail,
+      telefone: unit?.telefone || company.telefone,
+      contato: unit?.responsavel || company.responsavel,
+      equipment
+    });
+    sendMilvusConfirmationEmail(linked, company, equipment);
+    await db.logAudit({
+      user: req.user,
+      acao: 'chamado_vinculado_milvus',
+      entidade: 'request',
+      entidade_id: linked.id,
+      detalhes: `Chamado #${linked.numero} vinculado ao Milvus #${linked.milvus_codigo} — contato ${contactEmail}`
+    });
+    res.json(linked);
+  } catch (err) {
+    if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
     next(err);
   }
 });
@@ -146,6 +222,10 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     } = req.body;
     const patch = {};
     let completionContext = null;
+
+    if (status && status !== 'Cancelada' && !request.milvus_codigo) {
+      return res.status(409).json({ error: 'Este chamado ainda não está vinculado ao Milvus. Abra os detalhes, informe o e-mail do cliente e crie o ticket antes de continuar.' });
+    }
 
     const jaTemAceite = await db.getVisitaAceiteByRequestId(request.id);
     if (jaTemAceite && (relatorio_visita !== undefined || assigned_technician !== undefined || agendado_para !== undefined)) {
@@ -220,9 +300,10 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (patch.status) {
       const company = await db.getCompanyById(updated.empresa_id);
       const isTechnicalCompletion = patch.status === 'Concluída' && Boolean(patch.hora_checkout);
-      if (company?.email && !isTechnicalCompletion) {
+      const statusEmail = updated.solicitante_email || company?.email;
+      if (statusEmail && !isTechnicalCompletion) {
         sendMail({
-          to: company.email,
+          to: statusEmail,
           subject: `Atualização do chamado — ${updated.status}`,
           text: `O status do seu chamado "${updated.descricao}" foi atualizado para: ${updated.status}.`
         });
@@ -339,6 +420,9 @@ router.patch('/:id/aprovacao-visita', requireRole('cliente'), async (req, res, n
     }
     if (request.empresa_id !== req.user.empresa_id) {
       return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (!request.milvus_codigo) {
+      return res.status(409).json({ error: 'Este atendimento ainda não possui chamado no Milvus. A equipe responsável precisa concluir o vínculo antes da autorização.' });
     }
     if (request.aprovacao_cliente) {
       return res.status(409).json({ error: `Esta visita já foi ${request.aprovacao_cliente === 'aprovado' ? 'aprovada' : 'recusada'} anteriormente.` });

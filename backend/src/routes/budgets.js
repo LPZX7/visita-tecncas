@@ -5,7 +5,8 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { signApprovalToken } = require('../lib/approvalToken');
 const { generateBudgetPdf } = require('../lib/budgetPdf');
 const { calculateBudgetTotal } = require('../lib/pricing');
-const { pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
+const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
@@ -48,6 +49,9 @@ router.get('/:id/pdf', async (req, res, next) => {
       return res.status(404).json({ error: 'Orçamento não encontrado' });
     }
     const request = await db.getRequestById(budget.request_id);
+    if (!request) {
+      return res.status(409).json({ error: 'O chamado vinculado a este orçamento não existe' });
+    }
     if (req.user.role === 'cliente' && (!request || request.empresa_id !== req.user.empresa_id)) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
@@ -152,6 +156,10 @@ router.patch('/:id/status', async (req, res, next) => {
     if (!budget) {
       return res.status(404).json({ error: 'Orçamento não encontrado' });
     }
+    const request = await db.getRequestById(budget.request_id);
+    if (!request) {
+      return res.status(409).json({ error: 'O chamado vinculado a este orçamento não existe' });
+    }
 
     const { status } = req.body;
     if (!BUDGET_STATUSES.includes(status)) {
@@ -159,7 +167,6 @@ router.patch('/:id/status', async (req, res, next) => {
     }
 
     if (req.user.role === 'cliente') {
-      const request = (await db.getRequests()).find((item) => item.id === budget.request_id);
       if (!request || request.empresa_id !== req.user.empresa_id) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
@@ -193,6 +200,27 @@ router.patch('/:id/status', async (req, res, next) => {
     }
 
     const patch = { status };
+    if (status === 'Enviado') {
+      const company = await db.getCompanyById(request.empresa_id);
+      const equipment = await db.getEquipmentById(request.equipamento_id);
+      const unit = equipment?.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+      const contactEmail = resolveContactEmail({ request, unit, company });
+      if (!isValidEmail(contactEmail)) {
+        return res.status(400).json({ error: 'Este chamado está sem e-mail. Abra os detalhes do chamado, informe o contato e crie o vínculo com o Milvus antes de enviar o orçamento.' });
+      }
+      try {
+        const linked = await ensureRequestInMilvus(request, company, {
+          email: contactEmail,
+          telefone: unit?.telefone || company?.telefone,
+          contato: unit?.responsavel || company?.responsavel,
+          equipment
+        });
+        patch.milvus_codigo = linked.milvus_codigo;
+      } catch (err) {
+        if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
+        throw err;
+      }
+    }
     if (status === 'Aprovado') {
       patch.autorizado_por = 'Cliente via portal (usuário logado)';
       patch.aprovacao_nome = String(req.body.nome).trim();
@@ -207,8 +235,6 @@ router.patch('/:id/status', async (req, res, next) => {
       entidade_id: updated.id,
       detalhes: `Orçamento de R$ ${updated.total.toFixed(2)} — status alterado para ${status}`
     });
-
-    const request = (await db.getRequests()).find((item) => item.id === updated.request_id);
 
     if (status === 'Enviado' && request) {
       const company = await db.getCompanyById(request.empresa_id);
@@ -245,7 +271,7 @@ router.patch('/:id/status', async (req, res, next) => {
         valor_unitario: item.valor_unitario
       })));
       pushVisitaTecnicaAprovadaToMilvus(updated, request, companyForMilvus, itemsForMilvus, {
-        email: companyForMilvus?.email,
+        email: request?.solicitante_email || companyForMilvus?.email,
         contato: companyForMilvus?.responsavel
       });
 

@@ -37,7 +37,7 @@ export default function Requests() {
   const [technicians, setTechnicians] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [parts, setParts] = useState([]);
-  const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal' });
+  const [form, setForm] = useState({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: '', urgencia: 'Normal', solicitante_email: '' });
   const [drafts, setDrafts] = useState({});
   const [expanded, setExpanded] = useState({});
   const [checkoutRequest, setCheckoutRequest] = useState(null);
@@ -51,6 +51,9 @@ export default function Requests() {
   });
   const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [milvusDrafts, setMilvusDrafts] = useState({});
+  const [milvusSaving, setMilvusSaving] = useState('');
   const [page, setPage] = useState(1);
   const [liberado, setLiberado] = useState(null);
   const [checkingLiberacao, setCheckingLiberacao] = useState(false);
@@ -90,9 +93,12 @@ export default function Requests() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== 'cliente' || !user?.empresa_id || form.endereco || (companies.length === 0 && units.length === 0)) return;
-    const address = addressFor(user.empresa_id, user.unidade_id);
-    if (address) setForm((f) => ({ ...f, endereco: address }));
+    if (user?.role !== 'cliente' || !user?.empresa_id || (companies.length === 0 && units.length === 0)) return;
+    const address = form.endereco || addressFor(user.empresa_id, user.unidade_id);
+    const contactEmail = form.solicitante_email || contactEmailFor(user.empresa_id, user.unidade_id) || user.email || '';
+    if (address !== form.endereco || contactEmail !== form.solicitante_email) {
+      setForm((current) => ({ ...current, endereco: address, solicitante_email: contactEmail }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, units]);
 
@@ -121,6 +127,11 @@ export default function Requests() {
     return c?.endereco || '';
   };
 
+  const contactEmailFor = (empresaId, unidadeId) => {
+    const u = unidadeId ? unit(unidadeId) : null;
+    return u?.email || company(empresaId)?.email || '';
+  };
+
   // Para cliente, o backend já devolve só o equipamento dele. Para a equipe,
   // a lista só faz sentido depois de escolher a empresa (e, se houver filial
   // selecionada, filtra também por ela — mostrando o que é da filial + o compartilhado).
@@ -135,14 +146,43 @@ export default function Requests() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.solicitante_email || '')) {
+      setError('Informe um e-mail válido do cliente para registrar o chamado no Milvus.');
+      return;
+    }
     try {
-      await api.post('/requests', form);
+      const res = await api.post('/requests', form);
       const resetEndereco = user?.role === 'cliente' ? addressFor(user.empresa_id, user.unidade_id) : '';
-      setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal' });
+      const resetEmail = user?.role === 'cliente' ? contactEmailFor(user.empresa_id, user.unidade_id) || user.email || '' : '';
+      setForm({ empresa_id: '', unidade_id: '', equipamento_id: '', descricao: '', endereco: resetEndereco, urgencia: 'Normal', solicitante_email: resetEmail });
+      setSuccess(`Chamado criado e vinculado ao Milvus #${res.data.milvus_codigo}. A confirmação foi enviada por e-mail.`);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao abrir chamado');
       load();
+    }
+  };
+
+  const milvusDraftFor = (req) => milvusDrafts[req.id] ?? req.solicitante_email ?? company(req.empresa_id)?.email ?? '';
+
+  const connectToMilvus = async (req) => {
+    const solicitanteEmail = milvusDraftFor(req).trim();
+    setError('');
+    setSuccess('');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(solicitanteEmail)) {
+      setError('Informe um e-mail válido para criar este chamado no Milvus.');
+      return;
+    }
+    setMilvusSaving(req.id);
+    try {
+      const res = await api.post(`/requests/${req.id}/milvus`, { solicitante_email: solicitanteEmail });
+      setSuccess(`Chamado #${req.numero} vinculado ao Milvus #${res.data.milvus_codigo}. O cliente recebeu a confirmação por e-mail.`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível criar o chamado no Milvus.');
+    } finally {
+      setMilvusSaving('');
     }
   };
 
@@ -277,6 +317,7 @@ export default function Requests() {
     <div>
       <h2 className="page-title">Chamados</h2>
       {error && <div className="alert alert-error">{error}</div>}
+      {success && <div className="alert alert-success" role="status">{success}</div>}
 
       {isClienteSemEmpresa && (
         <div className="alert alert-error" style={{ marginBottom: 20 }}>
@@ -314,7 +355,7 @@ export default function Requests() {
                 Empresa
                 <SearchableSelect
                   value={form.empresa_id}
-                  onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, '') })}
+                  onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, ''), solicitante_email: contactEmailFor(id, '') })}
                   placeholder="Digite para buscar a empresa..."
                   options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
                 />
@@ -324,7 +365,7 @@ export default function Requests() {
                   Filial / Sede
                   <SearchableSelect
                     value={form.unidade_id}
-                    onChange={(id) => setForm({ ...form, unidade_id: id, equipamento_id: '', endereco: addressFor(form.empresa_id, id) })}
+                    onChange={(id) => setForm({ ...form, unidade_id: id, equipamento_id: '', endereco: addressFor(form.empresa_id, id), solicitante_email: contactEmailFor(form.empresa_id, id) || form.solicitante_email })}
                     placeholder="Digite para buscar a filial ou sede..."
                     options={unitsForCompany(form.empresa_id).map((u) => ({
                       value: u.id,
@@ -336,6 +377,19 @@ export default function Requests() {
               )}
             </>
           )}
+          <label className="form-field">
+            E-mail do cliente
+            <input
+              className="form-input"
+              type="email"
+              value={form.solicitante_email}
+              onChange={(e) => setForm({ ...form, solicitante_email: e.target.value })}
+              placeholder="cliente@empresa.com.br"
+              autoComplete="email"
+              required
+            />
+            <small className="detail-muted">Obrigatório. Será usado no chamado do Milvus e nas confirmações do atendimento.</small>
+          </label>
           <label className="form-field">
             Equipamento
             <select
@@ -377,6 +431,7 @@ export default function Requests() {
             <th>Descrição</th>
             <th>Empresa</th>
             <th>Equipamento</th>
+            <th>Milvus</th>
             <th>Status</th>
             <th>Técnico</th>
             <th></th>
@@ -396,6 +451,7 @@ export default function Requests() {
                   <td>{req.descricao}</td>
                   <td>{companyName(req.empresa_id)}</td>
                   <td>{equipmentLabel(req.equipamento_id)}</td>
+                  <td>{req.milvus_codigo ? <span className="badge badge-aprovado">#{req.milvus_codigo}</span> : <span className="badge badge-rejeitado">Não vinculado</span>}</td>
                   <td><span className={badgeClass(req.status)}>{req.status}</span></td>
                   <td>{technicianName(req.assigned_technician)}</td>
                   <td>
@@ -435,7 +491,7 @@ export default function Requests() {
                 </tr>
                 {isOpen && (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={(canManage || isTech) ? 8 : 7}>
                       <div className="detail-panel">
                         <div className="detail-grid">
                           <div>
@@ -467,6 +523,11 @@ export default function Requests() {
                             )}
                           </div>
                           <div>
+                            <strong>Chamado no Milvus</strong>
+                            <p>{req.milvus_codigo ? `#${req.milvus_codigo}` : 'Ainda não vinculado'}</p>
+                            {req.solicitante_email && <p className="detail-muted">Contato: {req.solicitante_email}</p>}
+                          </div>
+                          <div>
                             <strong>Aberto em</strong>
                             <p>{formatDateTime(req.criado_em)}</p>
                           </div>
@@ -483,6 +544,28 @@ export default function Requests() {
                             <p>{formatDateTime(req.hora_checkout)}</p>
                           </div>
                         </div>
+                        {canManage && !req.milvus_codigo && (
+                          <div className="milvus-link-card">
+                            <div>
+                              <span className="page-eyebrow">AÇÃO NECESSÁRIA</span>
+                              <strong>Criar este chamado no Milvus</strong>
+                              <p>Informe o e-mail do cliente. O sistema criará o ticket, salvará o número aqui e enviará uma confirmação completa ao contato.</p>
+                            </div>
+                            <label className="form-field">
+                              E-mail do cliente
+                              <input
+                                className="form-input"
+                                type="email"
+                                value={milvusDraftFor(req)}
+                                onChange={(e) => setMilvusDrafts((current) => ({ ...current, [req.id]: e.target.value }))}
+                                placeholder="cliente@empresa.com.br"
+                              />
+                            </label>
+                            <button type="button" className="btn btn-primary" onClick={() => connectToMilvus(req)} disabled={milvusSaving === req.id}>
+                              {milvusSaving === req.id ? 'Criando no Milvus...' : 'Criar e enviar confirmação'}
+                            </button>
+                          </div>
+                        )}
                         {isTech && approvedBudgetFor(req.id) && (
                           <div className="detail-report">
                             <strong>Peça e serviço aprovados pelo cliente</strong>
