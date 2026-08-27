@@ -186,7 +186,7 @@ export default function CreateSede() {
             value={empresaId}
             onChange={setEmpresaId}
             placeholder="Pesquise uma empresa..."
-            options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+            options={companies.map((c) => ({ value: c.id, label: c.nome_fantasia || c.razao_social, sublabel: [c.razao_social, c.cnpj].filter(Boolean).join(' · ') }))}
           />
         </label>
       </div>

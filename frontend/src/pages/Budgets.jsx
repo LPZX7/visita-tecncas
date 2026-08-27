@@ -228,7 +228,7 @@ export default function Budgets() {
               value={form.empresa_id}
               onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '', request_id: '' })}
               placeholder="Pesquise uma empresa..."
-              options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+              options={companies.map((c) => ({ value: c.id, label: c.nome_fantasia || c.razao_social, sublabel: [c.razao_social, c.cnpj].filter(Boolean).join(' · ') }))}
             />
           </label>
 

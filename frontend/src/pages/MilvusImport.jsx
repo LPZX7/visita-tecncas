@@ -240,7 +240,7 @@ export default function MilvusImport() {
                       value={draft.empresa_id}
                       onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, ''), solicitante_email: p.cliente_email || companies.find((c) => c.id === id)?.email || '' })}
                       placeholder="Digite para buscar a empresa..."
-                      options={companies.map((c) => ({ value: c.id, label: c.razao_social, sublabel: c.cnpj }))}
+                      options={companies.map((c) => ({ value: c.id, label: c.nome_fantasia || c.razao_social, sublabel: [c.razao_social, c.cnpj].filter(Boolean).join(' · ') }))}
                     />
                   </label>
                   {draft.empresa_id && unitsForCompany(draft.empresa_id).length > 0 && (

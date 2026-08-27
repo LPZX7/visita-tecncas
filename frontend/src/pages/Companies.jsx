@@ -19,8 +19,9 @@ export default function Companies() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const addressForCompany = (companyId) => {
-    const companyUnits = units.filter((u) => u.empresa_id === companyId);
+  const addressForCompany = (company) => {
+    if (company.endereco) return company.endereco;
+    const companyUnits = units.filter((u) => u.empresa_id === company.id);
     const unit = companyUnits.find((u) => u.tipo === 'Sede') || companyUnits[0];
     if (!unit) return '';
     return [unit.endereco, unit.numero, unit.cidade && unit.estado ? `${unit.cidade}/${unit.estado}` : unit.cidade].filter(Boolean).join(', ');
@@ -33,7 +34,7 @@ export default function Companies() {
       c.razao_social.toLowerCase().includes(q) ||
       (c.nome_fantasia || '').toLowerCase().includes(q) ||
       (c.cnpj || '').toLowerCase().includes(q) ||
-      addressForCompany(c.id).toLowerCase().includes(q)
+      addressForCompany(c).toLowerCase().includes(q)
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companies, units, search]);
@@ -221,7 +222,7 @@ export default function Companies() {
               <tr key={company.id}>
                 <td>{company.razao_social}</td>
                 <td>{company.cnpj}</td>
-                <td>{addressForCompany(company.id) || '—'}</td>
+                <td>{addressForCompany(company) || '—'}</td>
                 <td>{company.inscricao_estadual || '—'}</td>
                 <td><span className={`badge badge-${company.status}`}>{company.status === 'ativo' ? 'Ativa' : 'Inativa'}</span></td>
                 <td>
