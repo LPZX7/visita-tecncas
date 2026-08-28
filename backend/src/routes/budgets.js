@@ -7,6 +7,7 @@ const { generateBudgetPdf } = require('../lib/budgetPdf');
 const { calculateBudgetTotal } = require('../lib/pricing');
 const { ensureRequestInMilvus, pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
+const { sendApprovalNotificationToStaff } = require('../lib/approvalNotifications');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
@@ -280,15 +281,21 @@ router.patch('/:id/status', async (req, res, next) => {
       });
 
       const draftUser = await db.getUserById(updated.draft_by);
-      if (draftUser?.email) {
-        sendMail({
-          to: draftUser.email,
-          subject: 'Orçamento aprovado pelo cliente',
-          text: `O orçamento de R$ ${updated.total.toFixed(2)} que você enviou foi aprovado pelo cliente.\n\nContrato gerado automaticamente: ${contract.numero}\nDisponível no portal em Contratos.`
-        });
+      const notificationResult = await sendApprovalNotificationToStaff({
+        kind: 'budget',
+        request,
+        company: companyForMilvus,
+        budget: updated,
+        contract,
+        signatureUser: draftUser
+      });
+      if (notificationResult.recipients.length === 0) {
+        console.warn('[approval-notification] Nenhum gestor ativo ou técnico responsável com e-mail válido para receber a confirmação do orçamento.');
+      } else if (notificationResult.sent < notificationResult.recipients.length) {
+        console.warn(`[approval-notification] Confirmação do orçamento enviada para ${notificationResult.sent}/${notificationResult.recipients.length} destinatários.`);
       }
 
-      const company = request ? await db.getCompanyById(request.empresa_id) : null;
+      const company = companyForMilvus;
       const emailContrato = request?.solicitante_email || company?.email;
       if (emailContrato) {
         sendMail({

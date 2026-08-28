@@ -10,6 +10,7 @@ const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
+const { sendApprovalNotificationToStaff } = require('../lib/approvalNotifications');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -563,6 +564,20 @@ router.patch('/:id/aprovacao-visita', requireRole('cliente'), async (req, res, n
         ? `Chamado #${updated.numero} — aprovado por ${updated.aprovacao_nome} (CPF ${updated.aprovacao_cpf}, tel ${updated.aprovacao_telefone}) pelo portal`
         : `Chamado #${updated.numero} — recusado pelo portal`
     });
+
+    if (decisao === 'aprovado') {
+      const company = await db.getCompanyById(updated.empresa_id);
+      const notificationResult = await sendApprovalNotificationToStaff({
+        kind: 'visit',
+        request: updated,
+        company
+      });
+      if (notificationResult.recipients.length === 0) {
+        console.warn('[approval-notification] Nenhum gestor ativo ou técnico responsável com e-mail válido para receber a confirmação da visita.');
+      } else if (notificationResult.sent < notificationResult.recipients.length) {
+        console.warn(`[approval-notification] Confirmação da visita enviada para ${notificationResult.sent}/${notificationResult.recipients.length} destinatários.`);
+      }
+    }
 
     res.json(updated);
   } catch (err) {
