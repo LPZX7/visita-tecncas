@@ -40,9 +40,9 @@ function buildApprovalEmail({ kind, request, company, budget, contract, technici
   const clientName = company?.razao_social || company?.nome_fantasia || 'Cliente não informado';
   const approverName = budgetApproved ? budget?.aprovacao_nome : request?.aprovacao_nome;
   const portalUrl = `${FRONTEND_URL}/requests`;
-  const title = budgetApproved ? 'Orçamento aprovado pelo cliente' : 'Visita autorizada pelo cliente';
+  const title = budgetApproved ? 'Orçamento aprovado e visita autorizada' : 'Visita autorizada pelo cliente';
   const subject = budgetApproved
-    ? `Orçamento aprovado — chamado #${request?.numero || 'sem número'}`
+    ? `Orçamento e visita aprovados — chamado #${request?.numero || 'sem número'}`
     : `Visita autorizada — chamado #${request?.numero || 'sem número'}`;
   const statusLine = budgetApproved
     ? `Valor aprovado: ${formatMoney(budget?.total)}${contract?.numero ? `\nContrato: ${contract.numero}` : ''}`
@@ -65,6 +65,7 @@ function buildApprovalEmail({ kind, request, company, budget, contract, technici
     ['Aprovado por', approverName || 'cliente pelo portal']
   ];
   if (budgetApproved) {
+    htmlDetails.push(['Visita', 'Autorizada automaticamente']);
     htmlDetails.push(['Valor aprovado', formatMoney(budget?.total)]);
     if (contract?.numero) htmlDetails.push(['Contrato', contract.numero]);
   } else {

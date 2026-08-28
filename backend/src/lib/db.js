@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
+const { buildVisitApprovalPatchFromBudget } = require('./approvalSync');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -436,7 +437,7 @@ async function initDb() {
 
 // ---------- generic partial-update helper ----------
 
-async function updateRow(table, id, patch, { touchUpdatedAt = true } = {}) {
+async function updateRow(table, id, patch, { touchUpdatedAt = true, executor = pool } = {}) {
   const fields = { ...patch };
   if (touchUpdatedAt) fields.atualizado_em = now();
 
@@ -446,7 +447,7 @@ async function updateRow(table, id, patch, { touchUpdatedAt = true } = {}) {
   const setClause = keys.map((key, idx) => `${key} = $${idx + 1}`).join(', ');
   const values = keys.map((key) => (fields[key] === undefined ? null : fields[key]));
   values.push(id);
-  await pool.query(`UPDATE ${table} SET ${setClause} WHERE id = $${keys.length + 1}`, values);
+  await executor.query(`UPDATE ${table} SET ${setClause} WHERE id = $${keys.length + 1}`, values);
 }
 
 async function safeDelete(table, id) {
@@ -845,6 +846,39 @@ async function updateBudget(id, patch) {
   return getBudgetById(id);
 }
 
+async function approveBudgetAndVisit(budgetId, requestId, budgetPatch) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: budgetRows } = await client.query('SELECT * FROM budgets WHERE id = $1 FOR UPDATE', [budgetId]);
+    const { rows: requestRows } = await client.query('SELECT * FROM requests WHERE id = $1 FOR UPDATE', [requestId]);
+    if (!budgetRows[0] || !requestRows[0]) {
+      throw new Error('Orçamento ou chamado não encontrado durante a aprovação');
+    }
+
+    const approvedAt = budgetRows[0].aprovado_em || now();
+    const approvedBudgetPatch = { ...budgetPatch, status: 'Aprovado', aprovado_em: approvedAt };
+    const approvedBudget = { ...budgetRows[0], ...approvedBudgetPatch };
+    await updateRow('budgets', budgetId, approvedBudgetPatch, { executor: client });
+    await updateRow('requests', requestId, buildVisitApprovalPatchFromBudget(approvedBudget), { executor: client });
+
+    const { rows: updatedBudgetRows } = await client.query('SELECT * FROM budgets WHERE id = $1', [budgetId]);
+    const { rows: updatedRequestRows } = await client.query('SELECT * FROM requests WHERE id = $1', [requestId]);
+    const { rows: items } = await client.query('SELECT * FROM orcamento_itens WHERE orcamento_id = $1', [budgetId]);
+    await client.query('COMMIT');
+
+    return {
+      budget: { ...updatedBudgetRows[0], items },
+      request: updatedRequestRows[0]
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function deleteBudget(id) {
   await pool.query('DELETE FROM orcamento_itens WHERE orcamento_id = $1', [id]);
   return safeDelete('budgets', id);
@@ -1084,6 +1118,7 @@ module.exports = {
   getBudgetById,
   createBudget,
   updateBudget,
+  approveBudgetAndVisit,
   deleteBudget,
   getContracts,
   getContractById,

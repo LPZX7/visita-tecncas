@@ -41,12 +41,14 @@ test('e-mail de orçamento inclui dados operacionais e não expõe CPF', () => {
     technician: { nome: 'Abson' }
   });
 
+  assert.match(content.subject, /orçamento e visita aprovados/i);
   assert.match(content.subject, /chamado #42/i);
   assert.match(content.text, /R\$\s*1\.250,50/);
   assert.match(content.text, /CTR-00042/);
   assert.match(content.html, /Cliente &amp; Filhos/);
   assert.doesNotMatch(content.html, /<script>/);
   assert.doesNotMatch(`${content.text}${content.html}`, /123\.456\.789-00/);
+  assert.match(content.html, /Autorizada automaticamente/);
 });
 
 test('e-mail de visita identifica a autorização e o técnico responsável', () => {

@@ -37,7 +37,7 @@ export default function ApproveBudget() {
       const res = await api.patch(`/budgets/${data.budget_id}/status`, status === 'Aprovado' ? { status, ...autorizante } : { status });
       setResult({
         status: res.data.status,
-        message: status === 'Aprovado' ? 'Orçamento autorizado com sucesso. Nossa equipe foi notificada e o contrato foi gerado.' : 'Orçamento não autorizado. Nossa equipe foi notificada.'
+        message: status === 'Aprovado' ? 'Orçamento aprovado e visita autorizada com sucesso. Nossa equipe foi notificada e o contrato foi gerado.' : 'Orçamento não autorizado. Nossa equipe foi notificada.'
       });
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível registrar sua resposta.');

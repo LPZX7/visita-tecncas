@@ -157,7 +157,7 @@ router.patch('/:id/status', async (req, res, next) => {
     if (!budget) {
       return res.status(404).json({ error: 'Orçamento não encontrado' });
     }
-    const request = await db.getRequestById(budget.request_id);
+    let request = await db.getRequestById(budget.request_id);
     if (!request) {
       return res.status(409).json({ error: 'O chamado vinculado a este orçamento não existe' });
     }
@@ -228,7 +228,14 @@ router.patch('/:id/status', async (req, res, next) => {
       patch.aprovacao_cpf = String(req.body.cpf).trim();
       patch.aprovacao_telefone = String(req.body.telefone).trim();
     }
-    const updated = await db.updateBudget(budget.id, patch);
+    let updated;
+    if (status === 'Aprovado') {
+      const approval = await db.approveBudgetAndVisit(budget.id, request.id, patch);
+      updated = approval.budget;
+      request = approval.request;
+    } else {
+      updated = await db.updateBudget(budget.id, patch);
+    }
     await db.logAudit({
       user: req.user,
       acao: `orcamento_${status.toLowerCase()}`,
@@ -236,6 +243,16 @@ router.patch('/:id/status', async (req, res, next) => {
       entidade_id: updated.id,
       detalhes: `Orçamento de R$ ${updated.total.toFixed(2)} — status alterado para ${status}`
     });
+
+    if (status === 'Aprovado') {
+      await db.logAudit({
+        user: req.user,
+        acao: 'visita_aprovada_via_orcamento',
+        entidade: 'request',
+        entidade_id: request.id,
+        detalhes: `Chamado #${request.numero} — visita autorizada automaticamente com a aprovação do orçamento por ${updated.aprovacao_nome}`
+      });
+    }
 
     if (status === 'Enviado' && request) {
       const [company, draftUser] = await Promise.all([
@@ -308,8 +325,8 @@ router.patch('/:id/status', async (req, res, next) => {
       if (request) {
         await db.createNotification({
           empresa_id: request.empresa_id,
-          titulo: 'Orçamento aprovado',
-          mensagem: `Contrato ${contract.numero} gerado automaticamente`,
+          titulo: 'Orçamento e visita aprovados',
+          mensagem: `Visita autorizada e contrato ${contract.numero} gerado automaticamente`,
           link: '/contracts'
         });
       }
