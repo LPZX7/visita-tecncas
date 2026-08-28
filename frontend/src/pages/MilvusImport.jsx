@@ -136,7 +136,7 @@ export default function MilvusImport() {
     setSuccess('');
     try {
       const res = await api.post('/milvus-import/sync');
-      setSuccess(`Sincronizado: ${res.data.encontrados} ticket(s) encontrado(s), ${res.data.novos} novo(s).`);
+      setSuccess(`Sincronizado: ${res.data.novos} novo(s), ${res.data.importados_automaticamente || 0} importado(s) automaticamente e ${res.data.aguardando_revisao || 0} aguardando revisão.`);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao sincronizar com o Milvus');
@@ -162,7 +162,7 @@ export default function MilvusImport() {
       const pecas = res.data.pecas_identificadas || [];
       setSuccess(
         pecas.length > 0
-          ? `Chamado importado e orçamento (rascunho) criado com: ${pecas.join(', ')}. Complete o motivo da troca e o valor da visita técnica em Orçamentos antes de enviar para aprovação.`
+          ? `Chamado importado e orçamento em rascunho criado com: ${pecas.join(', ')}.${res.data.motivo_identificado ? ` Motivo identificado: ${res.data.motivo_identificado}.` : ' O Milvus não informou um motivo; isso não impede o orçamento.'}`
           : 'Chamado importado e orçamento (rascunho) criado — nenhuma peça foi identificada automaticamente, adicione manualmente em Orçamentos antes de enviar.'
       );
       load();
@@ -186,8 +186,8 @@ export default function MilvusImport() {
     <div>
       <h2 className="page-title">Importar do Milvus</h2>
       <p className="section-text">
-        Tickets abertos no Milvus com a categoria "Visita Técnica" aparecem aqui para revisão. Escolha a empresa e o
-        equipamento certos antes de importar como chamado no sistema.
+        Tickets do Milvus são importados automaticamente quando empresa, equipamento, peça e e-mail são identificados com segurança.
+        Somente os casos incompletos ou ambíguos ficam aqui para revisão.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
@@ -223,6 +223,7 @@ export default function MilvusImport() {
                 <div><dt>Recebido em</dt><dd>{formatDateTime(p.criado_em)}</dd></div>
               </dl>
               {p.descricao && <p className="section-text">{p.descricao}</p>}
+              {p.auto_observacao && <p className="section-text detail-muted">{p.auto_observacao}</p>}
               {p.status !== 'pendente' && (
                 <p className="section-text detail-muted">Este ticket já foi {p.status} — não pode ser importado de novo.</p>
               )}

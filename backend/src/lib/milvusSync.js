@@ -10,6 +10,7 @@ const {
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 const { buildCompletionSummary } = require('./visitCompletion');
 const { isValidEmail, normalizeEmail } = require('./contact');
+const { autoImportMilvusPendentes } = require('./milvusImportService');
 
 function milvusError(message, statusCode = 502) {
   const error = new Error(message);
@@ -20,8 +21,6 @@ function milvusError(message, statusCode = 502) {
 
 async function syncMilvusChamados() {
   const lista = await listarChamadosVisitaTecnica();
-  if (!lista.length) return { encontrados: 0, novos: 0 };
-
   const codigos = lista.map((t) => String(t.codigo));
   const existentes = new Set(await db.getMilvusPendentesByCodigos(codigos));
 
@@ -44,7 +43,19 @@ async function syncMilvusChamados() {
     novos++;
   }
 
-  return { encontrados: lista.length, novos };
+  let automatico = { importados: 0, aguardando_revisao: 0 };
+  try {
+    automatico = await autoImportMilvusPendentes();
+  } catch (error) {
+    console.error('[milvus-auto] Falha ao processar a fila automática:', error.message);
+  }
+
+  return {
+    encontrados: lista.length,
+    novos,
+    importados_automaticamente: automatico.importados,
+    aguardando_revisao: automatico.aguardando_revisao
+  };
 }
 
 async function ensureRequestInMilvus(request, company, opts = {}) {

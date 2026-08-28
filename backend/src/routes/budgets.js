@@ -11,7 +11,7 @@ const { sendApprovalNotificationToStaff } = require('../lib/approvalNotification
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 
-function validateVisitaTecnicaFields({ items, motivo_troca, deslocamento }) {
+function validateVisitaTecnicaFields({ items, deslocamento }) {
   if (!items || items.length === 0) return 'Selecione ao menos uma peça que será trocada';
   for (const item of items) {
     if (!item.quantidade || Number(item.quantidade) <= 0) return 'Informe a quantidade da peça';
@@ -19,7 +19,6 @@ function validateVisitaTecnicaFields({ items, motivo_troca, deslocamento }) {
       return 'Informe o valor unitário da peça';
     }
   }
-  if (!motivo_troca || !String(motivo_troca).trim()) return 'Informe o motivo da troca';
   if (deslocamento === undefined || deslocamento === null || Number(deslocamento) < 0) return 'Informe o valor da visita técnica';
   return null;
 }
@@ -131,7 +130,7 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       deslocamento: deslocamentoTotal,
       urgencia: 0,
       horas_trabalho: 0,
-      motivo_troca: String(motivo_troca).trim(),
+      motivo_troca: String(motivo_troca || '').trim() || null,
       observacoes_tecnicas: (observacoes_tecnicas || '').trim() || null
     };
 

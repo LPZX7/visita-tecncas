@@ -133,10 +133,6 @@ export default function Budgets() {
       setError('Adicione ao menos uma peça que será trocada.');
       return;
     }
-    if (!form.motivo_troca.trim()) {
-      setError('Informe o motivo da troca.');
-      return;
-    }
     if (form.deslocamento === '' || Number(form.deslocamento) < 0) {
       setError('Informe o valor da visita técnica.');
       return;
@@ -308,8 +304,8 @@ export default function Budgets() {
           <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
 
           <label className="form-field">
-            Motivo da troca
-            <textarea className="form-textarea" value={form.motivo_troca} onChange={(e) => setForm({ ...form, motivo_troca: e.target.value })} />
+            Motivo da troca (opcional)
+            <textarea className="form-textarea" value={form.motivo_troca} onChange={(e) => setForm({ ...form, motivo_troca: e.target.value })} placeholder="Preenchido automaticamente quando informado no Milvus" />
           </label>
           <label className="form-field">
             Observações técnicas (informações relevantes encontradas no atendimento)

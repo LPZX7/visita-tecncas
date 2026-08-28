@@ -230,6 +230,8 @@ const SCHEMA_SQL = `
     atualizado_em TEXT
   );
 
+  ALTER TABLE milvus_chamados_pendentes ADD COLUMN IF NOT EXISTS auto_observacao TEXT;
+
   CREATE INDEX IF NOT EXISTS idx_milvus_pendentes_status ON milvus_chamados_pendentes(status);
 
   UPDATE requests AS r
@@ -1005,6 +1007,30 @@ async function updateMilvusPendente(id, patch) {
   return getMilvusPendenteById(id);
 }
 
+async function claimMilvusPendente(id) {
+  const { rows } = await pool.query(
+    `UPDATE milvus_chamados_pendentes
+     SET status = 'processando', atualizado_em = $1
+     WHERE id = $2 AND status = 'pendente'
+     RETURNING *`,
+    [now(), id]
+  );
+  return rows[0] || null;
+}
+
+async function releaseStaleMilvusClaims(maxAgeMinutes = 10) {
+  const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000).toISOString();
+  const result = await pool.query(
+    `UPDATE milvus_chamados_pendentes
+     SET status = 'pendente',
+         auto_observacao = 'A importação anterior foi interrompida e será tentada novamente.',
+         atualizado_em = $1
+     WHERE status = 'processando' AND atualizado_em < $2`,
+    [now(), cutoff]
+  );
+  return result.rowCount;
+}
+
 // ---------- termo de conclusão / aceite de visita ----------
 
 async function getVisitaAceiteByRequestId(request_id) {
@@ -1139,5 +1165,7 @@ module.exports = {
   createMilvusPendente,
   getMilvusPendentes,
   getMilvusPendenteById,
-  updateMilvusPendente
+  updateMilvusPendente,
+  claimMilvusPendente,
+  releaseStaleMilvusClaims
 };

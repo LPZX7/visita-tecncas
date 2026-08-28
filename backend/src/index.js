@@ -77,7 +77,11 @@ const port = process.env.PORT || 4100;
     if (process.env.MILVUS_API_TOKEN) {
       const runMilvusSync = () => {
         syncMilvusChamados()
-          .then((r) => { if (r.novos > 0) console.log(`[milvus] ${r.novos} chamado(s) novo(s) de "Visita Técnica" importado(s) para revisão`); })
+          .then((r) => {
+            if (r.novos > 0 || r.importados_automaticamente > 0) {
+              console.log(`[milvus] ${r.novos} novo(s), ${r.importados_automaticamente} importado(s) automaticamente e ${r.aguardando_revisao} aguardando revisão.`);
+            }
+          })
           .catch((err) => console.error('[milvus] Falha na sincronização:', err.message));
       };
       runMilvusSync();
