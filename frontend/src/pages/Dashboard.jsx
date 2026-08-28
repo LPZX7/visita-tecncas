@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import { getUser, clearAuth } from '../utils/auth';
@@ -7,6 +7,7 @@ import Timeline from '../components/Timeline';
 import EmptyState from '../components/EmptyState';
 import RatingInput from '../components/RatingInput';
 import VisitCalendar from '../components/VisitCalendar';
+import './Dashboard.css';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -96,7 +97,16 @@ function Badge({ status }) {
 
 function formatDate(value) {
   if (!value) return null;
-  return new Date(value).toLocaleDateString('pt-BR');
+  const raw = String(value);
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString('pt-BR');
+}
+
+function formatTime(value) {
+  const match = String(value || '').match(/[T ](\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : 'A definir';
 }
 
 function localDateKey(value = new Date()) {
@@ -132,7 +142,12 @@ export default function Dashboard() {
   const [contracts, setContracts] = useState([]);
   const [users, setUsers] = useState([]);
   const [parts, setParts] = useState([]);
+  const [milvusPending, setMilvusPending] = useState([]);
+  const [milvusAvailable, setMilvusAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dashboardError, setDashboardError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
   const [selectedDay, setSelectedDay] = useState(null);
@@ -146,17 +161,22 @@ export default function Dashboard() {
   const role = profile?.role;
   const today = localDateKey();
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    setDashboardError('');
     try {
       if (role === 'gestor') {
-        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes, usersRes] = await Promise.all([
+        const [requestsRes, budgetsRes, companiesRes, equipmentsRes, partsRes, usersRes, milvusRes] = await Promise.all([
           api.get('/requests'),
           api.get('/budgets'),
           api.get('/companies'),
           api.get('/equipments'),
           api.get('/parts'),
-          api.get('/users')
+          api.get('/users'),
+          api.get('/milvus-import', { params: { status: 'pendente' } })
+            .then((res) => ({ data: res.data, available: true }))
+            .catch(() => ({ data: [], available: false }))
         ]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
@@ -164,6 +184,8 @@ export default function Dashboard() {
         setCompanies(companiesRes.data);
         setEquipments(equipmentsRes.data);
         setParts(partsRes.data);
+        setMilvusPending(milvusRes.data);
+        setMilvusAvailable(milvusRes.available);
         setMetrics({
           requests: requestsRes.data.length,
           budgets: budgetsRes.data.length,
@@ -185,34 +207,53 @@ export default function Dashboard() {
         setEquipments(equipmentsRes.data);
         setContracts(contractsRes.data);
       } else if (role === 'analista') {
-        const [requestsRes, budgetsRes, companiesRes, usersRes, partsRes] = await Promise.all([
+        const [requestsRes, budgetsRes, companiesRes, usersRes, partsRes, milvusRes] = await Promise.all([
           api.get('/requests'),
           api.get('/budgets'),
           api.get('/companies'),
           api.get('/users'),
-          api.get('/parts')
+          api.get('/parts'),
+          api.get('/milvus-import', { params: { status: 'pendente' } })
+            .then((res) => ({ data: res.data, available: true }))
+            .catch(() => ({ data: [], available: false }))
         ]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
         setCompanies(companiesRes.data);
         setUsers(usersRes.data);
         setParts(partsRes.data);
+        setMilvusPending(milvusRes.data);
+        setMilvusAvailable(milvusRes.available);
       } else {
         const [requestsRes, budgetsRes] = await Promise.all([api.get('/requests'), api.get('/budgets')]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
       }
+      setLastUpdated(new Date());
     } catch (err) {
       console.error(err);
+      setDashboardError('Não foi possível atualizar o painel. Os últimos dados continuam visíveis.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [role]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+  }, [load]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') load({ silent: true });
+    };
+    const interval = window.setInterval(refreshWhenVisible, 60000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [load]);
 
   const handleLogout = () => {
     clearAuth();
@@ -235,6 +276,16 @@ export default function Dashboard() {
   const currentMonthKey = today.slice(0, 7);
   const aprovadosEsteMes = orcamentosAprovados.filter((b) => (b.atualizado_em || b.criado_em || '').slice(0, 7) === currentMonthKey);
   const faturamentoEsteMes = aprovadosEsteMes.reduce((sum, b) => sum + Number(b.total || 0), 0);
+  const orcamentosRascunho = budgets.filter((b) => b.status === 'Rascunho');
+  const orcamentosDecididos = budgets.filter((b) => ['Aprovado', 'Rejeitado'].includes(b.status));
+  const taxaAprovacao = orcamentosDecididos.length
+    ? Math.round((orcamentosAprovados.length / orcamentosDecididos.length) * 100)
+    : 0;
+  const tecnicosAtivos = users.filter((u) => u.role === 'tecnico' && u.ativo !== false);
+  const chamadosConcluidosEsteMes = requests.filter((r) => r.status === 'Concluída' && (r.concluded_at || r.atualizado_em || '').slice(0, 7) === currentMonthKey);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const todayLabel = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date());
 
   const chamadosPorStatus = groupedStatusCounts(requests);
   const orcamentosPorStatus = countBy(budgets, 'status', BUDGET_STATUS_COLOR);
@@ -345,6 +396,66 @@ export default function Dashboard() {
     { key: 'milvus', label: 'Não sincronizados', description: 'Sem número de ticket Milvus', tone: 'blue', icon: 'sync', items: unsyncedRequests },
     { key: 'today', label: 'Visitas hoje', description: 'Agenda operacional do dia', tone: 'success', icon: 'calendar', items: todayRequests }
   ];
+  const attentionActions = [
+    overdueRequests.length > 0 && {
+      key: 'overdue', tone: 'danger', value: overdueRequests.length,
+      title: 'Reprogramar visitas atrasadas', detail: 'A data prevista passou e o chamado continua ativo.', to: '/requests', action: 'Revisar agenda'
+    },
+    !milvusAvailable && {
+      key: 'milvus-offline', tone: 'danger', value: '!',
+      title: 'Verificar integração Milvus', detail: 'O painel não conseguiu consultar a fila automática.', to: '/milvus-import', action: 'Verificar agora'
+    },
+    milvusAvailable && milvusPending.length > 0 && {
+      key: 'milvus-pending', tone: 'blue', value: milvusPending.length,
+      title: 'Revisar importações do Milvus', detail: 'Tickets precisam de confirmação antes de virar chamado e orçamento.', to: '/milvus-import', action: 'Abrir fila'
+    },
+    unassignedRequests.length > 0 && {
+      key: 'unassigned', tone: 'warning', value: unassignedRequests.length,
+      title: 'Distribuir chamados sem técnico', detail: 'Defina o responsável para a equipe conseguir avançar.', to: '/requests', action: 'Distribuir'
+    },
+    missingEmailRequests.length > 0 && {
+      key: 'email', tone: 'rose', value: missingEmailRequests.length,
+      title: 'Completar e-mails de clientes', detail: 'Sem um e-mail válido, aprovações e confirmações não são enviadas.', to: '/requests', action: 'Corrigir contatos'
+    },
+    waitingPartsRequests.length > 0 && {
+      key: 'parts', tone: 'purple', value: waitingPartsRequests.length,
+      title: 'Resolver falta de peças', detail: 'Há orçamento aprovado com quantidade maior que o estoque.', to: role === 'gestor' ? '/parts' : '/requests', action: 'Ver pendências'
+    },
+    orcamentosRascunho.length > 0 && {
+      key: 'drafts', tone: 'neutral', value: orcamentosRascunho.length,
+      title: 'Finalizar orçamentos em rascunho', detail: 'Confira peças e valores antes de enviar ao cliente.', to: '/budgets', action: 'Continuar'
+    },
+    orcamentosPendentes.length > 0 && {
+      key: 'approval', tone: 'success', value: orcamentosPendentes.length,
+      title: 'Acompanhar aprovações', detail: 'Orçamentos foram enviados e aguardam a resposta do cliente.', to: '/budgets', action: 'Acompanhar'
+    }
+  ].filter(Boolean).slice(0, 5);
+
+  const readinessPenalty = Math.min(100,
+    Math.min(overdueRequests.length * 12, 36)
+    + Math.min(unassignedRequests.length * 8, 24)
+    + Math.min(missingEmailRequests.length * 7, 21)
+    + Math.min(waitingPartsRequests.length * 6, 18)
+    + Math.min(milvusPending.length * 5, 15)
+    + (milvusAvailable ? 0 : 20)
+  );
+  const readinessScore = Math.max(0, 100 - readinessPenalty);
+  const readinessTone = readinessScore >= 85 ? 'success' : readinessScore >= 60 ? 'warning' : 'danger';
+  const readinessLabel = readinessScore >= 85 ? 'Operação saudável' : readinessScore >= 60 ? 'Atenção necessária' : 'Ação prioritária';
+
+  const staffQuickActions = role === 'gestor'
+    ? [
+        { to: '/milvus-import', icon: 'sync', label: 'Importar Milvus', meta: milvusAvailable ? `${milvusPending.length} para revisar` : 'verificar conexão' },
+        { to: '/requests', icon: 'ticket', label: 'Novo chamado', meta: `${chamadosAbertos} ativos` },
+        { to: '/budgets', icon: 'budget', label: 'Orçamentos', meta: `${orcamentosRascunho.length} rascunhos` },
+        { to: '/reports', icon: 'chart', label: 'Relatórios', meta: `${taxaAprovacao}% de aprovação` }
+      ]
+    : [
+        { to: '/milvus-import', icon: 'sync', label: 'Importar Milvus', meta: milvusAvailable ? `${milvusPending.length} para revisar` : 'verificar conexão' },
+        { to: '/requests', icon: 'ticket', label: 'Triagem', meta: `${filaTriagem.length} novos` },
+        { to: '/budgets', icon: 'budget', label: 'Orçamentos', meta: `${orcamentosRascunho.length} rascunhos` },
+        { to: '/companies', icon: 'building', label: 'Clientes', meta: `${companies.length} empresas` }
+      ];
   const operationalCountsKey = operationalQueues.map((queue) => `${queue.key}:${queue.items.length}`).join('|');
   const selectedOperationalQueue = operationalQueues.find((queue) => queue.key === operationalFilter) || operationalQueues[0];
 
@@ -391,6 +502,11 @@ export default function Dashboard() {
   const tecnicoDonutData = Object.entries(visitasPorTecnico)
     .sort((a, b) => b[1] - a[1])
     .map(([label, value], i) => ({ label, value, color: TECH_COLORS[i % TECH_COLORS.length] }));
+
+  const proximaVisitaTecnico = [...minhasRequests]
+    .filter((r) => r.agendado_para && r.agendado_para.slice(0, 10) >= today && !['Concluída', 'Cancelada'].includes(r.status))
+    .sort((a, b) => (a.agendado_para || '').localeCompare(b.agendado_para || ''))[0] || null;
+  const concluidosTecnicoEsteMes = minhasRequests.filter((r) => r.status === 'Concluída' && (r.concluded_at || r.atualizado_em || '').slice(0, 7) === currentMonthKey);
 
   // ---------- cliente-specific derived data ----------
   const minhaEmpresa = companies[0] || null;
@@ -464,16 +580,47 @@ export default function Dashboard() {
             <h2 className="page-title">Bem-vindo, {profile?.nome?.split(' ')[0] || 'cliente'}</h2>
             <p className="section-text">Acompanhe seus chamados, orçamentos e equipamentos em um só lugar.</p>
           </div>
-          <Link to="/requests" className="btn btn-primary btn-open-chamado">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" /></svg>
-            Abrir Chamado
-          </Link>
+          <div className="dashboard-header-actions">
+            <DashboardRefresh lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={() => load({ silent: true })} />
+            <Link to="/requests" className="btn btn-primary btn-open-chamado">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="#fff" strokeWidth="2" strokeLinecap="round" /></svg>
+              Abrir Chamado
+            </Link>
+          </div>
         </div>
 
         {loading && <p className="section-text">Carregando…</p>}
+        {dashboardError && <div className="alert alert-error dashboard-load-alert">{dashboardError}</div>}
 
         {!loading && (
           <>
+            <Link
+              to={orcamentosPendentes.length > 0 ? '/budgets' : proximaVisita ? '/requests' : '/requests'}
+              className={`client-next-action ${orcamentosPendentes.length > 0 ? 'client-next-action--approval' : ''}`}
+            >
+              <span className="client-next-action__icon" aria-hidden="true">
+                <DashboardIcon name={orcamentosPendentes.length > 0 ? 'budget' : proximaVisita ? 'calendar' : 'ticket'} />
+              </span>
+              <span className="client-next-action__copy">
+                <small>PRÓXIMA AÇÃO</small>
+                <strong>
+                  {orcamentosPendentes.length > 0
+                    ? `${orcamentosPendentes.length} orçamento${orcamentosPendentes.length === 1 ? '' : 's'} aguardando sua aprovação`
+                    : proximaVisita
+                      ? `Acompanhar a visita do chamado #${proximaVisita.numero}`
+                      : 'Precisa de atendimento? Abra um chamado'}
+                </strong>
+                <span>
+                  {orcamentosPendentes.length > 0
+                    ? 'Revise os itens e responda para liberar a visita automaticamente.'
+                    : proximaVisita
+                      ? `${formatDate(proximaVisita.agendado_para)} · ${proximaVisita.descricao}`
+                      : 'Nossa equipe recebe a solicitação e mantém você informado por aqui e por e-mail.'}
+                </span>
+              </span>
+              <span className="client-next-action__arrow" aria-hidden="true">→</span>
+            </Link>
+
             <div className="stats-grid">
               <div className="metric-card">
                 <span>Chamados em aberto</span>
@@ -698,14 +845,89 @@ export default function Dashboard() {
     <section className="dashboard-page">
       <div className="page-header">
         <div>
-          <span className="page-eyebrow">MIRONTEC · PAINEL DE SERVIÇO</span>
-          <h2 className="page-title">Catraca e campo em um só lugar</h2>
-          <p className="section-text">Veja chamados, orçamentos e técnicos em movimento. O painel mostra o que está liberado, bloqueado e em atendimento.</p>
+          <span className="page-eyebrow">MIRONTEC · {todayLabel.toUpperCase()}</span>
+          <h2 className="page-title">{greeting}, {profile?.nome?.split(' ')[0] || 'equipe'}</h2>
+          <p className="section-text">Sua central de comando mostra prioridades, automações e o andamento da operação.</p>
         </div>
-        <button className="secondary-button" onClick={handleLogout}>Sair</button>
+        <div className="dashboard-header-actions">
+          <DashboardRefresh lastUpdated={lastUpdated} refreshing={refreshing} onRefresh={() => load({ silent: true })} />
+          <button className="secondary-button" onClick={handleLogout}>Sair</button>
+        </div>
       </div>
 
       {loading && <p className="section-text">Carregando…</p>}
+      {dashboardError && <div className="alert alert-error dashboard-load-alert">{dashboardError}</div>}
+
+      {!loading && ['gestor', 'analista'].includes(role) && (
+        <section className="command-center" aria-labelledby="command-center-title">
+          <div className="command-center__heading">
+            <div>
+              <span className="page-eyebrow">RESUMO INTELIGENTE</span>
+              <h3 id="command-center-title">Comece por aqui</h3>
+              <p>O painel ordena automaticamente as pendências que mais travam a operação.</p>
+            </div>
+            <span className="live-status"><i aria-hidden="true" /> Atualização automática a cada minuto</span>
+          </div>
+
+          <div className="command-center__grid">
+            <article className={`readiness-card readiness-card--${readinessTone}`}>
+              <div className="readiness-gauge" style={{ '--score': readinessScore }} aria-label={`Prontidão operacional: ${readinessScore}%`}>
+                <div><strong>{readinessScore}</strong><span>%</span></div>
+              </div>
+              <div className="readiness-card__copy">
+                <small>PRONTIDÃO OPERACIONAL</small>
+                <h4>{readinessLabel}</h4>
+                <p>{attentionActions.length > 0 ? `${attentionActions.length} frente${attentionActions.length === 1 ? '' : 's'} priorizada${attentionActions.length === 1 ? '' : 's'} para a equipe.` : 'Nenhum bloqueio importante detectado agora.'}</p>
+                <ul className="system-signals" aria-label="Sinais do sistema">
+                  <li><span>Milvus</span><strong className={milvusAvailable ? '' : 'is-danger'}>{milvusAvailable ? (milvusPending.length ? `${milvusPending.length} em revisão` : 'Em dia') : 'Indisponível'}</strong></li>
+                  <li><span>Contatos</span><strong className={missingEmailRequests.length ? 'is-warning' : ''}>{missingEmailRequests.length ? `${missingEmailRequests.length} incompletos` : 'Completos'}</strong></li>
+                  <li><span>Equipe técnica</span><strong>{tecnicosAtivos.length} ativo{tecnicosAtivos.length === 1 ? '' : 's'}</strong></li>
+                </ul>
+              </div>
+            </article>
+
+            <article className="priority-card">
+              <div className="command-card-title">
+                <div><small>PRIORIDADES</small><h4>Próximas ações</h4></div>
+                <span>{attentionActions.length}</span>
+              </div>
+              {attentionActions.length === 0 ? (
+                <div className="priority-empty"><span aria-hidden="true">✓</span><div><strong>Tudo em ordem</strong><p>A equipe pode seguir a agenda planejada.</p></div></div>
+              ) : (
+                <div className="priority-list">
+                  {attentionActions.map((item) => (
+                    <Link key={item.key} to={item.to} className={`priority-item priority-item--${item.tone}`}>
+                      <span className="priority-item__count">{item.value}</span>
+                      <span className="priority-item__copy"><strong>{item.title}</strong><small>{item.detail}</small></span>
+                      <span className="priority-item__action">{item.action} <i aria-hidden="true">→</i></span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </article>
+
+            <article className="quick-actions-card">
+              <div className="command-card-title">
+                <div><small>ATALHOS</small><h4>Acesso rápido</h4></div>
+              </div>
+              <div className="quick-action-list">
+                {staffQuickActions.map((item) => (
+                  <Link key={item.to} to={item.to} className="quick-action">
+                    <span className="quick-action__icon"><DashboardIcon name={item.icon} /></span>
+                    <span><strong>{item.label}</strong><small>{item.meta}</small></span>
+                    <i aria-hidden="true">→</i>
+                  </Link>
+                ))}
+              </div>
+              <div className="command-mini-kpis">
+                <div><strong>{agendadosHoje.length}</strong><span>visitas hoje</span></div>
+                <div><strong>{chamadosConcluidosEsteMes.length}</strong><span>concluídos no mês</span></div>
+                <div><strong>{taxaAprovacao}%</strong><span>aprovação</span></div>
+              </div>
+            </article>
+          </div>
+        </section>
+      )}
 
       {!loading && ['gestor', 'analista'].includes(role) && (
         <section className="operations-panel" aria-labelledby="operations-title">
@@ -998,6 +1220,42 @@ export default function Dashboard() {
 
       {!loading && role === 'tecnico' && (
         <>
+          <section className="technician-command" aria-labelledby="technician-command-title">
+            <div className="technician-command__intro">
+              <span className="page-eyebrow">MINHA OPERAÇÃO</span>
+              <h3 id="technician-command-title">Seu dia em campo</h3>
+              <p>Agenda, atendimento atual e produtividade reunidos para você começar sem perder tempo.</p>
+              <div className="technician-kpis">
+                <div><strong>{agendaHoje.length}</strong><span>visitas hoje</span></div>
+                <div><strong>{emAtendimento.length}</strong><span>em atendimento</span></div>
+                <div><strong>{concluidosTecnicoEsteMes.length}</strong><span>concluídos no mês</span></div>
+              </div>
+            </div>
+            <div className="technician-next">
+              <small>PRÓXIMA MISSÃO</small>
+              {proximaVisitaTecnico ? (
+                <>
+                  <div className="technician-next__time">
+                    <strong>{formatTime(proximaVisitaTecnico.agendado_para)}</strong>
+                    <span>{formatDate(proximaVisitaTecnico.agendado_para)}</span>
+                  </div>
+                  <h4>#{proximaVisitaTecnico.numero} · {proximaVisitaTecnico.descricao}</h4>
+                  <p>{proximaVisitaTecnico.endereco || 'Endereço ainda não informado'}</p>
+                  <div className="technician-next__footer">
+                    <Badge status={proximaVisitaTecnico.status} />
+                    <Link to="/requests" className="btn btn-primary btn-sm">Abrir chamado</Link>
+                  </div>
+                </>
+              ) : (
+                <div className="technician-next__empty">
+                  <span aria-hidden="true">✓</span>
+                  <strong>Nenhuma visita futura pendente</strong>
+                  <p>Você está com a agenda livre no momento.</p>
+                </div>
+              )}
+            </div>
+          </section>
+
           <div className="panel-card">
             <h3>Agenda do dia</h3>
             <p className="section-text">Visitas agendadas para hoje.</p>
@@ -1078,6 +1336,38 @@ function SectionIcon({ name }) {
   };
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="section-icon">
+      {paths[name]}
+    </svg>
+  );
+}
+
+function DashboardRefresh({ lastUpdated, refreshing, onRefresh }) {
+  return (
+    <div className="dashboard-refresh" aria-live="polite">
+      <span>
+        <small>Dados do painel</small>
+        <strong>{lastUpdated ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Aguardando atualização'}</strong>
+      </span>
+      <button type="button" onClick={onRefresh} disabled={refreshing} aria-label="Atualizar dados do painel" title="Atualizar agora">
+        <svg className={refreshing ? 'is-spinning' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 7h-5V2" /><path d="M4 17h5v5" /><path d="M18.5 5.5A8 8 0 005 8M5.5 18.5A8 8 0 0019 16" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function DashboardIcon({ name }) {
+  const paths = {
+    sync: <><path d="M20 7h-5V2" /><path d="M4 17h5v5" /><path d="M18.5 5.5A8 8 0 005 8M5.5 18.5A8 8 0 0019 16" /></>,
+    ticket: <><path d="M3 8a2 2 0 012-2h14a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a2 2 0 000-4V8z" /><path d="M10 6v12" strokeDasharray="2 2" /></>,
+    budget: <><rect x="2.5" y="6" width="19" height="13" rx="2.5" /><circle cx="12" cy="12.5" r="3" /></>,
+    chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /><path d="M3 7l6-4 6 6 6-5" /></>,
+    building: <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h2M14 8h2M8 12h2M14 12h2M8 16h2M14 16h2" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></>
+  };
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths[name]}
     </svg>
   );
