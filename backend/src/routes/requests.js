@@ -6,11 +6,10 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
-const { sendVisitApprovalEmail } = require('../lib/visitApproval');
 const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
-const { sendApprovalNotificationToStaff } = require('../lib/approvalNotifications');
+const { validateVisitExecution } = require('../lib/visitWorkflow');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -185,9 +184,6 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     }
 
     const emailConfirmationSent = await sendMilvusConfirmationEmail(created, company, equipment, actorUser?.role === 'cliente' ? null : actorUser);
-    if (req.user.role !== 'cliente') {
-      sendVisitApprovalEmail(created, company, actorUser);
-    }
     await db.createNotification({
       empresa_id,
       titulo: `Chamado #${created.numero} aberto`,
@@ -276,6 +272,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     } = req.body;
     const patch = {};
     let completionContext = null;
+
+    const executionError = validateVisitExecution(request, status);
+    if (executionError) {
+      return res.status(409).json({ error: executionError });
+    }
 
     if (status && status !== 'Cancelada' && !request.milvus_codigo) {
       return res.status(409).json({ error: 'Este chamado ainda não está vinculado ao Milvus. Abra os detalhes, informe o e-mail do cliente e crie o ticket antes de continuar.' });
@@ -513,73 +514,9 @@ router.patch('/:id/aprovacao-visita', requireRole('cliente'), async (req, res, n
     if (request.empresa_id !== req.user.empresa_id) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
-    if (!request.milvus_codigo) {
-      return res.status(409).json({ error: 'Este atendimento ainda não possui chamado no Milvus. A equipe responsável precisa concluir o vínculo antes da autorização.' });
-    }
-    if (request.aprovacao_cliente) {
-      return res.status(409).json({ error: `Esta visita já foi ${request.aprovacao_cliente === 'aprovado' ? 'aprovada' : 'recusada'} anteriormente.` });
-    }
-
-    const { decisao } = req.body;
-    if (!['aprovado', 'recusado'].includes(decisao)) {
-      return res.status(400).json({ error: 'Decisão inválida' });
-    }
-
-    const patch = {
-      aprovacao_cliente: decisao,
-      data_aprovacao_cliente: new Date().toISOString()
-    };
-
-    if (decisao === 'aprovado') {
-      const { nome, cpf, telefone } = req.body;
-      if (!nome || !String(nome).trim()) {
-        return res.status(400).json({ error: 'Informe o nome de quem está autorizando a visita' });
-      }
-      if (!cpf || !String(cpf).trim()) {
-        return res.status(400).json({ error: 'Informe o CPF de quem está autorizando a visita' });
-      }
-      if (!telefone || !String(telefone).trim()) {
-        return res.status(400).json({ error: 'Informe o telefone de quem está autorizando a visita' });
-      }
-      patch.aprovacao_nome = String(nome).trim();
-      patch.aprovacao_cpf = String(cpf).trim();
-      patch.aprovacao_telefone = String(telefone).trim();
-    }
-
-    const updated = await db.updateRequest(request.id, patch);
-
-    await db.createNotification({
-      empresa_id: updated.empresa_id,
-      titulo: decisao === 'aprovado' ? `Chamado #${updated.numero} aprovado pelo cliente` : `Chamado #${updated.numero} recusado pelo cliente`,
-      mensagem: decisao === 'aprovado' ? `Autorizado por ${updated.aprovacao_nome} (pelo portal)` : '',
-      link: '/requests'
+    return res.status(409).json({
+      error: 'A visita é autorizada automaticamente quando o cliente aprova o orçamento. Acesse Orçamentos para revisar e responder.'
     });
-
-    await db.logAudit({
-      user: req.user,
-      acao: decisao === 'aprovado' ? 'visita_aprovada' : 'visita_recusada',
-      entidade: 'request',
-      entidade_id: updated.id,
-      detalhes: decisao === 'aprovado'
-        ? `Chamado #${updated.numero} — aprovado por ${updated.aprovacao_nome} (CPF ${updated.aprovacao_cpf}, tel ${updated.aprovacao_telefone}) pelo portal`
-        : `Chamado #${updated.numero} — recusado pelo portal`
-    });
-
-    if (decisao === 'aprovado') {
-      const company = await db.getCompanyById(updated.empresa_id);
-      const notificationResult = await sendApprovalNotificationToStaff({
-        kind: 'visit',
-        request: updated,
-        company
-      });
-      if (notificationResult.recipients.length === 0) {
-        console.warn('[approval-notification] Nenhum gestor ativo ou técnico responsável com e-mail válido para receber a confirmação da visita.');
-      } else if (notificationResult.sent < notificationResult.recipients.length) {
-        console.warn(`[approval-notification] Confirmação da visita enviada para ${notificationResult.sent}/${notificationResult.recipients.length} destinatários.`);
-      }
-    }
-
-    res.json(updated);
   } catch (err) {
     next(err);
   }

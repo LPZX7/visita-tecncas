@@ -8,20 +8,9 @@ const { calculateBudgetTotal } = require('../lib/pricing');
 const { ensureRequestInMilvus, pushVisitaTecnicaAprovadaToMilvus } = require('../lib/milvusSync');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { sendApprovalNotificationToStaff } = require('../lib/approvalNotifications');
+const { validateTechnicalVisitBudget } = require('../lib/budgetValidation');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
-
-function validateVisitaTecnicaFields({ items, deslocamento }) {
-  if (!items || items.length === 0) return 'Selecione ao menos uma peça que será trocada';
-  for (const item of items) {
-    if (!item.quantidade || Number(item.quantidade) <= 0) return 'Informe a quantidade da peça';
-    if (item.valor_unitario === undefined || item.valor_unitario === null || Number(item.valor_unitario) < 0) {
-      return 'Informe o valor unitário da peça';
-    }
-  }
-  if (deslocamento === undefined || deslocamento === null || Number(deslocamento) < 0) return 'Informe o valor da visita técnica';
-  return null;
-}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -110,7 +99,7 @@ router.post('/', requireRole('tecnico', 'analista', 'gestor'), async (req, res, 
       }
     }
 
-    const validationError = validateVisitaTecnicaFields({ items, motivo_troca, deslocamento });
+    const validationError = validateTechnicalVisitBudget({ items, deslocamento });
     if (validationError) {
       return res.status(400).json({ error: validationError });
     }
@@ -191,7 +180,7 @@ router.patch('/:id/status', async (req, res, next) => {
       if (budget.status !== 'Rascunho' || status !== 'Enviado') {
         return res.status(400).json({ error: 'Somente o cliente pode autorizar ou recusar esta visita técnica. A equipe pode apenas enviar o orçamento para aprovação.' });
       }
-      const validationError = validateVisitaTecnicaFields(budget);
+      const validationError = validateTechnicalVisitBudget(budget);
       if (validationError) {
         return res.status(400).json({ error: validationError });
       }
@@ -264,14 +253,14 @@ router.patch('/:id/status', async (req, res, next) => {
         const link = `${FRONTEND_URL}/aprovar-orcamento/${token}`;
         sendMail({
           to: emailDestino,
-          subject: 'Novo orçamento disponível para aprovação',
-          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nVeja os detalhes e faça login na sua conta para aprovar ou rejeitar:\n${link}\n\nEste link expira em 14 dias.`,
+          subject: 'Orçamento e autorização da visita técnica',
+          text: `Um orçamento no valor de R$ ${updated.total.toFixed(2)} está disponível para sua aprovação.\n\nAo aprovar este orçamento, você também autoriza a realização da visita técnica.\n\nVeja os detalhes e faça login na sua conta para aprovar ou rejeitar:\n${link}\n\nEste link expira em 14 dias.`,
           html: actionEmailHtml({
-            title: 'Orçamento disponível para aprovação',
-            message: `Um orçamento no valor de <strong>R$ ${updated.total.toFixed(2)}</strong> está disponível para sua aprovação. Veja os detalhes e faça login na sua conta para aprovar ou rejeitar.`,
-            buttonLabel: 'Ver orçamento',
+            title: 'Orçamento e visita técnica',
+            message: `Um orçamento no valor de <strong>R$ ${updated.total.toFixed(2)}</strong> está disponível para sua aprovação.<br><br><strong>Ao aprovar o orçamento, você também autoriza a realização da visita técnica.</strong>`,
+            buttonLabel: 'Revisar orçamento e visita',
             buttonUrl: link,
-            footnote: 'Este link expira em 14 dias.'
+            footnote: 'A visita somente será autorizada após a aprovação deste orçamento. Este link expira em 14 dias.'
           }),
           signatureUser: draftUser
         });

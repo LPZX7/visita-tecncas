@@ -14,9 +14,8 @@ const publicLimiter = rateLimit({
 });
 router.use(publicLimiter);
 
-// Este endpoint é só leitura (identifica o chamado a partir do link do
-// email). A autorização em si exige login — ver PATCH /requests/:id/aprovacao-visita
-// — para que um link vazado não permita autorizar a visita sem uma conta.
+// Mantido apenas para links antigos. A autorização da visita agora acontece
+// junto com a aprovação do orçamento, sempre dentro da conta do cliente.
 router.get('/:token', async (req, res, next) => {
   try {
     let payload;
@@ -45,7 +44,8 @@ router.get('/:token', async (req, res, next) => {
       empresa: company?.razao_social || null,
       unidade: unit ? `${unit.tipo} — ${unit.nome}` : null,
       equipamento: equipment ? `${equipment.modelo} — ${equipment.numero_serie}` : null,
-      aprovacao_cliente: request.aprovacao_cliente || null
+      aprovacao_cliente: request.aprovacao_cliente || null,
+      approval_via_budget: true
     });
   } catch (err) {
     next(err);

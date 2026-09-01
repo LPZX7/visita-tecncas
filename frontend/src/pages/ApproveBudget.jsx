@@ -110,9 +110,15 @@ export default function ApproveBudget() {
                       ))}
                     </ul>
                   )}
+                  {!data.items?.length && (
+                    <div className="detail-report" style={{ marginTop: 8 }}>
+                      <strong>Visita técnica / serviço sem fornecimento de peças</strong>
+                      <p>Neste atendimento será cobrada somente a visita técnica.</p>
+                    </div>
+                  )}
                   {data.motivo_troca && <p style={{ marginTop: 8 }}><strong>Motivo da troca:</strong> {data.motivo_troca}</p>}
                   {data.observacoes_tecnicas && <p><strong>Informações relevantes:</strong> {data.observacoes_tecnicas}</p>}
-                  <p><strong>Valor da peça:</strong> {money(data.pecas_total)}</p>
+                  <p><strong>Valor das peças:</strong> {money(data.pecas_total)}</p>
                   <p><strong>Visita técnica:</strong> {money(data.deslocamento)}</p>
 
                   <div className="detail-report">
@@ -132,6 +138,7 @@ export default function ApproveBudget() {
                   <>
                     <div className="detail-panel" style={{ marginBottom: 20 }}>
                       <strong style={{ display: 'block', marginBottom: 8 }}>Dados de quem está autorizando</strong>
+                      <p className="detail-muted">Ao aprovar este orçamento, você também autoriza a realização da visita técnica.</p>
                       <label className="form-field">
                         Nome completo
                         <input className="form-input" value={autorizante.nome} onChange={(e) => setAutorizante({ ...autorizante, nome: e.target.value })} />
@@ -151,7 +158,7 @@ export default function ApproveBudget() {
 
                     <div className="row-actions" style={{ gap: 12 }}>
                       <button className="btn btn-primary" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('Aprovado')}>
-                        AUTORIZAR
+                        APROVAR ORÇAMENTO E AUTORIZAR VISITA
                       </button>
                       <button className="btn btn-danger" style={{ flex: 1, padding: '14px 18px' }} disabled={submitting} onClick={() => act('Rejeitado')}>
                         NÃO AUTORIZAR

@@ -129,12 +129,12 @@ export default function Budgets() {
       setError('Selecione uma solicitação.');
       return;
     }
-    if (items.length === 0) {
-      setError('Adicione ao menos uma peça que será trocada.');
+    if (form.deslocamento === '' || !Number.isFinite(Number(form.deslocamento)) || Number(form.deslocamento) < 0) {
+      setError('Informe o valor da visita técnica.');
       return;
     }
-    if (form.deslocamento === '' || Number(form.deslocamento) < 0) {
-      setError('Informe o valor da visita técnica.');
+    if (items.length === 0 && Number(form.deslocamento) <= 0) {
+      setError('Para um orçamento sem peças, informe um valor maior que zero para a visita técnica.');
       return;
     }
     try {
@@ -273,7 +273,7 @@ export default function Budgets() {
 
           <div className="item-row">
             <label className="form-field">
-              Peça
+              Peça (opcional)
               <PartCombobox value={itemDraft.peca_id} onChange={(id) => setItemDraft({ ...itemDraft, peca_id: id })} parts={parts.filter((part) => !items.some((item) => item.peca_id === part.id) || part.id === itemDraft.peca_id)} />
             </label>
             <label className="form-field">
@@ -284,6 +284,10 @@ export default function Budgets() {
               <span aria-hidden="true">+</span> {addingItem ? 'Adicionando...' : 'Adicionar peça'}
             </button>
           </div>
+
+          <p className="detail-muted">
+            Adicione peças somente quando houver troca. Para deslocamento, configuração ou mudança de local da catraca, informe apenas o valor da visita técnica.
+          </p>
 
           {itemFeedback && <div className="item-feedback" role="status"><span aria-hidden="true">✓</span> {itemFeedback}</div>}
 
@@ -301,7 +305,14 @@ export default function Budgets() {
             </div>
           )}
 
-          <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
+          {items.length === 0 && (
+            <div className="detail-report">
+              <strong>Orçamento somente de visita técnica</strong>
+              <p>Nenhuma peça será fornecida ou cobrada neste atendimento.</p>
+            </div>
+          )}
+
+          <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" min="0" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
 
           <label className="form-field">
             Motivo da troca (opcional)
@@ -312,11 +323,9 @@ export default function Budgets() {
             <textarea className="form-textarea" value={form.observacoes_tecnicas} onChange={(e) => setForm({ ...form, observacoes_tecnicas: e.target.value })} />
           </label>
 
-          {items.length > 0 && (
-            <p className="section-text">
-              Valor da peça: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0))} + Visita técnica: {money(Number(form.deslocamento) || 0)} = Total: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0) + (Number(form.deslocamento) || 0))}
-            </p>
-          )}
+          <p className="section-text">
+            Peças: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0))} + Visita técnica: {money(Number(form.deslocamento) || 0)} = Total: {money(items.reduce((sum, item) => sum + item.valor_unitario * item.quantidade, 0) + (Number(form.deslocamento) || 0))}
+          </p>
 
           <button type="submit" className="btn btn-primary">Criar orçamento</button>
         </form>
@@ -358,7 +367,7 @@ export default function Budgets() {
                         <button className="btn btn-primary btn-sm" onClick={() => changeStatus(budget, 'Enviado')}>Enviar</button>
                       )}
                       {isStaff && budget.status === 'Enviado' && (
-                        <span className="badge badge-enviado">Aguardando autorização do cliente</span>
+                        <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
                       )}
                       {user?.role === 'cliente' && budget.status === 'Enviado' && isOwnCompanyBudget(budget) && (
                         <>
@@ -409,9 +418,16 @@ export default function Budgets() {
                           </ul>
                         )}
 
+                        {!budget.items?.length && (
+                          <div className="detail-report">
+                            <strong>Visita técnica sem peças</strong>
+                            <p>Este orçamento contempla somente a visita e o serviço técnico.</p>
+                          </div>
+                        )}
+
                         <div className="detail-report">
                           <strong>Total</strong>
-                          <p>{money(budget.total)} ({money(budget.pecas_total)} peça + {money(budget.deslocamento)} visita técnica)</p>
+                          <p>{money(budget.total)} ({money(budget.pecas_total)} em peças + {money(budget.deslocamento)} visita técnica)</p>
                         </div>
 
                         {budget.motivo_troca && (
@@ -443,16 +459,18 @@ export default function Budgets() {
                               <input className="form-input" value={aprovacaoDraftFor(budget.id).telefone} onChange={(e) => setAprovacaoDraft(budget.id, { telefone: e.target.value })} placeholder="(00) 00000-0000" />
                             </label>
                             <div className="row-actions" style={{ marginTop: 8 }}>
-                              <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAutorizarOrcamento(budget)}>Autorizar orçamento</button>
+                              <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAutorizarOrcamento(budget)}>Aprovar orçamento e autorizar visita</button>
                             </div>
                           </div>
                         )}
 
                         {budget.status === 'Aprovado' && (
                           <div className="detail-report">
-                            <strong>STATUS: APROVADO PELO CLIENTE</strong>
+                            <strong>STATUS: ORÇAMENTO APROVADO E VISITA AUTORIZADA</strong>
                             <p>
-                              REALIZADO: Substituição da(s) peça(s) {budget.items?.map((item) => partName(item.peca_id)).join(', ')} e realização dos procedimentos técnicos necessários para conclusão do serviço.
+                              {budget.items?.length
+                                ? `Serviço autorizado: visita técnica e substituição de ${budget.items.map((item) => partName(item.peca_id)).join(', ')}.`
+                                : 'Serviço autorizado: visita técnica sem fornecimento de peças.'}
                             </p>
                             <p className="detail-muted">
                               Autorizado por: {budget.aprovacao_nome ? `${budget.aprovacao_nome} — CPF ${budget.aprovacao_cpf || '—'} — Tel ${budget.aprovacao_telefone || '—'}` : (budget.autorizado_por || '—')}{budget.aprovado_em && ` em ${new Date(budget.aprovado_em).toLocaleString('pt-BR')}`}

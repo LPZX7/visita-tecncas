@@ -52,7 +52,6 @@ export default function Requests() {
     observacao_final: '',
     confirmar_conclusao: false
   });
-  const [aprovacaoDrafts, setAprovacaoDrafts] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [milvusDrafts, setMilvusDrafts] = useState({});
@@ -87,8 +86,8 @@ export default function Requests() {
         setAnalysts(res.data.filter((u) => u.role === 'analista'));
       }).catch(() => {});
     }
+    api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
     if (isTech) {
-      api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
       api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
     }
     checkLiberacao();
@@ -149,6 +148,7 @@ export default function Requests() {
     return analyst?.milvus_nome || analyst?.nome || (id ? id : 'Não atribuído');
   };
   const partName = (id) => parts.find((p) => p.id === id)?.nome || 'Peça';
+  const latestBudgetFor = (requestId) => budgets.find((b) => b.request_id === requestId) || null;
   const approvedBudgetFor = (requestId) => budgets.find((b) => b.request_id === requestId && b.status === 'Aprovado');
 
   const unitsForCompany = (empresaId) => units.filter((u) => u.empresa_id === empresaId);
@@ -272,24 +272,6 @@ export default function Requests() {
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao excluir termo de conclusão');
-    }
-  };
-
-  const aprovacaoDraftFor = (id) => aprovacaoDrafts[id] || { nome: '', cpf: '', telefone: '' };
-  const setAprovacaoDraft = (id, patch) => setAprovacaoDrafts((prev) => ({ ...prev, [id]: { ...aprovacaoDraftFor(id), ...patch } }));
-
-  const handleAprovacaoVisita = async (req, decisao) => {
-    setError('');
-    const draft = aprovacaoDraftFor(req.id);
-    if (decisao === 'aprovado' && (!draft.nome.trim() || !draft.cpf.trim() || !draft.telefone.trim())) {
-      setError('Preencha nome, CPF e telefone para autorizar a visita.');
-      return;
-    }
-    try {
-      await api.patch(`/requests/${req.id}/aprovacao-visita`, { decisao, ...draft });
-      load();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao registrar sua decisão sobre a visita');
     }
   };
 
@@ -485,6 +467,7 @@ export default function Requests() {
             const isOpen = !!expanded[req.id];
             const eq = equipment(req.equipamento_id);
             const comp = company(req.empresa_id);
+            const latestBudget = latestBudgetFor(req.id);
             return (
               <Fragment key={req.id}>
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
@@ -542,6 +525,8 @@ export default function Requests() {
                         <span className="badge badge-concluida">Visita concluída</span>
                       ) : req.hora_checkin ? (
                         <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Finalizar atendimento</button>
+                      ) : req.aprovacao_cliente !== 'aprovado' ? (
+                        <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
                       ) : (
                         <button className="btn btn-outline btn-sm" onClick={() => handleCheckin(req)}>Iniciar visita (check-in)</button>
                       )}
@@ -569,11 +554,14 @@ export default function Requests() {
                             <p>{req.urgencia}</p>
                           </div>
                           <div>
-                            <strong>Aprovação do cliente</strong>
+                            <strong>Orçamento e visita</strong>
                             <p>
-                              {req.aprovacao_cliente === 'aprovado' && <span className="badge badge-aprovado">Aprovada</span>}
-                              {req.aprovacao_cliente === 'recusado' && <span className="badge badge-rejeitado">Recusada</span>}
-                              {!req.aprovacao_cliente && <span className="badge badge-enviado">Aguardando</span>}
+                              {req.aprovacao_cliente === 'aprovado' && <span className="badge badge-aprovado">Orçamento aprovado · visita autorizada</span>}
+                              {req.aprovacao_cliente === 'recusado' && <span className="badge badge-rejeitado">Orçamento recusado</span>}
+                              {!req.aprovacao_cliente && latestBudget?.status === 'Enviado' && <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>}
+                              {!req.aprovacao_cliente && latestBudget?.status === 'Rascunho' && <span className="badge badge-agendada">Orçamento em preparação</span>}
+                              {!req.aprovacao_cliente && latestBudget?.status === 'Rejeitado' && <span className="badge badge-rejeitado">Orçamento recusado</span>}
+                              {!req.aprovacao_cliente && !latestBudget && <span className="badge badge-enviado">Aguardando orçamento</span>}
                             </p>
                             {req.aprovacao_cliente === 'aprovado' && req.aprovacao_nome && (canManage || isTech) && (
                               <p className="detail-muted">
@@ -627,33 +615,23 @@ export default function Requests() {
                         )}
                         {isTech && approvedBudgetFor(req.id) && (
                           <div className="detail-report">
-                            <strong>Peça e serviço aprovados pelo cliente</strong>
-                            <p>
-                              Peça: {approvedBudgetFor(req.id).items?.map((item) => partName(item.peca_id)).join(', ') || 'não informado'}
-                            </p>
+                            <strong>Serviço aprovado pelo cliente</strong>
+                            {approvedBudgetFor(req.id).items?.length ? (
+                              <p>Peças previstas: {approvedBudgetFor(req.id).items.map((item) => partName(item.peca_id)).join(', ')}</p>
+                            ) : (
+                              <p>Sem substituição de peça prevista — cobrança somente da visita técnica.</p>
+                            )}
                             {approvedBudgetFor(req.id).motivo_troca && <p>Motivo da troca: {approvedBudgetFor(req.id).motivo_troca}</p>}
                             {approvedBudgetFor(req.id).observacoes_tecnicas && <p>Informações relevantes: {approvedBudgetFor(req.id).observacoes_tecnicas}</p>}
                           </div>
                         )}
                         {user?.role === 'cliente' && !req.aprovacao_cliente && (
                           <div className="detail-report">
-                            <strong>Autorizar esta visita</strong>
-                            <label className="form-field">
-                              Nome completo
-                              <input className="form-input" value={aprovacaoDraftFor(req.id).nome} onChange={(e) => setAprovacaoDraft(req.id, { nome: e.target.value })} />
-                            </label>
-                            <label className="form-field">
-                              CPF
-                              <input className="form-input" value={aprovacaoDraftFor(req.id).cpf} onChange={(e) => setAprovacaoDraft(req.id, { cpf: e.target.value })} placeholder="000.000.000-00" />
-                            </label>
-                            <label className="form-field">
-                              Telefone
-                              <input className="form-input" value={aprovacaoDraftFor(req.id).telefone} onChange={(e) => setAprovacaoDraft(req.id, { telefone: e.target.value })} placeholder="(00) 00000-0000" />
-                            </label>
-                            <div className="row-actions" style={{ marginTop: 8 }}>
-                              <button type="button" className="btn btn-primary btn-sm" onClick={() => handleAprovacaoVisita(req, 'aprovado')}>Autorizar visita</button>
-                              <button type="button" className="btn btn-danger btn-sm" onClick={() => handleAprovacaoVisita(req, 'recusado')}>Recusar</button>
-                            </div>
+                            <strong>A autorização da visita acontece pelo orçamento</strong>
+                            <p>{latestBudget?.status === 'Enviado' ? 'O orçamento está pronto. Revise os valores e aprove para autorizar a visita.' : 'Aguarde a equipe preparar e enviar o orçamento. Depois disso, você poderá aprovar o orçamento e a visita juntos.'}</p>
+                            {latestBudget?.status === 'Enviado' && (
+                              <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/budgets')}>Revisar orçamento</button>
+                            )}
                           </div>
                         )}
                         {req.relatorio_visita && (
