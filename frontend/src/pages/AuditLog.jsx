@@ -20,6 +20,7 @@ export const ACAO_LABEL = {
   visita_aprovada: 'Visita técnica autorizada',
   visita_recusada: 'Visita técnica recusada',
   usuario_criado: 'Usuário criado',
+  usuario_autocadastro: 'Novo cliente cadastrado pelo portal',
   usuario_alterado: 'Usuário alterado',
   usuario_excluido: 'Usuário excluído',
   equipamento_excluido: 'Equipamento excluído',

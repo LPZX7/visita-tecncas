@@ -20,6 +20,7 @@ export default function Users() {
   const [units, setUnits] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '', unidade_id: '', milvus_email: '', milvus_nome: '' });
 
@@ -43,13 +44,19 @@ export default function Users() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     if (form.role === 'cliente' && form.empresa_id && !form.unidade_id && unitsForCompany(form.empresa_id).length > 1) {
       setError('Esta empresa tem mais de uma filial/sede — selecione qual delas o cliente pertence.');
       return;
     }
     try {
-      await api.post('/auth/register', { ...form, empresa_id: form.empresa_id || null, unidade_id: form.unidade_id || null });
+      const res = await api.post('/auth/register', { ...form, empresa_id: form.empresa_id || null, unidade_id: form.unidade_id || null });
       setForm(emptyForm);
+      if (res.data.email_boas_vindas_enviado) {
+        setSuccess('Usuário criado e e-mail de boas-vindas enviado com sucesso.');
+      } else {
+        setError('Usuário criado, mas o provedor não confirmou o e-mail de boas-vindas. Verifique o monitoramento de e-mails.');
+      }
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao criar usuário');
@@ -125,6 +132,7 @@ export default function Users() {
       <form onSubmit={handleSubmit} className="card-form">
         <h3>Novo usuário</h3>
         {error && <div className="alert alert-error">{error}</div>}
+        {success && <div className="alert alert-success" role="status">{success}</div>}
         <label className="form-field">Nome<input className="form-input" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required /></label>
         <label className="form-field">Email<input className="form-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></label>
         <label className="form-field">Senha<input className="form-input" type="password" value={form.senha} onChange={(e) => setForm({ ...form, senha: e.target.value })} required minLength={8} /></label>

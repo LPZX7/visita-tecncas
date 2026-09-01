@@ -6,6 +6,7 @@ const { requireRole, verifyToken } = require('../lib/auth');
 const { signResetToken, verifyResetToken } = require('../lib/resetToken');
 const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { isValidEmail, normalizeEmail } = require('../lib/contact');
+const { sendWelcomeEmail } = require('../lib/welcomeEmail');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const MIN_SENHA_LENGTH = 8;
@@ -120,12 +121,16 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
     if (senha.length < MIN_SENHA_LENGTH) {
       return res.status(400).json({ error: `A senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
     }
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Informe um e-mail válido' });
+    }
 
     if (req.user.role === 'analista' && role !== 'cliente') {
       return res.status(403).json({ error: 'Analistas só podem cadastrar usuários do tipo Cliente. Peça a um gestor para cadastrar técnicos, analistas ou gestores.' });
     }
 
-    if (await db.findUserByEmail(email)) {
+    if (await db.findUserByEmail(normalizedEmail)) {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
@@ -158,7 +163,7 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
     const senha_hash = await hashPassword(senha);
     const user = await db.createUser({
       nome,
-      email,
+      email: normalizedEmail,
       senha_hash,
       role,
       empresa_id: empresa_id || null,
@@ -167,15 +172,17 @@ router.post('/register', verifyToken, requireRole('gestor', 'analista'), async (
       milvus_nome: normalizedMilvusName || null,
       ativo
     });
+    const creator = await db.getUserById(req.user.sub);
+    const welcomeEmailSent = await sendWelcomeEmail(user, creator);
     await db.logAudit({
       user: req.user,
       acao: 'usuario_criado',
       entidade: 'user',
       entidade_id: user.id,
-      detalhes: `${user.nome} (${user.email}) — perfil ${role}`
+      detalhes: `${user.nome} (${user.email}) — perfil ${role} — boas-vindas ${welcomeEmailSent ? 'enviadas' : 'não enviadas'}`
     });
     const { senha_hash: _omit, ...safeUser } = user;
-    res.status(201).json(safeUser);
+    res.status(201).json({ ...safeUser, email_boas_vindas_enviado: welcomeEmailSent });
   } catch (err) {
     next(err);
   }
@@ -190,15 +197,31 @@ router.post('/signup', accountLimiter, async (req, res, next) => {
     if (senha.length < MIN_SENHA_LENGTH) {
       return res.status(400).json({ error: `A senha deve ter pelo menos ${MIN_SENHA_LENGTH} caracteres` });
     }
-    if (await db.findUserByEmail(email)) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Informe um e-mail válido' });
+    }
+    if (await db.findUserByEmail(normalizedEmail)) {
       return res.status(400).json({ error: 'Email já cadastrado' });
     }
 
     const senha_hash = await hashPassword(senha);
-    const user = await db.createUser({ nome, email, senha_hash, role: 'cliente', empresa_id: null, ativo: true });
+    const user = await db.createUser({ nome, email: normalizedEmail, senha_hash, role: 'cliente', empresa_id: null, ativo: true });
+    const welcomeEmailSent = await sendWelcomeEmail(user);
+    await db.logAudit({
+      user,
+      acao: 'usuario_autocadastro',
+      entidade: 'user',
+      entidade_id: user.id,
+      detalhes: `Conta criada pelo cadastro público — boas-vindas ${welcomeEmailSent ? 'enviadas' : 'não enviadas'}`
+    });
 
     const token = signToken(user);
-    res.status(201).json({ token, user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id } });
+    res.status(201).json({
+      token,
+      user: { id: user.id, nome: user.nome, email: user.email, role: user.role, empresa_id: user.empresa_id, unidade_id: user.unidade_id },
+      email_boas_vindas_enviado: welcomeEmailSent
+    });
   } catch (err) {
     next(err);
   }
