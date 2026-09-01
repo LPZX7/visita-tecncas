@@ -32,9 +32,8 @@ export default function Login() {
 
   return (
     <AuthLayout>
-      <span className="login-card__eyebrow">CENTRAL DE OPERAÇÕES</span>
-      <h1 id="auth-title" className="login-card__headline">Acesse seu ambiente de trabalho</h1>
-      <p className="login-card__lead">Entre com suas credenciais para acompanhar chamados, orçamentos e visitas técnicas.</p>
+      <h1 id="auth-title" className="login-card__headline">Bem-vindo ao Mirontec Service</h1>
+      <p className="login-card__lead">Informe seus dados para acessar o portal.</p>
 
       {error && <div className="alert alert-error" role="alert" aria-live="polite">{error}</div>}
 
@@ -71,14 +70,7 @@ export default function Login() {
             placeholder="Sua senha"
             required
           />
-          <button
-            type="button"
-            className="password-toggle"
-            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-            aria-pressed={showPassword}
-            title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-            onClick={() => setShowPassword(!showPassword)}
-          >
+          <button type="button" className="password-toggle" aria-label="Mostrar senha" onClick={() => setShowPassword(!showPassword)}>
             {showPassword ? (
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.5 5.4A10.6 10.6 0 0112 5c5 0 9 4 10 7-.4 1.1-1.1 2.3-2.1 3.4M6.6 6.6C4.6 8 3.1 10 2 12c1 3 5 7 10 7 1.3 0 2.6-.3 3.8-.7" stroke="#64748b" strokeWidth="1.6" strokeLinecap="round" /></svg>
             ) : (
@@ -95,16 +87,11 @@ export default function Login() {
         </div>
 
         <button type="submit" className="signin-button" disabled={submitting} aria-busy={submitting}>
-          <span>{submitting ? 'Validando acesso...' : 'Entrar no sistema'}</span>
+          {submitting ? 'Entrando...' : 'Entrar no sistema'}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 10 }}>
             <path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-
-        <div className="login-security-note" aria-label="Recursos de segurança">
-          <span><svg viewBox="0 0 24 24" aria-hidden><path d="M12 3l7 3v5c0 4.6-2.8 8.2-7 10-4.2-1.8-7-5.4-7-10V6l7-3zM9.5 12l1.7 1.7 3.6-4" /></svg>Sessão protegida</span>
-          <span><svg viewBox="0 0 24 24" aria-hidden><path d="M8 11V8a4 4 0 118 0v3M6 11h12v9H6z" /></svg>Acesso por perfil</span>
-        </div>
       </form>
 
       <p className="login-signup-hint">
