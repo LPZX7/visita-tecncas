@@ -108,3 +108,21 @@ test('motivo ausente não impede a criação automática do rascunho', () => {
   assert.equal(resolution.analysis.motivo_troca, null);
   assert.equal(resolution.analysis.items[0].peca_id, 'mola');
 });
+
+test('serviço sem peça pode ser importado quando o analista informa claramente o que fazer', () => {
+  const company = { id: 'c1', razao_social: 'Empresa X', email: 'cliente@empresa.com.br' };
+  const equipment = { id: 'e1', empresa_id: 'c1', modelo: 'Catraca Revolution', numero_serie: 'REV-1' };
+  const ticket = {
+    cliente_nome: 'Empresa X',
+    cliente_email: 'cliente@empresa.com.br',
+    assunto: 'Mudança de local',
+    descricao: 'Mover a catraca da recepção para a entrada lateral.'
+  };
+
+  const resolution = resolveAutomaticTicket(ticket, {
+    companies: [company], units: [], equipments: [equipment], parts
+  });
+  assert.equal(resolution.ready, true);
+  assert.deepEqual(resolution.analysis.items, []);
+  assert.match(resolution.analysis.plano_tecnico.objective, /Mover a catraca/i);
+});

@@ -162,8 +162,8 @@ export default function MilvusImport() {
       const pecas = res.data.pecas_identificadas || [];
       setSuccess(
         pecas.length > 0
-          ? `Chamado importado e orçamento em rascunho criado com: ${pecas.join(', ')}.${res.data.motivo_identificado ? ` Motivo identificado: ${res.data.motivo_identificado}.` : ' O Milvus não informou um motivo; isso não impede o orçamento.'}`
-          : 'Chamado importado e orçamento (rascunho) criado — nenhuma peça foi identificada automaticamente, adicione manualmente em Orçamentos antes de enviar.'
+          ? `Chamado importado e plano técnico criado: ${res.data.plano_tecnico?.objective || pecas.join(', ')}${res.data.motivo_identificado ? ` Motivo identificado: ${res.data.motivo_identificado}.` : ' O Milvus não informou um motivo; isso não impede o orçamento.'}`
+          : `Chamado importado sem peças. Plano técnico criado: ${res.data.plano_tecnico?.objective || 'revise a orientação antes de enviar o orçamento.'}`
       );
       load();
     } catch (err) {

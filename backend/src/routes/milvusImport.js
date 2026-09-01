@@ -48,7 +48,8 @@ router.post('/:id/importar', async (req, res, next) => {
       ...result.request,
       orcamento_id: result.budget.id,
       motivo_identificado: result.analysis.motivo_troca,
-      pecas_identificadas: result.analysis.matchedParts.map((part) => part.nome)
+      pecas_identificadas: result.analysis.matchedParts.map((part) => part.nome),
+      plano_tecnico: result.analysis.plano_tecnico
     });
   } catch (err) {
     if (err.expose) return res.status(err.statusCode || 400).json({ error: err.message });

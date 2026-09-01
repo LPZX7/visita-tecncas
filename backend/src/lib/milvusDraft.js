@@ -26,6 +26,7 @@ const PART_ALIASES = {
 };
 
 const GENERIC_EQUIPMENT_WORDS = new Set(['catraca', 'equipamento', 'sistema', 'maquina', 'maquininha', 'totem']);
+const { buildTechnicalPlan } = require('./technicalPlan');
 
 function cleanMilvusText(value) {
   return String(value || '')
@@ -165,6 +166,8 @@ function extractReasonFromText(value) {
 function analyzeMilvusBudget(pendente, parts = []) {
   const sourceText = ticketText(pendente);
   const detected = detectPartsFromText(sourceText, parts);
+  const motivo_troca = extractReasonFromText(sourceText);
+  const planItems = detected.map(({ part, quantidade }) => ({ nome: part.nome, quantidade }));
   return {
     items: detected.map(({ part, quantidade }) => ({
       peca_id: part.id,
@@ -172,8 +175,9 @@ function analyzeMilvusBudget(pendente, parts = []) {
       quantidade
     })),
     matchedParts: detected.map(({ part, quantidade, evidencia }) => ({ ...part, quantidade, evidencia })),
-    motivo_troca: extractReasonFromText(sourceText),
-    observacoes_tecnicas: sourceText || null
+    motivo_troca,
+    observacoes_tecnicas: sourceText || null,
+    plano_tecnico: buildTechnicalPlan({ sourceText, budget: { motivo_troca }, items: planItems })
   };
 }
 

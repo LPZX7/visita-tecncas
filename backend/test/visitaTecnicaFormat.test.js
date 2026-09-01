@@ -48,5 +48,7 @@ test('buildMilvusPayload usa status e autorização em blocos humanos', () => {
   assert.match(payload.descricao, /Status\n\n🟢 Aprovado pelo cliente/);
   assert.match(payload.descricao, /Autorização\n\nO cliente autorizou/);
   assert.match(payload.descricao, /Autorizado por Maria Autorizante em 11\/08\/2026 às 09:00\./);
-  assert.doesNotMatch(payload.descricao, /CPF|tel|STATUS:|AUTORIZAÇÃO:/);
+  assert.match(payload.descricao, /Plano inteligente para o técnico/);
+  assert.match(payload.descricao, /Objetivo: Substituir 1 unidade de placa eletrônica/);
+  assert.doesNotMatch(payload.descricao, /CPF|\btel\b|STATUS:|AUTORIZAÇÃO:/);
 });

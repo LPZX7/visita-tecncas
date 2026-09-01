@@ -613,16 +613,21 @@ export default function Requests() {
                             </button>
                           </div>
                         )}
-                        {isTech && approvedBudgetFor(req.id) && (
+                        {isTech && req.plano_tecnico && (
                           <div className="detail-report">
-                            <strong>Serviço aprovado pelo cliente</strong>
-                            {approvedBudgetFor(req.id).items?.length ? (
-                              <p>Peças previstas: {approvedBudgetFor(req.id).items.map((item) => partName(item.peca_id)).join(', ')}</p>
+                            <span className="page-eyebrow">ASSISTENTE TÉCNICO · GERADO DO MILVUS</span>
+                            <strong>O que fazer neste atendimento</strong>
+                            <p><strong>Objetivo:</strong> {req.plano_tecnico.objective}</p>
+                            {req.plano_tecnico.parts?.length > 0 ? (
+                              <p><strong>Peças previstas:</strong> {req.plano_tecnico.parts.map((item) => `${item.nome} × ${item.quantidade}`).join(', ')}</p>
                             ) : (
-                              <p>Sem substituição de peça prevista — cobrança somente da visita técnica.</p>
+                              <p><strong>Peças previstas:</strong> nenhuma — serviço somente de visita técnica.</p>
                             )}
-                            {approvedBudgetFor(req.id).motivo_troca && <p>Motivo da troca: {approvedBudgetFor(req.id).motivo_troca}</p>}
-                            {approvedBudgetFor(req.id).observacoes_tecnicas && <p>Informações relevantes: {approvedBudgetFor(req.id).observacoes_tecnicas}</p>}
+                            {req.plano_tecnico.reason && <p><strong>Motivo informado:</strong> {req.plano_tecnico.reason}</p>}
+                            <ol>
+                              {req.plano_tecnico.tasks.map((task, index) => <li key={`${req.id}-plano-${index}`}>{task}</li>)}
+                            </ol>
+                            <p className="detail-muted">{req.plano_tecnico.warning}</p>
                           </div>
                         )}
                         {user?.role === 'cliente' && !req.aprovacao_cliente && (

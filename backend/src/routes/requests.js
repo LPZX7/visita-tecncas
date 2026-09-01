@@ -10,6 +10,7 @@ const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestUpdateToM
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { validateVisitExecution } = require('../lib/visitWorkflow');
+const { buildTechnicalPlan } = require('../lib/technicalPlan');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -56,9 +57,7 @@ async function approvedContextForRequest(requestId) {
 
 async function attachTechnicalRecords(requests) {
   const completed = requests.filter((request) => request.relatorio_visita);
-  if (!completed.length) return requests;
-
-  const requestIds = new Set(completed.map((request) => request.id));
+  const requestIds = new Set(requests.map((request) => request.id));
   const budgets = await db.getBudgets();
   const approvedByRequest = new Map();
   for (const budget of budgets) {
@@ -80,7 +79,6 @@ async function attachTechnicalRecords(requests) {
   const techniciansById = new Map(technicianEntries);
 
   return requests.map((request) => {
-    if (!request.relatorio_visita) return request;
     const budget = approvedByRequest.get(request.id);
     const approvedParts = (budget?.items || []).map((item) => ({
       nome: partsById.get(item.peca_id)?.nome || 'Peça',
@@ -90,7 +88,10 @@ async function attachTechnicalRecords(requests) {
     const technician = techniciansById.get(request.assigned_technician);
     return {
       ...request,
-      registro_tecnico: buildCompletionSummary({ request, approvedParts, technician: technician?.nome })
+      plano_tecnico: budget ? buildTechnicalPlan({ request, budget, items: approvedParts }) : null,
+      registro_tecnico: request.relatorio_visita
+        ? buildCompletionSummary({ request, approvedParts, technician: technician?.nome })
+        : null
     };
   });
 }

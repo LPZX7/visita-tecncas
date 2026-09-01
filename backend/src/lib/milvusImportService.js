@@ -45,8 +45,8 @@ function resolveAutomaticTicket(pendente, { companies, units, equipments, parts 
   if (!equipment) return { ready: false, reason: 'Aguardando revisão: não foi possível identificar um único equipamento.' };
 
   const analysis = analyzeMilvusBudget(pendente, parts);
-  if (!analysis.items.length) {
-    return { ready: false, reason: 'Aguardando revisão: nenhuma peça do catálogo foi identificada no texto do Milvus.' };
+  if (!analysis.items.length && !analysis.plano_tecnico?.explicitInstruction) {
+    return { ready: false, reason: 'Aguardando revisão: não foi possível identificar uma peça ou uma orientação de serviço clara no texto do Milvus.' };
   }
 
   const effectiveUnit = unit || (equipment.unidade_id ? units.find((item) => item.id === equipment.unidade_id) : null);
@@ -149,12 +149,13 @@ async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, 
     const partsLabel = analysis.matchedParts
       .map((part) => `${part.nome} × ${part.quantidade}`)
       .join(', ');
+    const planLabel = analysis.plano_tecnico?.objective || 'plano técnico pendente de revisão';
     await db.updateMilvusPendente(pendente.id, {
       status: 'importado',
       request_id: request.id,
       auto_observacao: automatic
-        ? `Importado automaticamente. Orçamento em rascunho com: ${partsLabel}.`
-        : `Importado manualmente. Orçamento em rascunho com: ${partsLabel || 'nenhuma peça identificada'}.`
+        ? `Importado automaticamente. Plano para o técnico: ${planLabel}${partsLabel ? ` Peças previstas: ${partsLabel}.` : ' Atendimento sem peça identificada.'}`
+        : `Importado manualmente. Plano para o técnico: ${planLabel}${partsLabel ? ` Peças previstas: ${partsLabel}.` : ' Nenhuma peça identificada.'}`
     });
 
     const auditUser = actorUser || responsibleUser || { nome: 'Automação Milvus' };

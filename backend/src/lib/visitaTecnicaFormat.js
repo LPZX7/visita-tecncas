@@ -9,6 +9,7 @@ const {
   section,
   sentence
 } = require('./technicalWriting');
+const { buildTechnicalPlan, buildTechnicalPlanText } = require('./technicalPlan');
 
 const TITULO_VISITA_TECNICA = 'VISITA TÉCNICA';
 
@@ -51,11 +52,13 @@ function buildDescricao({ budget, items = [], request }) {
   const diagnosisSection = reason && !isRepeated(reason, seen) ? section('Motivo da troca', reason) : '';
   if (reason) seen.push(reason);
   const notesSection = notes && !isRepeated(notes, seen) ? section('Informações do atendimento', notes) : '';
+  const technicalPlan = buildTechnicalPlan({ request, budget, items });
 
   return composeSections([
     section('Problema identificado', problem),
     diagnosisSection,
     section('Serviço autorizado', buildAuthorizedService(items)),
+    section('Plano inteligente para o técnico', buildTechnicalPlanText(technicalPlan)),
     buildPartsSection(items),
     notesSection,
     buildValuesSection(budget || {})
