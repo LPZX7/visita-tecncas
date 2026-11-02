@@ -1,6 +1,7 @@
 const db = require('./db');
 const {
   listarChamadosVisitaTecnica,
+  listarClientes,
   buscarClientePorDocumento,
   criarChamado,
   atualizarResponsavelChamado,
@@ -56,6 +57,128 @@ async function syncMilvusChamados() {
     importados_automaticamente: automatico.importados,
     aguardando_revisao: automatico.aguardando_revisao
   };
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function clientAddress(client) {
+  const direct = firstText(client.endereco, client.endereco_completo, client.address);
+  if (direct) return direct;
+
+  const addresses = client.cliente_enderecos || client.enderecos || client.addresses || [];
+  const address = Array.isArray(addresses)
+    ? (addresses.find((item) => item.endereco_padrao === true || item.is_padrao === true) || addresses[0])
+    : addresses;
+  if (!address || typeof address !== 'object') return null;
+
+  return [
+    firstText(address.endereco_logradouro, address.logradouro, address.rua),
+    firstText(address.endereco_numero, address.numero),
+    firstText(address.endereco_complemento, address.complemento),
+    firstText(address.endereco_bairro, address.bairro),
+    firstText(address.endereco_cidade, address.cidade),
+    firstText(address.endereco_estado, address.estado),
+    firstText(address.endereco_cep, address.cep)
+  ].filter(Boolean).join(', ') || null;
+}
+
+function normalizeMilvusClient(client) {
+  const pessoaJuridica = client.cliente_pessoa_juridica || client.pessoa_juridica || {};
+  const pessoaFisica = client.cliente_pessoa_fisica || client.pessoa_fisica || {};
+  const contacts = client.cliente_contatos || client.contatos || client.contacts || [];
+  const contact = Array.isArray(contacts)
+    ? (contacts.find((item) => item.contato_padrao === true || item.is_padrao === true) || contacts[0] || {})
+    : contacts;
+  const document = firstText(client.cnpj_cpf, client.cliente_documento, client.documento, client.cnpj);
+  const statusValue = client.is_ativo ?? client.cliente_ativo ?? client.ativo;
+  const inactive = statusValue === false || statusValue === 0 || ['false', '0', 'inativo', 'bloqueado'].includes(String(statusValue || '').trim().toLowerCase());
+  const razaoSocial = firstText(
+    client.razao_social,
+    pessoaJuridica.razao_social,
+    client.nome,
+    pessoaFisica.nome,
+    client.nome_fantasia,
+    pessoaJuridica.nome_fantasia
+  );
+
+  return {
+    razao_social: razaoSocial,
+    nome_fantasia: firstText(client.nome_fantasia, pessoaJuridica.nome_fantasia, razaoSocial),
+    cnpj: digitsOnly(document),
+    inscricao_estadual: firstText(client.inscricao_estadual, pessoaJuridica.inscricao_estadual),
+    endereco: clientAddress(client),
+    telefone: firstText(client.telefone, client.cliente_telefone, contact.contato_telefone, contact.contato_celular, contact.telefone),
+    email: firstText(client.email, client.email_conferencia, client.contato_email, contact.contato_email, contact.email),
+    responsavel: firstText(client.responsavel, client.contato, contact.contato_descricao, contact.nome),
+    milvus_cliente_token: firstText(client.token, client.cliente_token),
+    status: inactive ? 'inativo' : 'ativo'
+  };
+}
+
+async function syncMilvusClientes() {
+  const clientes = await listarClientes();
+  const companies = await db.getCompanies();
+  const byToken = new Map();
+  const byDocument = new Map();
+
+  for (const company of companies) {
+    if (company.milvus_cliente_token) byToken.set(String(company.milvus_cliente_token), company);
+    const document = digitsOnly(company.cnpj);
+    if (document) byDocument.set(document, company);
+  }
+
+  let novos = 0;
+  let atualizados = 0;
+  let ignorados = 0;
+  let localizacoes = 0;
+
+  for (const client of clientes) {
+    const incoming = normalizeMilvusClient(client);
+    if (!incoming.razao_social || !incoming.cnpj) {
+      ignorados++;
+      continue;
+    }
+    if (incoming.endereco) localizacoes++;
+
+    const existing = (incoming.milvus_cliente_token && byToken.get(incoming.milvus_cliente_token))
+      || byDocument.get(incoming.cnpj);
+
+    if (!existing) {
+      const created = await db.createCompany(incoming);
+      byDocument.set(incoming.cnpj, created);
+      if (incoming.milvus_cliente_token) byToken.set(incoming.milvus_cliente_token, created);
+      novos++;
+      continue;
+    }
+
+    const patch = {};
+    for (const field of ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco', 'telefone', 'email', 'responsavel', 'milvus_cliente_token']) {
+      if (!existing[field] && incoming[field]) patch[field] = incoming[field];
+    }
+    if (incoming.status === 'inativo' && existing.status === 'ativo') patch.status = 'inativo';
+
+    if (Object.keys(patch).length) {
+      const updated = await db.updateCompany(existing.id, patch);
+      byDocument.set(incoming.cnpj, updated);
+      if (updated.milvus_cliente_token) byToken.set(String(updated.milvus_cliente_token), updated);
+      atualizados++;
+    } else {
+      ignorados++;
+    }
+  }
+
+  return { encontrados: clientes.length, novos, atualizados, ignorados, localizacoes };
 }
 
 async function ensureRequestInMilvus(request, company, opts = {}) {
@@ -225,6 +348,7 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
 
 module.exports = {
   syncMilvusChamados,
+  syncMilvusClientes,
   ensureRequestInMilvus,
   syncRequestAssigneeToMilvus,
   pushVisitaTecnicaAprovadaToMilvus,

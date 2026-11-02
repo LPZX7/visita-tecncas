@@ -41,6 +41,22 @@ async function listarChamadosVisitaTecnica() {
   throw lastErr;
 }
 
+async function listarClientes() {
+  const token = getToken();
+  if (!token) return [];
+
+  const res = await fetch(`${BASE_URL}/cliente/busca?status=3`, {
+    headers: { Authorization: token }
+  });
+
+  if (!res.ok) {
+    throw new Error(`Milvus listarClientes falhou (${res.status})`);
+  }
+
+  const data = await res.json();
+  return Array.isArray(data.lista) ? data.lista : [];
+}
+
 const CATEGORIA_ID_VISITA_TECNICA = 689813;
 const CATEGORIA_PRIMARIA_VISITA_TECNICA = 'Catraca';
 
@@ -172,6 +188,7 @@ async function finalizarChamado({ ticketCodigo, servicoRealizado }) {
 
 module.exports = {
   listarChamadosVisitaTecnica,
+  listarClientes,
   buscarClientePorDocumento,
   buscarChamadoPorCodigo,
   criarChamado,

@@ -586,9 +586,9 @@ async function getCompanyById(id) {
 async function createCompany(company) {
   const row = withDefaults({ id: uuid(), ...company, criado_em: now() });
   await pool.query(
-    `INSERT INTO empresas (id, razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [row.id, row.razao_social, row.nome_fantasia, row.cnpj, row.inscricao_estadual, row.endereco, row.telefone, row.email, row.responsavel, row.modelo_cobranca, row.status, row.criado_em]
+    `INSERT INTO empresas (id, razao_social, nome_fantasia, cnpj, inscricao_estadual, endereco, telefone, email, responsavel, modelo_cobranca, status, criado_em, milvus_cliente_token)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+    [row.id, row.razao_social, row.nome_fantasia, row.cnpj, row.inscricao_estadual, row.endereco, row.telefone, row.email, row.responsavel, row.modelo_cobranca, row.status, row.criado_em, row.milvus_cliente_token || null]
   );
   return getCompanyById(row.id);
 }

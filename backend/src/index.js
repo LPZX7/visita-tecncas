@@ -6,7 +6,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const routes = require('./routes');
 const { initDb } = require('./lib/db');
-const { syncMilvusChamados } = require('./lib/milvusSync');
+const { syncMilvusChamados, syncMilvusClientes } = require('./lib/milvusSync');
 
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-in-production')) {
@@ -84,7 +84,18 @@ const port = process.env.PORT || 4100;
           })
           .catch((err) => console.error('[milvus] Falha na sincronização:', err.message));
       };
-      runMilvusSync();
+
+      const runMilvusClientSync = async () => {
+        try {
+          const r = await syncMilvusClientes();
+          console.log(`[milvus-clientes] ${r.encontrados} recebido(s), ${r.novos} criado(s), ${r.atualizados} atualizado(s), ${r.ignorados} ignorado(s), ${r.localizacoes} com localização.`);
+        } catch (err) {
+          console.error('[milvus-clientes] Falha na sincronização:', err.message);
+        }
+      };
+
+      runMilvusClientSync().then(runMilvusSync);
+      setInterval(runMilvusClientSync, 6 * 60 * 60 * 1000);
       setInterval(runMilvusSync, 5 * 60 * 1000);
     }
 
