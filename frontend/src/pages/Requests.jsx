@@ -37,6 +37,7 @@ export default function Requests() {
   const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [technicianAvailability, setTechnicianAvailability] = useState([]);
   const [analysts, setAnalysts] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [parts, setParts] = useState([]);
@@ -85,6 +86,7 @@ export default function Requests() {
         setTechnicians(res.data.filter((u) => u.role === 'tecnico'));
         setAnalysts(res.data.filter((u) => u.role === 'analista'));
       }).catch(() => {});
+      api.get('/technician-availability/team').then((res) => setTechnicianAvailability(res.data)).catch(() => {});
     }
     api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
     if (isTech) {
@@ -468,6 +470,10 @@ export default function Requests() {
             const eq = equipment(req.equipamento_id);
             const comp = company(req.empresa_id);
             const latestBudget = latestBudgetFor(req.id);
+            const scheduledDate = (draft.agendado_para || '').slice(0, 10);
+            const selectedTechnicianAvailability = technicianAvailability.find((entry) => (
+              entry.technician_id === draft.assigned_technician && entry.date === scheduledDate
+            ));
             return (
               <Fragment key={req.id}>
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
@@ -509,6 +515,13 @@ export default function Requests() {
                           </label>
                         </div>
                         <input className="form-input" type="date" value={draft.agendado_para ? draft.agendado_para.slice(0, 10) : ''} onChange={(e) => setDraft(req, { agendado_para: e.target.value })} />
+                        {draft.assigned_technician && scheduledDate && (
+                          <span className={`request-availability-note ${selectedTechnicianAvailability ? 'is-available' : 'is-unset'}`}>
+                            {selectedTechnicianAvailability
+                              ? `${selectedTechnicianAvailability.technician_name} pode sair para atendimento até ${selectedTechnicianAvailability.available_until}.`
+                              : 'O técnico não informou disponibilidade para esta data.'}
+                          </span>
+                        )}
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>

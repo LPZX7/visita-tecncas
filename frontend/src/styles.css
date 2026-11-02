@@ -2752,6 +2752,17 @@ a:hover {
   font-size: .7rem;
   font-weight: 700;
 }
+
+.request-availability-note {
+  flex: 1 0 100%;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: .66rem;
+  line-height: 1.4;
+}
+
+.request-availability-note.is-available { color: #176b3c; background: #e8f7ed; }
+.request-availability-note.is-unset { color: #94621b; background: #fff6e5; }
 .technical-record {
   display: grid;
   gap: 12px;

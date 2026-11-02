@@ -7,6 +7,7 @@ import Timeline from '../components/Timeline';
 import EmptyState from '../components/EmptyState';
 import RatingInput from '../components/RatingInput';
 import VisitCalendar from '../components/VisitCalendar';
+import TechnicianAvailabilityCalendar from '../components/TechnicianAvailabilityCalendar';
 import './Dashboard.css';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -1255,6 +1256,8 @@ export default function Dashboard() {
               )}
             </div>
           </section>
+
+          <TechnicianAvailabilityCalendar />
 
           <div className="panel-card">
             <h3>Agenda do dia</h3>

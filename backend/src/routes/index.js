@@ -1,6 +1,7 @@
 const express = require('express');
 const authRouter = require('./auth');
 const usersRouter = require('./users');
+const technicianAvailabilityRouter = require('./technicianAvailability');
 const companiesRouter = require('./companies');
 const unitsRouter = require('./units');
 const equipmentsRouter = require('./equipments');
@@ -19,6 +20,7 @@ const publicVisitsRouter = require('./publicVisits');
 const router = express.Router();
 router.use('/auth', authRouter);
 router.use('/users', usersRouter);
+router.use('/technician-availability', technicianAvailabilityRouter);
 router.use('/companies', companiesRouter);
 router.use('/units', unitsRouter);
 router.use('/equipments', equipmentsRouter);
