@@ -2753,6 +2753,20 @@ a:hover {
   font-weight: 700;
 }
 
+.request-schedule-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(135px, 1fr));
+  gap: 8px;
+}
+.request-schedule-inputs label,
+.request-destination-field {
+  display: grid;
+  gap: 4px;
+  color: #64748b;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
 .request-availability-note {
   flex: 1 0 100%;
   padding: 7px 9px;
@@ -3880,6 +3894,7 @@ a:hover {
   .milvus-user-fields { grid-template-columns: minmax(0, 1fr); }
   .milvus-user-fields .form-hint { grid-column: auto; }
   .request-assignment-fields { grid-template-columns: minmax(0, 1fr); }
+  .request-schedule-inputs { grid-template-columns: minmax(0, 1fr); }
   .item-list li { align-items: flex-start; flex-direction: column; gap: 4px; }
   .units-form { align-items: stretch; flex-direction: column; }
   .units-form .form-input, .units-form .form-select { width: 100%; min-width: 0; }

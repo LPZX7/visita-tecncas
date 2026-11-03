@@ -12,6 +12,13 @@ router.get('/', async (req, res, next) => {
     if (req.user.role === 'cliente') {
       return res.json(scopeEquipmentsForClient(equipments, req.user));
     }
+    if (req.user.role === 'tecnico') {
+      const requests = await db.getRequests();
+      const equipmentIds = new Set(requests
+        .filter((request) => request.assigned_technician === req.user.sub)
+        .map((request) => request.equipamento_id));
+      return res.json(equipments.filter((equipment) => equipmentIds.has(equipment.id)));
+    }
     res.json(equipments);
   } catch (err) {
     next(err);

@@ -19,6 +19,25 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
 
+function todayInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function parseScheduledSlot(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year)
+    || date.getUTCMonth() !== Number(month) - 1
+    || date.getUTCDate() !== Number(day)) return null;
+  return { date: `${year}-${month}-${day}`, time: `${hour}:${minute}` };
+}
+
 function sendMilvusConfirmationEmail(request, company, equipment, signatureUser) {
   const to = request.solicitante_email;
   if (!to) return;
@@ -104,6 +123,10 @@ router.get('/', async (req, res, next) => {
       const equipments = await db.getEquipments();
       const visibleRequests = scopeRequestsForClient(requests, equipments, user);
       return res.json(await attachTechnicalRecords(visibleRequests));
+    }
+    if (user.role === 'tecnico') {
+      const assignedRequests = requests.filter((request) => request.assigned_technician === user.sub);
+      return res.json(await attachTechnicalRecords(assignedRequests));
     }
     res.json(await attachTechnicalRecords(requests));
   } catch (err) {
@@ -264,6 +287,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       assigned_analyst,
       assigned_technician,
       agendado_para,
+      endereco,
       relatorio_visita,
       teve_adicional,
       adicional_descricao,
@@ -284,7 +308,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const jaTemAceite = await db.getVisitaAceiteByRequestId(request.id);
-    if (jaTemAceite && (relatorio_visita !== undefined || assigned_analyst !== undefined || assigned_technician !== undefined || agendado_para !== undefined)) {
+    if (jaTemAceite && (relatorio_visita !== undefined || assigned_analyst !== undefined || assigned_technician !== undefined || agendado_para !== undefined || endereco !== undefined)) {
       return res.status(409).json({ error: 'Esta visita já tem um termo de conclusão assinado pelo cliente — os dados do atendimento não podem ser alterados diretamente. Fale com o desenvolvedor do sistema se precisar corrigir algo.' });
     }
 
@@ -359,6 +383,46 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       }
       if (agendado_para !== undefined) {
         patch.agendado_para = agendado_para || null;
+      }
+      if (endereco !== undefined) {
+        patch.endereco = String(endereco || '').trim();
+      }
+    }
+
+    const effectiveTechnicianId = 'assigned_technician' in patch ? patch.assigned_technician : request.assigned_technician;
+    const effectiveScheduledAt = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
+    const effectiveStatus = patch.status || request.status;
+    const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
+    const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
+    const shouldValidateSchedule = technicianChanged || scheduleChanged || patch.status === 'Agendada';
+
+    if (shouldValidateSchedule) {
+      if (!effectiveScheduledAt) {
+        if (effectiveStatus === 'Agendada') {
+          return res.status(400).json({ error: 'Escolha o técnico, dia e horário antes de marcar o chamado como agendado.' });
+        }
+      } else {
+        const slot = parseScheduledSlot(effectiveScheduledAt);
+        if (!slot) {
+          return res.status(400).json({ error: 'Informe a data e o horário da visita.' });
+        }
+        if (slot.date < todayInSaoPaulo()) {
+          return res.status(400).json({ error: 'A visita deve ser agendada para hoje ou uma data futura.' });
+        }
+        if (!effectiveTechnicianId) {
+          return res.status(400).json({ error: 'Selecione um técnico para esta visita.' });
+        }
+        const destination = 'endereco' in patch ? patch.endereco : request.endereco;
+        if (!String(destination || '').trim()) {
+          return res.status(400).json({ error: 'Informe o endereço de destino da visita.' });
+        }
+        const availability = await db.getTechnicianAvailabilityForDate(effectiveTechnicianId, slot.date);
+        if (!availability) {
+          return res.status(409).json({ error: 'O técnico não marcou disponibilidade para esse dia.' });
+        }
+        if (slot.time < availability.available_from || slot.time > availability.available_until) {
+          return res.status(409).json({ error: `Escolha um horário entre ${availability.available_from} e ${availability.available_until}, período disponível do técnico.` });
+        }
       }
     }
 

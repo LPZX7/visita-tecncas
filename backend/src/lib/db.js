@@ -68,10 +68,12 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS technician_availability (
     technician_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     available_on DATE NOT NULL,
+    available_from TEXT NOT NULL DEFAULT '07:00',
     available_until TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (technician_id, available_on)
   );
+  ALTER TABLE technician_availability ADD COLUMN IF NOT EXISTS available_from TEXT NOT NULL DEFAULT '07:00';
   UPDATE users SET milvus_email = lower(email)
   WHERE milvus_email IS NULL AND role IN ('tecnico', 'analista');
   UPDATE users SET milvus_nome = nome
@@ -485,16 +487,26 @@ async function getUserById(id) {
 
 async function getTechnicianAvailability(technicianId) {
   const { rows } = await pool.query(
-    'SELECT available_on::text AS date, available_until FROM technician_availability WHERE technician_id = $1 ORDER BY available_on',
+    'SELECT available_on::text AS date, available_from, available_until FROM technician_availability WHERE technician_id = $1 ORDER BY available_on',
     [technicianId]
   );
   return rows;
 }
 
+async function getTechnicianAvailabilityForDate(technicianId, date) {
+  const { rows } = await pool.query(
+    `SELECT available_on::text AS date, available_from, available_until
+     FROM technician_availability
+     WHERE technician_id = $1 AND available_on = $2::date`,
+    [technicianId, date]
+  );
+  return rows[0] || null;
+}
+
 async function getTeamTechnicianAvailability(fromDate) {
   const { rows } = await pool.query(
     `SELECT availability.technician_id, users.nome AS technician_name,
-            availability.available_on::text AS date, availability.available_until
+            availability.available_on::text AS date, availability.available_from, availability.available_until
      FROM technician_availability AS availability
      INNER JOIN users ON users.id = availability.technician_id
      WHERE users.role = 'tecnico' AND users.ativo = 1 AND availability.available_on >= $1::date
@@ -504,15 +516,17 @@ async function getTeamTechnicianAvailability(fromDate) {
   return rows;
 }
 
-async function setTechnicianAvailability(technicianId, date, availableUntil) {
+async function setTechnicianAvailability(technicianId, date, availableFrom, availableUntil) {
   const updatedAt = now();
   const { rows } = await pool.query(
-    `INSERT INTO technician_availability (technician_id, available_on, available_until, updated_at)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO technician_availability (technician_id, available_on, available_from, available_until, updated_at)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (technician_id, available_on)
-     DO UPDATE SET available_until = EXCLUDED.available_until, updated_at = EXCLUDED.updated_at
-     RETURNING available_on::text AS date, available_until`,
-    [technicianId, date, availableUntil, updatedAt]
+     DO UPDATE SET available_from = EXCLUDED.available_from,
+                   available_until = EXCLUDED.available_until,
+                   updated_at = EXCLUDED.updated_at
+     RETURNING available_on::text AS date, available_from, available_until`,
+    [technicianId, date, availableFrom, availableUntil, updatedAt]
   );
   return rows[0];
 }
@@ -1154,6 +1168,7 @@ module.exports = {
   getUsers,
   getUserById,
   getTechnicianAvailability,
+  getTechnicianAvailabilityForDate,
   getTeamTechnicianAvailability,
   setTechnicianAvailability,
   deleteTechnicianAvailability,

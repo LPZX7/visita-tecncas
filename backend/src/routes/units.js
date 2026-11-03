@@ -8,6 +8,20 @@ router.use(verifyToken);
 
 router.get('/', async (req, res, next) => {
   try {
+    if (req.user.role === 'tecnico') {
+      const [requests, equipments, units] = await Promise.all([
+        db.getRequests(),
+        db.getEquipments(),
+        db.getUnits()
+      ]);
+      const equipmentIds = new Set(requests
+        .filter((request) => request.assigned_technician === req.user.sub)
+        .map((request) => request.equipamento_id));
+      const unitIds = new Set(equipments
+        .filter((equipment) => equipmentIds.has(equipment.id) && equipment.unidade_id)
+        .map((equipment) => equipment.unidade_id));
+      return res.json(units.filter((unit) => unitIds.has(unit.id)));
+    }
     const empresaId = req.user.role === 'cliente' ? req.user.empresa_id : req.query.empresa_id;
     res.json(await db.getUnits(empresaId || undefined));
   } catch (err) {

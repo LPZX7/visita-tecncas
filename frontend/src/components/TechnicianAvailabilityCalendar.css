@@ -123,6 +123,7 @@
 .availability-editor__toggle input:checked + .availability-editor__switch { background: #22a45a; }
 .availability-editor__toggle input:checked + .availability-editor__switch::after { transform: translateX(15px); }
 .availability-editor__toggle input:focus-visible + .availability-editor__switch { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.availability-editor__time-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .availability-editor__time { display: grid; gap: 7px; margin-top: 17px; color: #6f8095; font-size: .67rem; }
 .availability-editor__time input { width: 100%; padding: 9px 10px; border: 1px solid #dce4ee; border-radius: 9px; color: #213a58; background: #fff; font: inherit; font-size: .8rem; }
 .availability-editor__save { width: 100%; margin-top: auto; padding: 10px 12px; border: 0; border-radius: 10px; color: #fff; background: #1d65c1; font: inherit; font-size: .7rem; font-weight: 750; cursor: pointer; }
@@ -153,4 +154,5 @@
   .availability-calendar__grid { gap: 3px; }
   .availability-calendar__empty,
   .availability-calendar__day { min-height: 36px; }
+  .availability-editor__time-range { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }

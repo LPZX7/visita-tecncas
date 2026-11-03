@@ -28,6 +28,28 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString('pt-BR');
 }
 
+function scheduledDate(value) {
+  return String(value || '').slice(0, 10);
+}
+
+function scheduledTime(value) {
+  return String(value || '').match(/[T ](\d{2}:\d{2})/)?.[1] || '';
+}
+
+function combineSchedule(date, time) {
+  if (!date) return '';
+  return time ? `${date}T${time}` : date;
+}
+
+function formatScheduledDateTime(value) {
+  if (!value) return 'Não agendado';
+  const date = scheduledDate(value);
+  const [, year, month, day] = date.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
+  if (!year) return formatDateTime(value);
+  const time = scheduledTime(value);
+  return `${day}/${month}/${year}${time ? ` às ${time}` : ''}`;
+}
+
 export default function Requests() {
   const user = getUser();
   const navigate = useNavigate();
@@ -229,7 +251,8 @@ export default function Requests() {
     status: req.status,
     assigned_analyst: req.assigned_analyst || '',
     assigned_technician: req.assigned_technician || '',
-    agendado_para: req.agendado_para || ''
+    agendado_para: req.agendado_para || '',
+    endereco: req.endereco || ''
   };
 
   const setDraft = (req, patch) => {
@@ -238,19 +261,31 @@ export default function Requests() {
 
   const saveManaged = async (req) => {
     const draft = draftFor(req);
-    await api.patch(`/requests/${req.id}`, {
-      status: draft.status,
-      assigned_analyst: draft.assigned_analyst || null,
-      assigned_technician: draft.assigned_technician || null,
-      agendado_para: draft.agendado_para || null,
-      sincronizar_responsaveis_milvus: true
-    });
-    setDrafts((prev) => {
-      const next = { ...prev };
-      delete next[req.id];
-      return next;
-    });
-    load();
+    const hasVisitTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.agendado_para || '');
+    const status = draft.status === 'Aberta' && draft.assigned_technician && hasVisitTime
+      ? 'Agendada'
+      : draft.status;
+    setError('');
+    setSuccess('');
+    try {
+      await api.patch(`/requests/${req.id}`, {
+        status,
+        assigned_analyst: draft.assigned_analyst || null,
+        assigned_technician: draft.assigned_technician || null,
+        agendado_para: draft.agendado_para || null,
+        endereco: draft.endereco || '',
+        sincronizar_responsaveis_milvus: true
+      });
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[req.id];
+        return next;
+      });
+      setSuccess('Chamado e agenda atualizados.');
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível salvar o agendamento.');
+    }
   };
 
   const toggleExpanded = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -470,10 +505,15 @@ export default function Requests() {
             const eq = equipment(req.equipamento_id);
             const comp = company(req.empresa_id);
             const latestBudget = latestBudgetFor(req.id);
-            const scheduledDate = (draft.agendado_para || '').slice(0, 10);
+            const scheduleDay = scheduledDate(draft.agendado_para);
+            const scheduleTime = scheduledTime(draft.agendado_para);
             const selectedTechnicianAvailability = technicianAvailability.find((entry) => (
-              entry.technician_id === draft.assigned_technician && entry.date === scheduledDate
+              entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
             ));
+            const scheduleTimeFitsAvailability = Boolean(selectedTechnicianAvailability
+              && scheduleTime
+              && scheduleTime >= selectedTechnicianAvailability.available_from
+              && scheduleTime <= selectedTechnicianAvailability.available_until);
             return (
               <Fragment key={req.id}>
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
@@ -514,12 +554,46 @@ export default function Requests() {
                             </select>
                           </label>
                         </div>
-                        <input className="form-input" type="date" value={draft.agendado_para ? draft.agendado_para.slice(0, 10) : ''} onChange={(e) => setDraft(req, { agendado_para: e.target.value })} />
-                        {draft.assigned_technician && scheduledDate && (
-                          <span className={`request-availability-note ${selectedTechnicianAvailability ? 'is-available' : 'is-unset'}`}>
-                            {selectedTechnicianAvailability
-                              ? `${selectedTechnicianAvailability.technician_name} pode sair para atendimento até ${selectedTechnicianAvailability.available_until}.`
-                              : 'O técnico não informou disponibilidade para esta data.'}
+                        <div className="request-schedule-inputs">
+                          <label>
+                            <span>Dia da visita</span>
+                            <input
+                              className="form-input"
+                              type="date"
+                              value={scheduleDay}
+                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(e.target.value, scheduleTime) })}
+                            />
+                          </label>
+                          <label>
+                            <span>Horário</span>
+                            <input
+                              className="form-input"
+                              type="time"
+                              value={scheduleTime}
+                              min={selectedTechnicianAvailability?.available_from}
+                              max={selectedTechnicianAvailability?.available_until}
+                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(scheduleDay, e.target.value) })}
+                            />
+                          </label>
+                        </div>
+                        <label className="request-destination-field">
+                          <span>Endereço de destino da visita</span>
+                          <input
+                            className="form-input"
+                            value={draft.endereco}
+                            onChange={(e) => setDraft(req, { endereco: e.target.value })}
+                            placeholder="Rua, número, bairro, cidade"
+                          />
+                        </label>
+                        {draft.assigned_technician && scheduleDay && (
+                          <span className={`request-availability-note ${scheduleTimeFitsAvailability ? 'is-available' : 'is-unset'}`}>
+                            {!selectedTechnicianAvailability
+                              ? 'O técnico não informou disponibilidade para essa data.'
+                              : !scheduleTime
+                                ? `${selectedTechnicianAvailability.technician_name} disponível das ${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}; informe o horário da visita.`
+                                : scheduleTimeFitsAvailability
+                                  ? `${selectedTechnicianAvailability.technician_name} disponível das ${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}.`
+                                  : `Horário ${scheduleTime} fora da disponibilidade (${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}).`}
                           </span>
                         )}
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
@@ -593,7 +667,7 @@ export default function Requests() {
                           </div>
                           <div>
                             <strong>Agendado para</strong>
-                            <p>{req.agendado_para ? req.agendado_para.slice(0, 10) : 'Não agendado'}</p>
+                            <p>{formatScheduledDateTime(req.agendado_para)}</p>
                           </div>
                           <div>
                             <strong>Check-in</strong>

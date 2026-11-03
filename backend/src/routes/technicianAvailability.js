@@ -46,6 +46,21 @@ async function findActiveTechnician(technicianId, res) {
   return technician;
 }
 
+function parseAvailabilityHours(body, res) {
+  const availableFrom = String(body?.available_from || '07:00');
+  const availableUntil = String(body?.available_until || '');
+  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!validTime.test(availableFrom) || !validTime.test(availableUntil)) {
+    res.status(400).json({ error: 'Informe os horários inicial e final no formato HH:MM' });
+    return null;
+  }
+  if (availableFrom >= availableUntil) {
+    res.status(400).json({ error: 'O horário final deve ser depois do horário inicial' });
+    return null;
+  }
+  return { availableFrom, availableUntil };
+}
+
 router.get('/team', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
     res.json(await db.getTeamTechnicianAvailability(todayInSaoPaulo()));
@@ -76,11 +91,9 @@ router.put('/team/:technicianId/:date', requireRole('gestor'), async (req, res, 
   try {
     const technician = await findActiveTechnician(req.params.technicianId, res);
     if (!technician || !validateFutureDate(req.params.date, res)) return;
-    const availableUntil = String(req.body?.available_until || '');
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(availableUntil)) {
-      return res.status(400).json({ error: 'Informe um horário válido no formato HH:MM' });
-    }
-    res.json(await db.setTechnicianAvailability(technician.id, req.params.date, availableUntil));
+    const hours = parseAvailabilityHours(req.body, res);
+    if (!hours) return;
+    res.json(await db.setTechnicianAvailability(technician.id, req.params.date, hours.availableFrom, hours.availableUntil));
   } catch (err) {
     next(err);
   }
@@ -89,11 +102,9 @@ router.put('/team/:technicianId/:date', requireRole('gestor'), async (req, res, 
 router.put('/:date', requireRole('tecnico'), async (req, res, next) => {
   try {
     if (!validateFutureDate(req.params.date, res)) return;
-    const availableUntil = String(req.body?.available_until || '');
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(availableUntil)) {
-      return res.status(400).json({ error: 'Informe um horário válido no formato HH:MM' });
-    }
-    res.json(await db.setTechnicianAvailability(req.user.sub, req.params.date, availableUntil));
+    const hours = parseAvailabilityHours(req.body, res);
+    if (!hours) return;
+    res.json(await db.setTechnicianAvailability(req.user.sub, req.params.date, hours.availableFrom, hours.availableUntil));
   } catch (err) {
     next(err);
   }

@@ -11,6 +11,13 @@ router.get('/', async (req, res, next) => {
     if (req.user.role === 'cliente') {
       return res.json(companies.filter((c) => c.id === req.user.empresa_id));
     }
+    if (req.user.role === 'tecnico') {
+      const requests = await db.getRequests();
+      const companyIds = new Set(requests
+        .filter((request) => request.assigned_technician === req.user.sub)
+        .map((request) => request.empresa_id));
+      return res.json(companies.filter((company) => companyIds.has(company.id)));
+    }
     res.json(companies);
   } catch (err) {
     next(err);

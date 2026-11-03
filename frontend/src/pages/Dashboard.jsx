@@ -226,9 +226,14 @@ export default function Dashboard() {
         setMilvusPending(milvusRes.data);
         setMilvusAvailable(milvusRes.available);
       } else {
-        const [requestsRes, budgetsRes] = await Promise.all([api.get('/requests'), api.get('/budgets')]);
+        const [requestsRes, budgetsRes, companiesRes] = await Promise.all([
+          api.get('/requests'),
+          api.get('/budgets'),
+          api.get('/companies')
+        ]);
         setRequests(requestsRes.data);
         setBudgets(budgetsRes.data);
+        setCompanies(companiesRes.data);
       }
       setLastUpdated(new Date());
     } catch (err) {
@@ -321,15 +326,19 @@ export default function Dashboard() {
     approvedByRequest[b.request_id] = (approvedByRequest[b.request_id] || 0) + Number(b.total || 0);
   });
 
-  const monthRequests = requests.filter((r) => {
+  const calendarRequests = role === 'tecnico'
+    ? requests.filter((request) => request.assigned_technician === profile?.id)
+    : requests;
+  const monthRequests = calendarRequests.filter((r) => {
     const day = (r.agendado_para || '').slice(0, 10);
     if (!day) return false;
-    const d = new Date(day);
-    return d.getFullYear() === calYear && d.getMonth() === calMonth;
+    const [year, month] = day.split('-').map(Number);
+    return year === calYear && month - 1 === calMonth;
   });
 
   const userNameById = {};
   users.forEach((u) => { userNameById[u.id] = u.nome; });
+  if (profile?.id && profile?.nome) userNameById[profile.id] = profile.nome;
   const companyNameById = {};
   companies.forEach((c) => { companyNameById[c.id] = c.razao_social; });
 
@@ -480,6 +489,8 @@ export default function Dashboard() {
       empresa: companyNameById[r.empresa_id] || 'Empresa não identificada',
       tecnico: userNameById[r.assigned_technician] || 'Não atribuído',
       descricao: r.descricao,
+      endereco: r.endereco,
+      agendado_para: r.agendado_para,
       status: r.status,
       valor
     });
@@ -1110,15 +1121,17 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!loading && ['gestor', 'analista'].includes(role) && (
+      {!loading && ['gestor', 'analista', 'tecnico'].includes(role) && (
         <div className="panel-card panel-card--calendar">
           <div className="panel-card__header-row">
             <div>
-              <h3><SectionIcon name="calendar" /> Calendário de visitas</h3>
+              <h3><SectionIcon name="calendar" /> {role === 'tecnico' ? 'Minha agenda de visitas' : 'Calendário de visitas'}</h3>
               <p className="chart-card__subtitle">
                 {monthRequests.length === 0
                   ? `Nenhuma visita agendada em ${MONTH_NAMES[calMonth]} ainda.`
-                  : 'Clique em um dia com visita para ver os detalhes.'}
+                  : role === 'tecnico'
+                    ? 'Veja os chamados atribuídos a você e o endereço de cada visita.'
+                    : 'Clique em um dia com visita para ver os detalhes.'}
               </p>
             </div>
             <div className="calendar-nav">
@@ -1143,10 +1156,11 @@ export default function Dashboard() {
                   <li key={v.id}>
                     <div>
                       <strong>{v.empresa}</strong>
-                      <span className="day-detail__meta">{v.descricao} · Técnico: {v.tecnico}</span>
+                      <span className="day-detail__meta">{formatTime(v.agendado_para)} · {v.descricao} · Técnico: {v.tecnico}</span>
+                      {v.endereco && <span className="day-detail__meta">Destino: {v.endereco}</span>}
                     </div>
                     <div className="day-detail__right">
-                      <span className="day-detail__valor">{v.valor > 0 ? `R$ ${v.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'sem orçamento aprovado'}</span>
+                      {role !== 'tecnico' && <span className="day-detail__valor">{v.valor > 0 ? `R$ ${v.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'sem orçamento aprovado'}</span>}
                       <Badge status={v.status} />
                     </div>
                   </li>
@@ -1242,7 +1256,8 @@ export default function Dashboard() {
                     <strong>{formatTime(proximaVisitaTecnico.agendado_para)}</strong>
                     <span>{formatDate(proximaVisitaTecnico.agendado_para)}</span>
                   </div>
-                  <h4>#{proximaVisitaTecnico.numero} · {proximaVisitaTecnico.descricao}</h4>
+                  <h4>#{proximaVisitaTecnico.numero} · {companyNameById[proximaVisitaTecnico.empresa_id] || 'Empresa não identificada'}</h4>
+                  <p>{proximaVisitaTecnico.descricao}</p>
                   <p>{proximaVisitaTecnico.endereco || 'Endereço ainda não informado'}</p>
                   <div className="technician-next__footer">
                     <Badge status={proximaVisitaTecnico.status} />
@@ -1269,7 +1284,10 @@ export default function Dashboard() {
             ) : (
               <ul className="item-list">
                 {agendaHoje.map((r) => (
-                  <li key={r.id}><span>{r.descricao} — {r.endereco || 'sem endereço'}</span> <Badge status={r.status} /></li>
+                  <li key={r.id}>
+                    <span><strong>{formatTime(r.agendado_para)} · {companyNameById[r.empresa_id] || 'Empresa não identificada'}</strong><br />{r.descricao}<br />{r.endereco || 'Endereço ainda não informado'}</span>
+                    <Badge status={r.status} />
+                  </li>
                 ))}
               </ul>
             )}
