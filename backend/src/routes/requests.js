@@ -19,12 +19,13 @@ function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
 }
 
-function todayInSaoPaulo() {
+function currentDateTimeInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
   }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
 }
 
 function parseScheduledSlot(value) {
@@ -293,6 +294,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       adicional_descricao,
       custo_adicional,
       observacao_final,
+      confirmacao_tecnico,
       sincronizar_responsaveis_milvus
     } = req.body;
     const patch = {};
@@ -315,6 +317,42 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (req.user.role === 'tecnico') {
       if (request.assigned_technician !== req.user.sub) {
         return res.status(403).json({ error: 'Você não está atribuído a este chamado' });
+      }
+      if (confirmacao_tecnico !== undefined || agendado_para !== undefined) {
+        if (request.status !== 'Agendada' || !request.agendado_para || request.hora_checkin || request.hora_checkout) {
+          return res.status(409).json({ error: 'A confirmação ou remarcação só pode ser feita antes de iniciar uma visita agendada.' });
+        }
+        if (confirmacao_tecnico !== undefined && agendado_para !== undefined) {
+          return res.status(400).json({ error: 'Confirme a visita ou altere o agendamento por vez.' });
+        }
+        if (confirmacao_tecnico !== undefined && status !== undefined) {
+          return res.status(400).json({ error: 'Confirme a visita em uma ação separada do check-in.' });
+        }
+        if (confirmacao_tecnico !== undefined) {
+          if (confirmacao_tecnico !== 'confirmada') {
+            return res.status(400).json({ error: 'Confirmação inválida.' });
+          }
+          const scheduledSlot = parseScheduledSlot(request.agendado_para);
+          if (!scheduledSlot || `${scheduledSlot.date}T${scheduledSlot.time}` < currentDateTimeInSaoPaulo()) {
+            return res.status(409).json({ error: 'O horário desta visita já passou. Peça ao gestor ou analista para atualizar o agendamento.' });
+          }
+          patch.confirmacao_tecnico = 'confirmada';
+          patch.confirmacao_tecnico_em = new Date().toISOString();
+        }
+        if (agendado_para !== undefined) {
+          if (status !== undefined) {
+            return res.status(400).json({ error: 'Altere a data e o horário em uma ação separada.' });
+          }
+          if (!parseScheduledSlot(agendado_para)) {
+            return res.status(400).json({ error: 'Escolha uma nova data e horário para a visita.' });
+          }
+          if (agendado_para === request.agendado_para) {
+            return res.status(400).json({ error: 'Escolha uma data ou horário diferente do agendamento atual.' });
+          }
+          patch.agendado_para = agendado_para;
+          patch.confirmacao_tecnico = null;
+          patch.confirmacao_tecnico_em = null;
+        }
       }
       if (status !== undefined) {
         if (!TECH_STATUSES.includes(status)) {
@@ -387,6 +425,12 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       if (endereco !== undefined) {
         patch.endereco = String(endereco || '').trim();
       }
+      const managerChangedTechnician = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
+      const managerChangedSchedule = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
+      if (managerChangedTechnician || managerChangedSchedule) {
+        patch.confirmacao_tecnico = null;
+        patch.confirmacao_tecnico_em = null;
+      }
     }
 
     const effectiveTechnicianId = 'assigned_technician' in patch ? patch.assigned_technician : request.assigned_technician;
@@ -406,8 +450,8 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!slot) {
           return res.status(400).json({ error: 'Informe a data e o horário da visita.' });
         }
-        if (slot.date < todayInSaoPaulo()) {
-          return res.status(400).json({ error: 'A visita deve ser agendada para hoje ou uma data futura.' });
+        if (`${slot.date}T${slot.time}` < currentDateTimeInSaoPaulo()) {
+          return res.status(400).json({ error: 'A visita deve ser agendada para um horário futuro.' });
         }
         if (!effectiveTechnicianId) {
           return res.status(400).json({ error: 'Selecione um técnico para esta visita.' });

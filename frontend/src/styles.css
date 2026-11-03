@@ -2777,6 +2777,17 @@ a:hover {
 
 .request-availability-note.is-available { color: #176b3c; background: #e8f7ed; }
 .request-availability-note.is-unset { color: #94621b; background: #fff6e5; }
+
+.request-tech-action-stack,
+.request-tech-visit-response {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.request-reschedule-inputs .form-field {
+  margin: 0;
+}
 .technical-record {
   display: grid;
   gap: 12px;

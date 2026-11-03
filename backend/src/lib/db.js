@@ -160,6 +160,8 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS custo_adicional REAL NOT NULL DEFAULT 0;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS observacao_final TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS assigned_analyst TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico_em TEXT;
   UPDATE requests AS r SET assigned_analyst = r.aberto_por
   FROM users AS u
   WHERE r.assigned_analyst IS NULL AND r.aberto_por = u.id AND u.role = 'analista';

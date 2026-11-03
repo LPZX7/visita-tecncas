@@ -50,6 +50,14 @@ function formatScheduledDateTime(value) {
   return `${day}/${month}/${year}${time ? ` às ${time}` : ''}`;
 }
 
+function todayInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 export default function Requests() {
   const user = getUser();
   const navigate = useNavigate();
@@ -68,6 +76,10 @@ export default function Requests() {
   const [expanded, setExpanded] = useState({});
   const [checkoutRequest, setCheckoutRequest] = useState(null);
   const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [rescheduleRequest, setRescheduleRequest] = useState(null);
+  const [rescheduleDay, setRescheduleDay] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [rescheduleSaving, setRescheduleSaving] = useState(false);
   const [checkoutForm, setCheckoutForm] = useState({
     teve_adicional: null,
     adicional_descricao: '',
@@ -113,6 +125,7 @@ export default function Requests() {
     api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
     if (isTech) {
       api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
+      api.get('/technician-availability').then((res) => setTechnicianAvailability(res.data)).catch(() => {});
     }
     checkLiberacao();
   };
@@ -322,6 +335,49 @@ export default function Requests() {
     }
   };
 
+  const confirmVisit = async (req) => {
+    setError('');
+    setSuccess('');
+    try {
+      await api.patch(`/requests/${req.id}`, { confirmacao_tecnico: 'confirmada' });
+      setSuccess(`Visita de ${formatScheduledDateTime(req.agendado_para)} confirmada.`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível confirmar a visita.');
+    }
+  };
+
+  const openReschedule = (req) => {
+    setError('');
+    setRescheduleRequest(req);
+    setRescheduleDay('');
+    setRescheduleTime('');
+  };
+
+  const closeReschedule = () => {
+    if (rescheduleSaving) return;
+    setRescheduleRequest(null);
+  };
+
+  const handleReschedule = async (event) => {
+    event.preventDefault();
+    if (!rescheduleRequest || !rescheduleDay || !rescheduleTime) return;
+    setError('');
+    setSuccess('');
+    setRescheduleSaving(true);
+    try {
+      const agendado_para = combineSchedule(rescheduleDay, rescheduleTime);
+      await api.patch(`/requests/${rescheduleRequest.id}`, { agendado_para });
+      setRescheduleRequest(null);
+      setSuccess(`Visita remarcada para ${formatScheduledDateTime(agendado_para)}.`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível remarcar a visita.');
+    } finally {
+      setRescheduleSaving(false);
+    }
+  };
+
   const openCheckout = (req) => {
     setError('');
     setCheckoutRequest(req);
@@ -371,6 +427,13 @@ export default function Requests() {
       setCheckoutSaving(false);
     }
   };
+
+  const rescheduleAvailability = technicianAvailability.find((entry) => entry.date === rescheduleDay);
+  const proposedReschedule = combineSchedule(rescheduleDay, rescheduleTime);
+  const sameReschedule = proposedReschedule === rescheduleRequest?.agendado_para;
+  const rescheduleTimeFitsAvailability = Boolean(rescheduleAvailability && rescheduleTime
+    && rescheduleTime >= rescheduleAvailability.available_from
+    && rescheduleTime <= rescheduleAvailability.available_until);
 
   return (
     <div>
@@ -596,6 +659,11 @@ export default function Requests() {
                                   : `Horário ${scheduleTime} fora da disponibilidade (${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}).`}
                           </span>
                         )}
+                        {req.status === 'Agendada' && (
+                          <span className={`request-availability-note ${req.confirmacao_tecnico === 'confirmada' ? 'is-available' : 'is-unset'}`}>
+                            {req.confirmacao_tecnico === 'confirmada' ? 'Técnico confirmou presença.' : 'Aguardando confirmação do técnico.'}
+                          </span>
+                        )}
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>
@@ -612,10 +680,24 @@ export default function Requests() {
                         <span className="badge badge-concluida">Visita concluída</span>
                       ) : req.hora_checkin ? (
                         <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Finalizar atendimento</button>
-                      ) : req.aprovacao_cliente !== 'aprovado' ? (
-                        <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
                       ) : (
-                        <button className="btn btn-outline btn-sm" onClick={() => handleCheckin(req)}>Iniciar visita (check-in)</button>
+                        <div className="request-tech-action-stack">
+                          {req.status === 'Agendada' && req.agendado_para && (
+                            <div className="request-tech-visit-response">
+                              {req.confirmacao_tecnico === 'confirmada' ? (
+                                <span className="request-availability-note is-available">Você confirmou que consegue ir.</span>
+                              ) : (
+                                <button className="btn btn-primary btn-sm" onClick={() => confirmVisit(req)}>Confirmar que vou</button>
+                              )}
+                              <button className="btn btn-outline btn-sm" onClick={() => openReschedule(req)}>Remarcar visita</button>
+                            </div>
+                          )}
+                          {req.aprovacao_cliente !== 'aprovado' ? (
+                            <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
+                          ) : (
+                            <button className="btn btn-outline btn-sm" onClick={() => handleCheckin(req)}>Iniciar visita (check-in)</button>
+                          )}
+                        </div>
                       )}
                     </td>
                   )}
@@ -669,6 +751,14 @@ export default function Requests() {
                             <strong>Agendado para</strong>
                             <p>{formatScheduledDateTime(req.agendado_para)}</p>
                           </div>
+                          {req.status === 'Agendada' && (
+                            <div>
+                              <strong>Confirmação do técnico</strong>
+                              <p>{req.confirmacao_tecnico === 'confirmada'
+                                ? `Presença confirmada${req.confirmacao_tecnico_em ? ` em ${formatDateTime(req.confirmacao_tecnico_em)}` : ''}`
+                                : 'Aguardando confirmação'}</p>
+                            </div>
+                          )}
                           <div>
                             <strong>Check-in</strong>
                             <p>{formatDateTime(req.hora_checkin)}</p>
@@ -854,6 +944,70 @@ export default function Requests() {
               <button type="button" className="btn btn-outline" onClick={closeCheckout} disabled={checkoutSaving}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={checkoutSaving || checkoutForm.teve_adicional === null || !checkoutForm.confirmar_conclusao}>
                 {checkoutSaving ? 'Finalizando e enviando...' : 'Confirmar e finalizar atendimento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {rescheduleRequest && (
+        <div className="checkout-modal" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && closeReschedule()}>
+          <form className="checkout-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="reschedule-title" onSubmit={handleReschedule}>
+            <div className="checkout-modal__header">
+              <div>
+                <span className="checkout-modal__eyebrow">AGENDA DO TÉCNICO</span>
+                <h3 id="reschedule-title">Remarcar visita</h3>
+                <p>Escolha um novo horário em que você marcou disponibilidade. A alteração será atualizada para toda a equipe.</p>
+              </div>
+              <button type="button" className="checkout-modal__close" onClick={closeReschedule} aria-label="Fechar">×</button>
+            </div>
+            <div className="checkout-modal__body">
+              <div className="checkout-auto-summary">
+                <strong>Agendamento atual</strong>
+                <p>{formatScheduledDateTime(rescheduleRequest.agendado_para)} · {rescheduleRequest.endereco || 'Endereço não informado'}</p>
+              </div>
+              <div className="request-schedule-inputs request-reschedule-inputs">
+                <label className="form-field">
+                  Nova data
+                  <input
+                    className="form-input"
+                    type="date"
+                    min={todayInSaoPaulo()}
+                    value={rescheduleDay}
+                    onChange={(event) => setRescheduleDay(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="form-field">
+                  Novo horário
+                  <input
+                    className="form-input"
+                    type="time"
+                    min={rescheduleAvailability?.available_from}
+                    max={rescheduleAvailability?.available_until}
+                    value={rescheduleTime}
+                    onChange={(event) => setRescheduleTime(event.target.value)}
+                    required
+                    disabled={!rescheduleAvailability}
+                  />
+                </label>
+              </div>
+              {rescheduleDay && (
+                <span className={`request-availability-note ${rescheduleAvailability ? 'is-available' : 'is-unset'}`}>
+                  {rescheduleAvailability
+                    ? `Você está disponível das ${rescheduleAvailability.available_from} às ${rescheduleAvailability.available_until}.`
+                    : 'Você ainda não marcou disponibilidade para esse dia. Marque no seu calendário antes de remarcar.'}
+                </span>
+              )}
+              {sameReschedule && <span className="request-availability-note is-unset">Escolha uma data ou horário diferente do agendamento atual.</span>}
+              {rescheduleAvailability && rescheduleTime && !rescheduleTimeFitsAvailability && (
+                <span className="request-availability-note is-unset">O horário precisa ficar dentro da sua faixa de disponibilidade.</span>
+              )}
+            </div>
+            <div className="checkout-modal__footer">
+              <button type="button" className="btn btn-outline" onClick={closeReschedule} disabled={rescheduleSaving}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={rescheduleSaving || !rescheduleAvailability || !rescheduleTimeFitsAvailability || sameReschedule}>
+                {rescheduleSaving ? 'Salvando...' : 'Salvar novo horário'}
               </button>
             </div>
           </form>
