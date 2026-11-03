@@ -91,7 +91,7 @@ export default function Parts() {
         <div>
           <span className="page-eyebrow">ESTOQUE E MANUTENÇÃO</span>
           <h2 className="page-title">Catálogo de Peças</h2>
-          <p className="section-text">Componentes e peças disponíveis para manutenção dos equipamentos.</p>
+          <p className="section-text">Catálogo compartilhado: as peças ficam disponíveis para chamados de todas as empresas, filiais e sedes.</p>
         </div>
       </div>
 
