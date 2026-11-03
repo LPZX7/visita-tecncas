@@ -94,6 +94,10 @@ export default function PublicTvAgenda() {
     }
     return grouped;
   }, [days, visits]);
+  const sortedVisits = useMemo(
+    () => [...visits].sort((a, b) => String(a.agendado_para || '').localeCompare(String(b.agendado_para || ''))),
+    [visits]
+  );
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -220,6 +224,7 @@ export default function PublicTvAgenda() {
         ) : loading ? (
           <section className="tv-agenda__state"><span className="tv-agenda__spinner" /><h2>Carregando agenda…</h2></section>
         ) : (
+          <div className="tv-agenda__schedule-layout">
           <section className="tv-calendar" aria-label="Calendário mensal das visitas">
             <div className="tv-calendar__toolbar">
               <div className="tv-calendar__controls">
@@ -255,7 +260,8 @@ export default function PublicTvAgenda() {
                             {visit.technician_avatar ? <img src={visit.technician_avatar} alt="" /> : initialsFor(visit.technician_name)}
                           </span>
                           <span className="tv-calendar__event-copy">
-                            <strong><span>{visitTimeRange(visit)}</span> {visit.technician_name}</strong>
+                            <span className="tv-calendar__event-time">{visitTimeRange(visit)}</span>
+                            <strong>{visit.technician_name}</strong>
                             <small>{visit.company_name} · {visit.local}</small>
                           </span>
                         </button>
@@ -269,6 +275,40 @@ export default function PublicTvAgenda() {
               })}
             </div>
           </section>
+          <aside className="tv-visit-board" aria-label="Lista de visitas do mês">
+            <header className="tv-visit-board__header">
+              <div><span>AGENDA DO MÊS</span><h2>Visitas programadas</h2></div>
+              <strong>{String(sortedVisits.length).padStart(2, '0')}</strong>
+            </header>
+            {sortedVisits.length ? (
+              <div className="tv-visit-board__list">
+                {sortedVisits.slice(0, 5).map((visit) => (
+                  <button
+                    className={`tv-visit-card ${visit.status === 'Concluída' ? 'is-completed' : ''}`}
+                    type="button"
+                    key={`${visit.milvus_codigo}-${visit.agendado_para}`}
+                    onClick={() => setSelectedVisit(visit)}
+                  >
+                    <span className="tv-visit-card__avatar">
+                      {visit.technician_avatar ? <img src={visit.technician_avatar} alt="" /> : initialsFor(visit.technician_name)}
+                    </span>
+                    <span className="tv-visit-card__body">
+                      <span className="tv-visit-card__date">{longDateLabel(visit.agendado_para)}</span>
+                      <strong>{visit.technician_name}</strong>
+                      <span className="tv-visit-card__time">{visitTimeRange(visit)}</span>
+                      <span className="tv-visit-card__company">{visit.company_name}</span>
+                      <span className="tv-visit-card__local">{visit.local}</span>
+                    </span>
+                    <span className="tv-visit-card__status">{visit.status === 'Concluída' ? 'CONCLUÍDA' : 'AGENDADA'}</span>
+                  </button>
+                ))}
+                {sortedVisits.length > 5 && <div className="tv-visit-board__more">+ {sortedVisits.length - 5} outras visitas no calendário</div>}
+              </div>
+            ) : (
+              <div className="tv-visit-board__empty"><span>✓</span><strong>Nenhuma visita programada</strong><small>Os novos chamados agendados aparecem aqui automaticamente.</small></div>
+            )}
+          </aside>
+          </div>
         )}
 
         <footer className="tv-agenda__footer">

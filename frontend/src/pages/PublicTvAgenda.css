@@ -75,8 +75,8 @@
 .tv-calendar__event-copy strong,
 .tv-calendar__event-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tv-calendar__event-copy strong { color: #ecf5ff; font-size: .58rem; font-weight: 700; }
-.tv-calendar__event-copy strong span { color: #a7d0ff; font-variant-numeric: tabular-nums; }
 .tv-calendar__event-copy small { color: #b5c6d8; font-size: .51rem; }
+.tv-calendar__event-time { color: #a7d0ff; font-size: .5rem; font-weight: 850; font-variant-numeric: tabular-nums; }
 .tv-calendar__more { padding: 2px 4px; color: #9daabc; font-size: .57rem; font-weight: 650; }
 
 .tv-agenda__state { display: grid; min-height: 290px; align-content: center; justify-items: center; gap: 13px; padding: 32px; border: 1px solid rgba(151, 177, 208, .13); border-radius: 18px; background: rgba(255, 255, 255, .035); text-align: center; }
@@ -149,10 +149,173 @@
   .tv-calendar__event-copy { gap: 1px; }
   .tv-calendar__event-copy strong { font-size: .45rem; }
   .tv-calendar__event-copy small { font-size: .39rem; }
+  .tv-calendar__event-time { font-size: .38rem; }
   .tv-calendar__events { gap: 2px; }
   .tv-calendar__more { font-size: .46rem; }
   .tv-agenda__footer { flex-direction: column; gap: 4px; font-size: .53rem; }
   .tv-visit-modal__details { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Large-screen layout tuned for office TVs. */
+@media (min-width: 900px) {
+  .tv-agenda {
+    height: 100vh;
+    min-height: 680px;
+    overflow: hidden;
+    padding: clamp(14px, 1.5vw, 24px);
+    background:
+      radial-gradient(ellipse at 76% 2%, rgba(37, 99, 235, .2), transparent 32%),
+      radial-gradient(ellipse at 6% 95%, rgba(20, 184, 166, .13), transparent 34%),
+      #07101d;
+  }
+
+  .tv-agenda__content {
+    height: 100%;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: clamp(8px, 1vw, 13px);
+  }
+
+  .tv-agenda__header { min-height: 58px; grid-template-columns: 1fr 1.5fr 1fr; }
+  .tv-agenda__brand { gap: 13px; }
+  .tv-agenda__logo { width: 52px; height: 52px; border-radius: 16px; }
+  .tv-agenda__brand strong { font-size: clamp(.9rem, 1.05vw, 1.15rem); }
+  .tv-agenda__brand div span { font-size: clamp(.58rem, .66vw, .72rem); }
+  .tv-agenda__eyebrow { font-size: clamp(.65rem, .75vw, .82rem); }
+  .tv-agenda__heading h1 { font-size: clamp(2rem, 3vw, 3.1rem); }
+  .tv-agenda__clock strong { font-size: clamp(2.1rem, 3.2vw, 3.2rem); }
+  .tv-agenda__clock span { font-size: clamp(.6rem, .7vw, .75rem); }
+
+  .tv-agenda__summary {
+    min-height: 46px;
+    padding: 9px 16px;
+    border-color: rgba(130, 163, 203, .23);
+    border-radius: 14px;
+    background: linear-gradient(100deg, rgba(31, 52, 77, .9), rgba(18, 31, 49, .82));
+  }
+  .tv-agenda__summary > div { font-size: clamp(.68rem, .8vw, .84rem); }
+  .tv-agenda__summary > strong { color: #f0f7ff; font-size: clamp(.9rem, 1.08vw, 1.12rem); }
+  .tv-agenda__summary > small { font-size: clamp(.65rem, .74vw, .78rem); }
+
+  .tv-agenda__schedule-layout {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.95fr) minmax(320px, .95fr);
+    gap: clamp(12px, 1.2vw, 18px);
+  }
+
+  .tv-calendar {
+    display: grid;
+    min-height: 0;
+    height: 100%;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    border-color: rgba(140, 169, 205, .24);
+    border-radius: 19px;
+    background: rgba(12, 22, 36, .94);
+    box-shadow: 0 20px 55px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .04);
+  }
+  .tv-calendar__toolbar { min-height: 56px; padding: 7px 14px; border-color: rgba(145, 169, 198, .2); }
+  .tv-calendar__controls { gap: 8px; }
+  .tv-calendar__controls button { height: 40px; border-color: rgba(160, 190, 224, .26); border-radius: 12px; background: rgba(255, 255, 255, .055); }
+  .tv-calendar__today { min-width: 74px; font-size: clamp(.75rem, .8vw, .9rem); }
+  .tv-calendar__arrow { width: 40px; font-size: 1.65rem; }
+  .tv-calendar__toolbar h2 { font-size: clamp(1.45rem, 2vw, 2rem); font-weight: 750; }
+  .tv-calendar__view { padding: 8px 12px; color: #b8cce3; font-size: clamp(.62rem, .67vw, .72rem); }
+  .tv-calendar__weekdays { min-height: 36px; background: rgba(255, 255, 255, .025); }
+  .tv-calendar__weekdays span { color: #aebed2; font-size: clamp(.67rem, .74vw, .8rem); }
+  .tv-calendar__grid {
+    min-height: 0;
+    height: 100%;
+    grid-auto-rows: unset;
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+  }
+  .tv-calendar__grid.has-six-weeks { grid-template-rows: repeat(6, minmax(0, 1fr)); }
+  .tv-calendar__day { min-height: 0; padding: clamp(4px, .55vw, 8px); border-color: rgba(140, 169, 205, .18); background: rgba(13, 24, 39, .72); }
+  .tv-calendar__day.is-outside { background: rgba(255, 255, 255, .016); }
+  .tv-calendar__day.is-today { background: linear-gradient(145deg, rgba(34, 89, 145, .28), rgba(15, 35, 56, .84)); box-shadow: inset 0 0 0 1px rgba(92, 166, 246, .42); }
+  .tv-calendar__date { min-height: 29px; margin-bottom: 4px; font-size: clamp(.78rem, .9vw, .98rem); }
+  .tv-calendar__today-number { width: 31px; height: 31px; color: #061426; background: #a8d2ff; font-size: 1rem; font-weight: 850; box-shadow: 0 0 20px rgba(119, 181, 255, .3); }
+  .tv-calendar__date small { font-size: clamp(.52rem, .6vw, .64rem); }
+  .tv-calendar__events { gap: clamp(3px, .45vw, 6px); }
+  .tv-calendar__event {
+    align-items: center;
+    gap: clamp(5px, .58vw, 8px);
+    padding: clamp(4px, .47vw, 7px);
+    border-color: rgba(106, 178, 255, .36);
+    border-radius: 10px;
+    background: linear-gradient(110deg, rgba(31, 91, 153, .72), rgba(21, 55, 91, .88));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+  }
+  .tv-calendar__event.is-completed { border-color: rgba(81, 213, 153, .38); background: linear-gradient(110deg, rgba(26, 112, 76, .72), rgba(18, 65, 52, .86)); }
+  .tv-calendar__event-avatar { width: clamp(30px, 2.7vw, 42px); height: clamp(30px, 2.7vw, 42px); border: 2px solid rgba(231, 243, 255, .28); font-size: clamp(.56rem, .65vw, .72rem); }
+  .tv-calendar__event-copy { gap: 2px; }
+  .tv-calendar__event-copy strong { color: #fff; font-size: clamp(.68rem, .82vw, .9rem); line-height: 1.15; }
+  .tv-calendar__event-time { color: #c6e4ff; font-size: clamp(.62rem, .72vw, .78rem); line-height: 1.1; }
+  .tv-calendar__event-copy small { color: #d0e0f1; font-size: clamp(.57rem, .66vw, .72rem); line-height: 1.18; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .tv-calendar__more { color: #bdd7f4; font-size: clamp(.62rem, .7vw, .76rem); }
+
+  .tv-visit-board {
+    display: grid;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid rgba(140, 169, 205, .24);
+    border-radius: 19px;
+    background: linear-gradient(155deg, rgba(17, 31, 49, .98), rgba(10, 19, 32, .98));
+    box-shadow: 0 20px 55px rgba(0, 0, 0, .22);
+  }
+  .tv-visit-board__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px; border-bottom: 1px solid rgba(140, 169, 205, .18); }
+  .tv-visit-board__header > div { display: grid; gap: 3px; }
+  .tv-visit-board__header > div > span { color: #84b8f2; font-size: clamp(.58rem, .68vw, .72rem); font-weight: 850; letter-spacing: .14em; }
+  .tv-visit-board__header h2 { margin: 0; color: #f2f7ff; font-size: clamp(1.05rem, 1.38vw, 1.5rem); font-weight: 750; letter-spacing: -.025em; }
+  .tv-visit-board__header > strong { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid rgba(114, 179, 249, .35); border-radius: 14px; color: #d8ecff; background: rgba(51, 111, 176, .22); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+  .tv-visit-board__list { display: grid; align-content: start; gap: 10px; overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: rgba(132, 169, 210, .38) transparent; }
+  .tv-visit-card { position: relative; display: grid; min-width: 0; grid-template-columns: clamp(54px, 5vw, 72px) minmax(0, 1fr); align-items: center; gap: 12px; padding: 13px; border: 1px solid rgba(118, 158, 205, .22); border-left: 4px solid #62aaff; border-radius: 15px; color: #eef6ff; background: linear-gradient(120deg, rgba(38, 73, 111, .7), rgba(20, 40, 64, .75)); cursor: pointer; text-align: left; transition: transform .18s ease, border-color .18s ease, background .18s ease; }
+  .tv-visit-card:hover { transform: translateY(-2px); border-color: rgba(125, 190, 251, .58); background: linear-gradient(120deg, rgba(42, 89, 140, .82), rgba(22, 50, 81, .88)); }
+  .tv-visit-card.is-completed { border-left-color: #4bd59b; background: linear-gradient(120deg, rgba(27, 92, 68, .68), rgba(18, 49, 43, .8)); }
+  .tv-visit-card__avatar { display: grid; width: clamp(54px, 5vw, 72px); height: clamp(54px, 5vw, 72px); overflow: hidden; place-items: center; border: 2px solid rgba(222, 239, 255, .52); border-radius: 50%; color: #fff; background: linear-gradient(135deg, #3972ad, #173451); box-shadow: 0 0 0 4px rgba(118, 175, 234, .11); font-size: 1rem; font-weight: 850; }
+  .tv-visit-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .tv-visit-card__body { display: grid; min-width: 0; gap: 4px; padding-right: 74px; }
+  .tv-visit-card__date { overflow: hidden; color: #b7cee8; font-size: clamp(.64rem, .72vw, .78rem); font-weight: 700; text-overflow: ellipsis; text-transform: capitalize; white-space: nowrap; }
+  .tv-visit-card__body > strong { overflow: hidden; color: #fff; font-size: clamp(1rem, 1.35vw, 1.45rem); font-weight: 800; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+  .tv-visit-card__time { color: #9ed0ff; font-size: clamp(.92rem, 1.2vw, 1.25rem); font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .tv-visit-card__company { overflow: hidden; color: #edf5ff; font-size: clamp(.78rem, .9vw, .98rem); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+  .tv-visit-card__local { display: -webkit-box; overflow: hidden; color: #b7cbe1; font-size: clamp(.68rem, .8vw, .86rem); line-height: 1.28; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .tv-visit-card__status { position: absolute; top: 13px; right: 12px; padding: 5px 7px; border: 1px solid rgba(117, 183, 250, .24); border-radius: 999px; color: #b8d9fb; background: rgba(18, 43, 70, .8); font-size: clamp(.48rem, .55vw, .58rem); font-weight: 850; letter-spacing: .06em; }
+  .tv-visit-card.is-completed .tv-visit-card__status { border-color: rgba(78, 212, 151, .32); color: #a4f0ca; background: rgba(19, 63, 48, .8); }
+  .tv-visit-board__more { padding: 5px 8px; color: #a9c1dc; font-size: .76rem; font-weight: 700; text-align: center; }
+  .tv-visit-board__empty { display: grid; align-content: center; justify-items: center; gap: 10px; padding: 30px; color: #c2d3e6; text-align: center; }
+  .tv-visit-board__empty > span { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid rgba(72, 209, 151, .34); border-radius: 50%; color: #72e1b2; background: rgba(35, 137, 95, .18); font-size: 1.4rem; }
+  .tv-visit-board__empty > strong { color: #f0f7ff; font-size: 1.1rem; }
+  .tv-visit-board__empty > small { max-width: 270px; color: #95aac2; font-size: .8rem; line-height: 1.5; }
+  .tv-agenda__footer { color: #91a8c2; font-size: clamp(.62rem, .7vw, .76rem); }
+}
+
+@media (max-width: 899px) {
+  .tv-agenda__schedule-layout { display: grid; gap: 14px; }
+  .tv-visit-board { overflow: hidden; border: 1px solid rgba(140, 169, 205, .22); border-radius: 15px; background: rgba(17, 28, 44, .9); }
+  .tv-visit-board__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-bottom: 1px solid rgba(140, 169, 205, .17); }
+  .tv-visit-board__header > div { display: grid; gap: 3px; }
+  .tv-visit-board__header > div > span { color: #84b8f2; font-size: .56rem; font-weight: 850; letter-spacing: .12em; }
+  .tv-visit-board__header h2 { margin: 0; color: #f2f7ff; font-size: 1rem; }
+  .tv-visit-board__header > strong { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 11px; color: #d8ecff; background: rgba(51, 111, 176, .22); font-variant-numeric: tabular-nums; }
+  .tv-visit-board__list { display: grid; gap: 8px; padding: 10px; }
+  .tv-visit-card { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(118, 158, 205, .22); border-left: 3px solid #62aaff; border-radius: 12px; color: #eef6ff; background: rgba(31, 57, 86, .72); cursor: pointer; text-align: left; }
+  .tv-visit-card.is-completed { border-left-color: #4bd59b; }
+  .tv-visit-card__avatar { display: grid; width: 48px; height: 48px; overflow: hidden; place-items: center; border-radius: 50%; background: #244d73; font-size: .8rem; font-weight: 850; }
+  .tv-visit-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .tv-visit-card__body { display: grid; min-width: 0; gap: 3px; padding-right: 0; }
+  .tv-visit-card__date { color: #b7cee8; font-size: .68rem; text-transform: capitalize; }
+  .tv-visit-card__body > strong { color: #fff; font-size: .95rem; }
+  .tv-visit-card__time { color: #9ed0ff; font-size: .84rem; font-weight: 850; }
+  .tv-visit-card__company { color: #edf5ff; font-size: .78rem; font-weight: 750; }
+  .tv-visit-card__local { color: #b7cbe1; font-size: .68rem; line-height: 1.3; }
+  .tv-visit-card__status { position: absolute; top: 8px; right: 8px; padding: 3px 5px; border-radius: 999px; color: #b8d9fb; background: rgba(18, 43, 70, .8); font-size: .44rem; font-weight: 850; }
+  .tv-visit-card.is-completed .tv-visit-card__status { color: #a4f0ca; background: rgba(19, 63, 48, .8); }
+  .tv-visit-board__more { padding: 4px; color: #a9c1dc; font-size: .68rem; text-align: center; }
+  .tv-visit-board__empty { display: grid; justify-items: center; gap: 8px; padding: 24px; color: #c2d3e6; text-align: center; }
+  .tv-visit-board__empty > span { color: #72e1b2; font-size: 1.5rem; }
+  .tv-visit-board__empty > strong { color: #f0f7ff; }
+  .tv-visit-board__empty > small { max-width: 260px; color: #95aac2; font-size: .72rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
