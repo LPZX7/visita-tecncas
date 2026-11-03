@@ -74,6 +74,12 @@ const SCHEMA_SQL = `
     PRIMARY KEY (technician_id, available_on)
   );
   ALTER TABLE technician_availability ADD COLUMN IF NOT EXISTS available_from TEXT NOT NULL DEFAULT '07:00';
+  CREATE TABLE IF NOT EXISTS technician_unavailability (
+    technician_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    unavailable_on DATE NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (technician_id, unavailable_on)
+  );
   UPDATE users SET milvus_email = lower(email)
   WHERE milvus_email IS NULL AND role IN ('tecnico', 'analista');
   UPDATE users SET milvus_nome = nome
@@ -539,6 +545,81 @@ async function deleteTechnicianAvailability(technicianId, date) {
     [technicianId, date]
   );
   return rowCount > 0;
+}
+
+async function getTechnicianUnavailability(technicianId) {
+  const { rows } = await pool.query(
+    'SELECT unavailable_on::text AS date FROM technician_unavailability WHERE technician_id = $1 ORDER BY unavailable_on',
+    [technicianId]
+  );
+  return rows;
+}
+
+async function getTechnicianUnavailabilityForDate(technicianId, date) {
+  const { rows } = await pool.query(
+    'SELECT unavailable_on::text AS date FROM technician_unavailability WHERE technician_id = $1 AND unavailable_on = $2::date',
+    [technicianId, date]
+  );
+  return rows[0] || null;
+}
+
+async function getTeamTechnicianUnavailability(fromDate) {
+  const { rows } = await pool.query(
+    `SELECT unavailability.technician_id, users.nome AS technician_name,
+            unavailability.unavailable_on::text AS date
+     FROM technician_unavailability AS unavailability
+     INNER JOIN users ON users.id = unavailability.technician_id
+     WHERE users.role = 'tecnico' AND users.ativo = 1 AND unavailability.unavailable_on >= $1::date
+     ORDER BY unavailability.unavailable_on, users.nome`,
+    [fromDate]
+  );
+  return rows;
+}
+
+async function setTechnicianUnavailable(technicianId, date) {
+  const updatedAt = now();
+  const { rows } = await pool.query(
+    `INSERT INTO technician_unavailability (technician_id, unavailable_on, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (technician_id, unavailable_on)
+     DO UPDATE SET updated_at = EXCLUDED.updated_at
+     RETURNING unavailable_on::text AS date`,
+    [technicianId, date, updatedAt]
+  );
+  return rows[0];
+}
+
+async function deleteTechnicianUnavailable(technicianId, date) {
+  const { rowCount } = await pool.query(
+    'DELETE FROM technician_unavailability WHERE technician_id = $1 AND unavailable_on = $2',
+    [technicianId, date]
+  );
+  return rowCount > 0;
+}
+
+async function getTechnicianBookingAt(technicianId, scheduledAt, exceptRequestId) {
+  const { rows } = await pool.query(
+    `SELECT id, numero FROM requests
+     WHERE assigned_technician = $1
+       AND agendado_para = $2
+       AND id <> $3
+       AND status NOT IN ('Cancelada', 'Concluída')
+     LIMIT 1`,
+    [technicianId, scheduledAt, exceptRequestId]
+  );
+  return rows[0] || null;
+}
+
+async function getTechnicianBookingsForDate(technicianId, date) {
+  const { rows } = await pool.query(
+    `SELECT id, numero FROM requests
+     WHERE assigned_technician = $1
+       AND agendado_para LIKE $2 || 'T%'
+       AND status NOT IN ('Cancelada', 'Concluída')
+     ORDER BY agendado_para`,
+    [technicianId, date]
+  );
+  return rows;
 }
 
 async function findUserByEmail(email) {
@@ -1174,6 +1255,13 @@ module.exports = {
   getTeamTechnicianAvailability,
   setTechnicianAvailability,
   deleteTechnicianAvailability,
+  getTechnicianUnavailability,
+  getTechnicianUnavailabilityForDate,
+  getTeamTechnicianUnavailability,
+  setTechnicianUnavailable,
+  deleteTechnicianUnavailable,
+  getTechnicianBookingAt,
+  getTechnicianBookingsForDate,
   findUserByEmail,
   findUserByMilvusEmail,
   createUser,

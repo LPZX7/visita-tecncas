@@ -67,7 +67,7 @@ export default function Requests() {
   const [units, setUnits] = useState([]);
   const [equipments, setEquipments] = useState([]);
   const [technicians, setTechnicians] = useState([]);
-  const [technicianAvailability, setTechnicianAvailability] = useState([]);
+  const [technicianUnavailability, setTechnicianUnavailability] = useState([]);
   const [analysts, setAnalysts] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [parts, setParts] = useState([]);
@@ -120,12 +120,12 @@ export default function Requests() {
         setTechnicians(res.data.filter((u) => u.role === 'tecnico'));
         setAnalysts(res.data.filter((u) => u.role === 'analista'));
       }).catch(() => {});
-      api.get('/technician-availability/team').then((res) => setTechnicianAvailability(res.data)).catch(() => {});
+      api.get('/technician-availability/team').then((res) => setTechnicianUnavailability(res.data)).catch(() => {});
     }
     api.get('/budgets').then((res) => setBudgets(res.data)).catch(() => {});
     if (isTech) {
       api.get('/parts').then((res) => setParts(res.data)).catch(() => {});
-      api.get('/technician-availability').then((res) => setTechnicianAvailability(res.data)).catch(() => {});
+      api.get('/technician-availability').then((res) => setTechnicianUnavailability(res.data)).catch(() => {});
     }
     checkLiberacao();
   };
@@ -428,12 +428,12 @@ export default function Requests() {
     }
   };
 
-  const rescheduleAvailability = technicianAvailability.find((entry) => entry.date === rescheduleDay);
+  const rescheduleUnavailable = technicianUnavailability.some((entry) => entry.date === rescheduleDay);
   const proposedReschedule = combineSchedule(rescheduleDay, rescheduleTime);
   const sameReschedule = proposedReschedule === rescheduleRequest?.agendado_para;
-  const rescheduleTimeFitsAvailability = Boolean(rescheduleAvailability && rescheduleTime
-    && rescheduleTime >= rescheduleAvailability.available_from
-    && rescheduleTime <= rescheduleAvailability.available_until);
+  const rescheduleTimeFitsAvailability = Boolean(!rescheduleUnavailable && rescheduleTime
+    && rescheduleTime >= '07:00'
+    && rescheduleTime <= '15:00');
 
   return (
     <div>
@@ -570,13 +570,12 @@ export default function Requests() {
             const latestBudget = latestBudgetFor(req.id);
             const scheduleDay = scheduledDate(draft.agendado_para);
             const scheduleTime = scheduledTime(draft.agendado_para);
-            const selectedTechnicianAvailability = technicianAvailability.find((entry) => (
+            const selectedTechnicianUnavailable = technicianUnavailability.some((entry) => (
               entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
             ));
-            const scheduleTimeFitsAvailability = Boolean(selectedTechnicianAvailability
-              && scheduleTime
-              && scheduleTime >= selectedTechnicianAvailability.available_from
-              && scheduleTime <= selectedTechnicianAvailability.available_until);
+            const scheduleTimeFitsAvailability = Boolean(!selectedTechnicianUnavailable
+              && scheduleTime >= '07:00'
+              && scheduleTime <= '15:00');
             return (
               <Fragment key={req.id}>
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
@@ -633,8 +632,8 @@ export default function Requests() {
                               className="form-input"
                               type="time"
                               value={scheduleTime}
-                              min={selectedTechnicianAvailability?.available_from}
-                              max={selectedTechnicianAvailability?.available_until}
+                              min="07:00"
+                              max="15:00"
                               onChange={(e) => setDraft(req, { agendado_para: combineSchedule(scheduleDay, e.target.value) })}
                             />
                           </label>
@@ -650,13 +649,13 @@ export default function Requests() {
                         </label>
                         {draft.assigned_technician && scheduleDay && (
                           <span className={`request-availability-note ${scheduleTimeFitsAvailability ? 'is-available' : 'is-unset'}`}>
-                            {!selectedTechnicianAvailability
-                              ? 'O técnico não informou disponibilidade para essa data.'
+                            {selectedTechnicianUnavailable
+                              ? 'O técnico marcou esse dia como indisponível.'
                               : !scheduleTime
-                                ? `${selectedTechnicianAvailability.technician_name} disponível das ${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}; informe o horário da visita.`
+                                ? 'Dia livre para o técnico. Informe um horário entre 07:00 e 15:00.'
                                 : scheduleTimeFitsAvailability
-                                  ? `${selectedTechnicianAvailability.technician_name} disponível das ${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}.`
-                                  : `Horário ${scheduleTime} fora da disponibilidade (${selectedTechnicianAvailability.available_from} às ${selectedTechnicianAvailability.available_until}).`}
+                                  ? `Técnico livre nesse dia; horário dentro do expediente (07:00–15:00).`
+                                  : `Horário ${scheduleTime} fora do expediente (07:00–15:00).`}
                           </span>
                         )}
                         {req.status === 'Agendada' && (
@@ -957,7 +956,7 @@ export default function Requests() {
               <div>
                 <span className="checkout-modal__eyebrow">AGENDA DO TÉCNICO</span>
                 <h3 id="reschedule-title">Remarcar visita</h3>
-                <p>Escolha um novo horário em que você marcou disponibilidade. A alteração será atualizada para toda a equipe.</p>
+                <p>Escolha um dia em que você não esteja bloqueado e um horário entre 07h e 15h. A nova agenda ficará visível para toda a equipe.</p>
               </div>
               <button type="button" className="checkout-modal__close" onClick={closeReschedule} aria-label="Fechar">×</button>
             </div>
@@ -983,30 +982,30 @@ export default function Requests() {
                   <input
                     className="form-input"
                     type="time"
-                    min={rescheduleAvailability?.available_from}
-                    max={rescheduleAvailability?.available_until}
+                    min="07:00"
+                    max="15:00"
                     value={rescheduleTime}
                     onChange={(event) => setRescheduleTime(event.target.value)}
                     required
-                    disabled={!rescheduleAvailability}
+                    disabled={rescheduleUnavailable}
                   />
                 </label>
               </div>
               {rescheduleDay && (
-                <span className={`request-availability-note ${rescheduleAvailability ? 'is-available' : 'is-unset'}`}>
-                  {rescheduleAvailability
-                    ? `Você está disponível das ${rescheduleAvailability.available_from} às ${rescheduleAvailability.available_until}.`
-                    : 'Você ainda não marcou disponibilidade para esse dia. Marque no seu calendário antes de remarcar.'}
+                <span className={`request-availability-note ${rescheduleUnavailable ? 'is-unset' : 'is-available'}`}>
+                  {rescheduleUnavailable
+                    ? 'Você marcou esse dia como indisponível no calendário.'
+                    : 'Este dia está livre para atendimento entre 07:00 e 15:00.'}
                 </span>
               )}
               {sameReschedule && <span className="request-availability-note is-unset">Escolha uma data ou horário diferente do agendamento atual.</span>}
-              {rescheduleAvailability && rescheduleTime && !rescheduleTimeFitsAvailability && (
-                <span className="request-availability-note is-unset">O horário precisa ficar dentro da sua faixa de disponibilidade.</span>
+              {!rescheduleUnavailable && rescheduleTime && !rescheduleTimeFitsAvailability && (
+                <span className="request-availability-note is-unset">O horário precisa ficar entre 07:00 e 15:00.</span>
               )}
             </div>
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeReschedule} disabled={rescheduleSaving}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={rescheduleSaving || !rescheduleAvailability || !rescheduleTimeFitsAvailability || sameReschedule}>
+              <button type="submit" className="btn btn-primary" disabled={rescheduleSaving || rescheduleUnavailable || !rescheduleTimeFitsAvailability || sameReschedule}>
                 {rescheduleSaving ? 'Salvando...' : 'Salvar novo horário'}
               </button>
             </div>

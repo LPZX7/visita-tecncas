@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Dashboard from './Dashboard';
 import Availability from './Availability';
+import ScheduleCalendar from './ScheduleCalendar';
 import Requests from './Requests';
 import Budgets from './Budgets';
 import Companies from './Companies';
@@ -75,7 +76,8 @@ export default function App() {
       { to: '/contracts', label: 'Contratos' }
     ];
     if (role === 'tecnico') return [
-      { to: '/dashboard', label: 'Agenda' },
+      { to: '/agenda', label: 'Agenda' },
+      { to: '/dashboard', label: 'Painel' },
       { to: '/requests', label: 'Chamados' },
       { to: '/availability', label: 'Disponibilidade' }
     ];
@@ -89,6 +91,7 @@ export default function App() {
     };
     if (role === 'analista') return [
       { to: '/dashboard', label: 'Dashboard' },
+      { to: '/agenda', label: 'Agenda' },
       { to: '/requests', label: 'Chamados' },
       { to: '/availability', label: 'Disponibilidade' },
       { to: '/budgets', label: 'Orçamentos' },
@@ -107,6 +110,7 @@ export default function App() {
         ]
       },
       { to: '/requests', label: 'Chamados' },
+      { to: '/agenda', label: 'Agenda' },
       { to: '/availability', label: 'Disponibilidade' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
@@ -213,6 +217,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico']}>
                 <Availability />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/agenda"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico']}>
+                <ScheduleCalendar />
               </ProtectedRoute>
             }
           />

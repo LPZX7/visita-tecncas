@@ -46,34 +46,19 @@ async function findActiveTechnician(technicianId, res) {
   return technician;
 }
 
-function parseAvailabilityHours(body, res) {
-  const availableFrom = String(body?.available_from || '07:00');
-  const availableUntil = String(body?.available_until || '');
-  const validTime = /^([01]\d|2[0-3]):[0-5]\d$/;
-  if (!validTime.test(availableFrom) || !validTime.test(availableUntil)) {
-    res.status(400).json({ error: 'Informe os horários inicial e final no formato HH:MM' });
-    return null;
-  }
-  if (availableFrom >= availableUntil) {
-    res.status(400).json({ error: 'O horário final deve ser depois do horário inicial' });
-    return null;
-  }
-  return { availableFrom, availableUntil };
-}
-
 router.get('/team', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
-    res.json(await db.getTeamTechnicianAvailability(todayInSaoPaulo()));
+    res.json(await db.getTeamTechnicianUnavailability(todayInSaoPaulo()));
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/team/:technicianId', requireRole('gestor'), async (req, res, next) => {
+router.get('/team/:technicianId', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
     const technician = await findActiveTechnician(req.params.technicianId, res);
     if (!technician) return;
-    res.json(await db.getTechnicianAvailability(technician.id));
+    res.json(await db.getTechnicianUnavailability(technician.id));
   } catch (err) {
     next(err);
   }
@@ -81,19 +66,7 @@ router.get('/team/:technicianId', requireRole('gestor'), async (req, res, next) 
 
 router.get('/', requireRole('tecnico'), async (req, res, next) => {
   try {
-    res.json(await db.getTechnicianAvailability(req.user.sub));
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.put('/team/:technicianId/:date', requireRole('gestor'), async (req, res, next) => {
-  try {
-    const technician = await findActiveTechnician(req.params.technicianId, res);
-    if (!technician || !validateFutureDate(req.params.date, res)) return;
-    const hours = parseAvailabilityHours(req.body, res);
-    if (!hours) return;
-    res.json(await db.setTechnicianAvailability(technician.id, req.params.date, hours.availableFrom, hours.availableUntil));
+    res.json(await db.getTechnicianUnavailability(req.user.sub));
   } catch (err) {
     next(err);
   }
@@ -102,20 +75,11 @@ router.put('/team/:technicianId/:date', requireRole('gestor'), async (req, res, 
 router.put('/:date', requireRole('tecnico'), async (req, res, next) => {
   try {
     if (!validateFutureDate(req.params.date, res)) return;
-    const hours = parseAvailabilityHours(req.body, res);
-    if (!hours) return;
-    res.json(await db.setTechnicianAvailability(req.user.sub, req.params.date, hours.availableFrom, hours.availableUntil));
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/team/:technicianId/:date', requireRole('gestor'), async (req, res, next) => {
-  try {
-    const technician = await findActiveTechnician(req.params.technicianId, res);
-    if (!technician || !validateFutureDate(req.params.date, res)) return;
-    await db.deleteTechnicianAvailability(technician.id, req.params.date);
-    res.status(204).end();
+    const bookings = await db.getTechnicianBookingsForDate(req.user.sub, req.params.date);
+    if (bookings.length) {
+      return res.status(409).json({ error: 'Este dia já tem visita agendada. Remarque primeiro os chamados antes de marcar indisponibilidade.' });
+    }
+    res.json(await db.setTechnicianUnavailable(req.user.sub, req.params.date));
   } catch (err) {
     next(err);
   }
@@ -124,7 +88,7 @@ router.delete('/team/:technicianId/:date', requireRole('gestor'), async (req, re
 router.delete('/:date', requireRole('tecnico'), async (req, res, next) => {
   try {
     if (!validateFutureDate(req.params.date, res)) return;
-    await db.deleteTechnicianAvailability(req.user.sub, req.params.date);
+    await db.deleteTechnicianUnavailable(req.user.sub, req.params.date);
     res.status(204).end();
   } catch (err) {
     next(err);

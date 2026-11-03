@@ -14,6 +14,7 @@ const { buildTechnicalPlan } = require('../lib/technicalPlan');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
+const TECHNICIAN_WORKING_HOURS = { from: '07:00', until: '15:00' };
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
@@ -460,12 +461,20 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!String(destination || '').trim()) {
           return res.status(400).json({ error: 'Informe o endereço de destino da visita.' });
         }
-        const availability = await db.getTechnicianAvailabilityForDate(effectiveTechnicianId, slot.date);
-        if (!availability) {
-          return res.status(409).json({ error: 'O técnico não marcou disponibilidade para esse dia.' });
+        const unavailable = await db.getTechnicianUnavailabilityForDate(effectiveTechnicianId, slot.date);
+        if (unavailable) {
+          return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
         }
-        if (slot.time < availability.available_from || slot.time > availability.available_until) {
-          return res.status(409).json({ error: `Escolha um horário entre ${availability.available_from} e ${availability.available_until}, período disponível do técnico.` });
+        if (slot.time < TECHNICIAN_WORKING_HOURS.from || slot.time > TECHNICIAN_WORKING_HOURS.until) {
+          return res.status(409).json({ error: `O horário padrão de atendimento é das ${TECHNICIAN_WORKING_HOURS.from} às ${TECHNICIAN_WORKING_HOURS.until}.` });
+        }
+        const conflictingBooking = await db.getTechnicianBookingAt(
+          effectiveTechnicianId,
+          `${slot.date}T${slot.time}`,
+          request.id
+        );
+        if (conflictingBooking) {
+          return res.status(409).json({ error: `O técnico já tem uma visita marcada às ${slot.time} nesse dia.` });
         }
       }
     }

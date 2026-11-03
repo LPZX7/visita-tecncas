@@ -98,11 +98,11 @@
 }
 .availability-calendar__day:hover:not(:disabled) { border-color: #b8ccec; background: #edf4ff; }
 .availability-calendar__day.is-today { border-color: #9ab8e4; font-weight: 800; }
-.availability-calendar__day.is-available { color: #12683b; background: #e5f7eb; }
+.availability-calendar__day.is-unavailable { color: #a72f37; background: #fff0f0; }
 .availability-calendar__day.is-selected { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, .13); }
 .availability-calendar__day.is-past { color: #bbc3cd; background: #fafbfc; cursor: not-allowed; }
 .availability-calendar__day i,
-.availability-calendar__legend i { width: 5px; height: 5px; border-radius: 50%; background: #22a45a; }
+.availability-calendar__legend i { width: 5px; height: 5px; border-radius: 50%; background: #d7454d; }
 .availability-calendar__day i { position: absolute; bottom: 4px; }
 .availability-calendar__legend { display: flex; align-items: center; gap: 6px; margin-top: 11px; color: #76879b; font-size: .64rem; }
 

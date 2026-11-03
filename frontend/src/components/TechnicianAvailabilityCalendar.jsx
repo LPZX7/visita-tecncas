@@ -29,8 +29,7 @@ function buildCalendar(year, month) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells = Array.from({ length: firstWeekday }, (_, index) => ({ key: `empty-${index}`, empty: true }));
   for (let day = 1; day <= daysInMonth; day += 1) {
-    const date = new Date(year, month, day);
-    cells.push({ key: dateKey(date), day });
+    cells.push({ key: dateKey(new Date(year, month, day)), day });
   }
   while (cells.length % 7 !== 0) cells.push({ key: `empty-end-${cells.length}`, empty: true });
   return cells;
@@ -38,7 +37,7 @@ function buildCalendar(year, month) {
 
 export default function TechnicianAvailabilityCalendar({ manager = false, readOnly = false }) {
   const teamMode = manager || readOnly;
-  const [availability, setAvailability] = useState({});
+  const [unavailableDates, setUnavailableDates] = useState({});
   const [technicians, setTechnicians] = useState([]);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState('');
   const [cursor, setCursor] = useState(() => {
@@ -46,11 +45,9 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
     return { year: date.getFullYear(), month: date.getMonth() };
   });
   const [selectedDate, setSelectedDate] = useState('');
-  const [draftAvailable, setDraftAvailable] = useState(false);
-  const [draftFrom, setDraftFrom] = useState('07:00');
-  const [draftUntil, setDraftUntil] = useState('15:00');
+  const [draftUnavailable, setDraftUnavailable] = useState(false);
   const [teamLoading, setTeamLoading] = useState(teamMode);
-  const [availabilityLoading, setAvailabilityLoading] = useState(!teamMode);
+  const [calendarLoading, setCalendarLoading] = useState(!teamMode);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -62,8 +59,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
     setTeamLoading(true);
     api.get('/users')
       .then(({ data }) => {
-        if (!active) return;
-        setTechnicians(data.filter((user) => user.role === 'tecnico' && user.ativo));
+        if (active) setTechnicians(data.filter((user) => user.role === 'tecnico' && user.ativo));
       })
       .catch(() => {
         if (active) setError('Não foi possível carregar os técnicos. Atualize a página e tente novamente.');
@@ -76,12 +72,12 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
 
   useEffect(() => {
     if (teamMode && !selectedTechnicianId) {
-      setAvailability({});
-      setAvailabilityLoading(false);
+      setUnavailableDates({});
+      setCalendarLoading(false);
       return undefined;
     }
     let active = true;
-    setAvailabilityLoading(true);
+    setCalendarLoading(true);
     setError('');
     const url = teamMode
       ? `/technician-availability/team/${encodeURIComponent(selectedTechnicianId)}`
@@ -89,50 +85,37 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
     api.get(url)
       .then(({ data }) => {
         if (!active) return;
-        const next = {};
-        data.forEach((entry) => {
-          next[String(entry.date).slice(0, 10)] = {
-            available_from: entry.available_from || '07:00',
-            available_until: entry.available_until
-          };
-        });
-        setAvailability(next);
+        setUnavailableDates(Object.fromEntries(data.map((entry) => [String(entry.date).slice(0, 10), true])));
       })
       .catch(() => {
         if (active) setError(teamMode
-          ? 'Não foi possível carregar a disponibilidade deste técnico.'
-          : 'Não foi possível carregar sua disponibilidade. Tente atualizar a página.');
+          ? 'Não foi possível carregar os dias indisponíveis deste técnico.'
+          : 'Não foi possível carregar seus dias indisponíveis. Atualize a página e tente novamente.');
       })
       .finally(() => {
-        if (active) setAvailabilityLoading(false);
+        if (active) setCalendarLoading(false);
       });
     return () => { active = false; };
   }, [teamMode, selectedTechnicianId]);
 
   const cells = useMemo(() => buildCalendar(cursor.year, cursor.month), [cursor.year, cursor.month]);
   const today = todayKey();
-  const loading = teamLoading || availabilityLoading;
-  const savedDaysThisMonth = Object.keys(availability)
-    .filter((key) => key.startsWith(`${cursor.year}-${String(cursor.month + 1).padStart(2, '0')}-`) && key >= today)
-    .length;
-  const savedAvailability = selectedDate ? availability[selectedDate] : null;
-  const hasChanges = selectedDate && (draftAvailable
-    ? !savedAvailability || savedAvailability.available_from !== draftFrom || savedAvailability.available_until !== draftUntil
-    : Boolean(savedAvailability));
+  const loading = teamLoading || calendarLoading;
+  const savedDaysThisMonth = Object.keys(unavailableDates)
+    .filter((key) => key.startsWith(`${cursor.year}-${String(cursor.month + 1).padStart(2, '0')}-`)).length;
+  const isDateUnavailable = Boolean(selectedDate && unavailableDates[selectedDate]);
+  const hasChanges = selectedDate && draftUnavailable !== isDateUnavailable;
 
   function selectDate(value) {
     setSelectedDate(value);
-    const storedHours = availability[value];
-    setDraftAvailable(Boolean(storedHours));
-    setDraftFrom(storedHours?.available_from || '07:00');
-    setDraftUntil(storedHours?.available_until || '15:00');
+    setDraftUnavailable(Boolean(unavailableDates[value]));
     setError('');
     setNotice('');
   }
 
   function selectTechnician(value) {
     setSelectedTechnicianId(value);
-    setAvailability({});
+    setUnavailableDates({});
     setSelectedDate('');
     setError('');
     setNotice('');
@@ -147,36 +130,24 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
     });
   }
 
-  async function saveAvailability() {
-    if (!selectedDate || !hasChanges) return;
+  async function saveUnavailableDate() {
+    if (!selectedDate || !hasChanges || teamMode) return;
     setSaving(true);
     setError('');
     setNotice('');
     try {
-      if (draftAvailable) {
-        const path = teamMode
-          ? `/technician-availability/team/${encodeURIComponent(selectedTechnicianId)}/${selectedDate}`
-          : `/technician-availability/${selectedDate}`;
-        const { data } = await api.put(path, { available_from: draftFrom, available_until: draftUntil });
-        setAvailability((current) => ({
-          ...current,
-          [selectedDate]: {
-            available_from: data.available_from || draftFrom,
-            available_until: data.available_until
-          }
-        }));
-        setNotice(`${teamMode ? `Disponibilidade de ${selectedTechnician?.nome} salva` : 'Disponibilidade salva'} para ${formatLongDate(selectedDate)}.`);
+      if (draftUnavailable) {
+        await api.put(`/technician-availability/${selectedDate}`, {});
+        setUnavailableDates((current) => ({ ...current, [selectedDate]: true }));
+        setNotice(`Dia marcado como indisponível: ${formatLongDate(selectedDate)}.`);
       } else {
-        const path = teamMode
-          ? `/technician-availability/team/${encodeURIComponent(selectedTechnicianId)}/${selectedDate}`
-          : `/technician-availability/${selectedDate}`;
-        await api.delete(path);
-        setAvailability((current) => {
+        await api.delete(`/technician-availability/${selectedDate}`);
+        setUnavailableDates((current) => {
           const next = { ...current };
           delete next[selectedDate];
           return next;
         });
-        setNotice(`${teamMode ? `Disponibilidade de ${selectedTechnician?.nome} removida` : 'Disponibilidade removida'} para ${formatLongDate(selectedDate)}.`);
+        setNotice(`Dia liberado para atendimento: ${formatLongDate(selectedDate)}.`);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível salvar. Tente novamente.');
@@ -190,17 +161,15 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
       <div className="availability-card__header">
         <div>
           <span className="availability-card__eyebrow">AGENDA DE ATENDIMENTO</span>
-          <h3 id="availability-title">{manager ? 'Disponibilidade dos técnicos' : readOnly ? 'Disponibilidade da equipe' : 'Minha disponibilidade'}</h3>
-          <p>{manager
-            ? 'Escolha um técnico e marque os dias e a faixa de horário disponível para atendimento.'
-            : readOnly
-              ? 'Consulte os dias e horários de cada técnico antes de agendar um chamado.'
-              : 'Escolha os dias em que pode atender e informe o horário inicial e final.'}</p>
+          <h3 id="availability-title">{teamMode ? 'Dias indisponíveis dos técnicos' : 'Minha disponibilidade'}</h3>
+          <p>{teamMode
+            ? 'Consulte os dias bloqueados pela equipe. Nos demais dias, o horário padrão é das 07h às 15h.'
+            : 'Marque somente os dias em que você não poderá atender. Os outros dias ficam livres das 07h às 15h.'}</p>
         </div>
         <span className="availability-card__count">
           {teamMode && !selectedTechnicianId
             ? 'Selecione um técnico'
-            : `${savedDaysThisMonth} dia${savedDaysThisMonth === 1 ? '' : 's'} neste mês`}
+            : `${savedDaysThisMonth} dia${savedDaysThisMonth === 1 ? '' : 's'} bloqueado${savedDaysThisMonth === 1 ? '' : 's'} neste mês`}
         </span>
       </div>
 
@@ -222,15 +191,13 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
       )}
 
       {loading ? (
-        <p className="availability-card__state">Carregando disponibilidade…</p>
+        <p className="availability-card__state">Carregando calendário…</p>
       ) : teamMode && !selectedTechnicianId ? (
         <div className="availability-manager-empty">
           <strong>{technicians.length ? 'Selecione um técnico para abrir o calendário.' : 'Nenhum técnico ativo cadastrado.'}</strong>
-          <p>{technicians.length && manager
-            ? 'Depois, em Chamados, atribua o técnico e informe o dia, horário e endereço. Ele verá a visita na própria agenda.'
-            : technicians.length
-              ? 'Escolha o técnico e selecione uma data para consultar a disponibilidade.'
-              : 'Cadastre ou ative um técnico para configurar os dias disponíveis.'}</p>
+          <p>{technicians.length
+            ? 'Escolha um técnico para consultar os dias que ele bloqueou.'
+            : 'Cadastre ou ative um técnico para consultar a agenda da equipe.'}</p>
         </div>
       ) : (
         <div className="availability-layout">
@@ -238,7 +205,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
             <div className="availability-calendar__toolbar">
               <button type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">‹</button>
               <strong>{monthLabel(cursor.year, cursor.month)}</strong>
-              <button type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">›</button>
+              <button type="button" onClick={() => changeMonth(1)} aria-label="Mês seguinte">›</button>
             </div>
             <div className="availability-calendar__weekdays">
               {WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
@@ -246,16 +213,19 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
             <div className="availability-calendar__grid">
               {cells.map((cell) => {
                 if (cell.empty) return <span key={cell.key} className="availability-calendar__empty" />;
-                const available = Boolean(availability[cell.key]);
+                const unavailable = Boolean(unavailableDates[cell.key]);
                 const isPast = cell.key < today;
                 const isSelected = cell.key === selectedDate;
                 const classes = [
                   'availability-calendar__day',
-                  available && 'is-available',
+                  unavailable && 'is-unavailable',
                   isPast && 'is-past',
                   isSelected && 'is-selected',
                   cell.key === today && 'is-today'
                 ].filter(Boolean).join(' ');
+                const dateLabel = unavailable
+                  ? `${formatLongDate(cell.key)}, indisponível`
+                  : `${formatLongDate(cell.key)}, disponível das 07 às 15`;
                 return (
                   <button
                     key={cell.key}
@@ -264,16 +234,16 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                     disabled={isPast}
                     onClick={() => selectDate(cell.key)}
                     aria-pressed={isSelected}
-                    aria-label={`${formatLongDate(cell.key)}${available ? `, disponível das ${availability[cell.key].available_from} às ${availability[cell.key].available_until}` : ', indisponível'}`}
-                    title={available ? `Disponível das ${availability[cell.key].available_from} às ${availability[cell.key].available_until}` : ''}
+                    aria-label={dateLabel}
+                    title={unavailable ? 'Indisponível' : 'Disponível das 07:00 às 15:00'}
                   >
                     <span>{cell.day}</span>
-                    {available && <i aria-hidden="true" />}
+                    {unavailable && <i aria-hidden="true" />}
                   </button>
                 );
               })}
             </div>
-            <div className="availability-calendar__legend"><i /> Disponível para atendimento</div>
+            <div className="availability-calendar__legend"><i /> Indisponível · demais dias livres das 07h às 15h</div>
           </div>
 
           <div className="availability-editor">
@@ -281,47 +251,37 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
               <>
                 <span className="availability-editor__eyebrow">DIA SELECIONADO</span>
                 <h4>{formatLongDate(selectedDate)}</h4>
-                {readOnly ? (
+                {teamMode ? (
                   <p className="availability-editor__hint">
-                    {savedAvailability
-                      ? `${selectedTechnician?.nome || 'Este técnico'} está disponível das ${savedAvailability.available_from} às ${savedAvailability.available_until}.`
-                      : `${selectedTechnician?.nome || 'Este técnico'} não marcou disponibilidade para este dia.`}
+                    {isDateUnavailable
+                      ? `${selectedTechnician?.nome || 'Este técnico'} marcou este dia como indisponível.`
+                      : `${selectedTechnician?.nome || 'Este técnico'} está livre das 07h às 15h.`}
                   </p>
                 ) : (
                   <>
                     <label className="availability-editor__toggle">
                       <input
                         type="checkbox"
-                        checked={draftAvailable}
-                        onChange={(event) => { setDraftAvailable(event.target.checked); setNotice(''); }}
+                        checked={draftUnavailable}
+                        onChange={(event) => { setDraftUnavailable(event.target.checked); setNotice(''); }}
                       />
                       <span className="availability-editor__switch" aria-hidden="true" />
-                      <span>{manager ? 'Disponível neste dia' : 'Estou disponível neste dia'}</span>
+                      <span>Não posso atender neste dia</span>
                     </label>
-                    {draftAvailable && (
-                      <div className="availability-editor__time-range">
-                        <label className="availability-editor__time">
-                          <span>Disponível a partir das</span>
-                          <input type="time" value={draftFrom} onChange={(event) => { setDraftFrom(event.target.value); setNotice(''); }} />
-                        </label>
-                        <label className="availability-editor__time">
-                          <span>Disponível até</span>
-                          <input type="time" value={draftUntil} onChange={(event) => { setDraftUntil(event.target.value); setNotice(''); }} />
-                        </label>
-                      </div>
-                    )}
                     <button
                       type="button"
                       className="availability-editor__save"
-                      onClick={saveAvailability}
-                      disabled={!hasChanges || saving || (draftAvailable && (!draftFrom || !draftUntil || draftFrom >= draftUntil))}
+                      onClick={saveUnavailableDate}
+                      disabled={!hasChanges || saving}
                     >
-                      {saving ? 'Salvando…' : 'Salvar disponibilidade'}
+                      {saving ? 'Salvando…' : draftUnavailable ? 'Salvar indisponibilidade' : 'Liberar este dia'}
                     </button>
                     <p className="availability-editor__hint">
-                      {savedAvailability && !hasChanges
-                        ? `Salvo: ${manager ? `${selectedTechnician?.nome} pode` : 'você pode'} atender das ${savedAvailability.available_from} às ${savedAvailability.available_until}.`
-                        : hasChanges ? 'As alterações ainda não foram salvas.' : 'Marque sua disponibilidade ou escolha outro dia.'}
+                      {isDateUnavailable && !hasChanges
+                        ? 'Este dia está bloqueado para novos agendamentos.'
+                        : !isDateUnavailable && !hasChanges
+                          ? 'Este dia está livre para atendimento das 07h às 15h.'
+                          : 'Salve a alteração para atualizar sua agenda.'}
                     </p>
                   </>
                 )}
@@ -330,11 +290,9 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
               <div className="availability-editor__empty">
                 <span aria-hidden="true">↖</span>
                 <strong>Selecione um dia no calendário</strong>
-                <p>{readOnly
-                  ? `Selecione uma data para consultar os horários de ${selectedTechnician?.nome || 'este técnico'}.`
-                  : manager
-                    ? `Você poderá marcar a disponibilidade de ${selectedTechnician?.nome || 'este técnico'} e escolher a faixa de horário.`
-                    : 'Você poderá marcar a faixa de horário em que pode atender.'}</p>
+                <p>{teamMode
+                  ? `Veja se ${selectedTechnician?.nome || 'o técnico'} bloqueou a data.`
+                  : 'Bloqueie os dias em que não poderá atender.'}</p>
               </div>
             )}
           </div>

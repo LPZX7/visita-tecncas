@@ -24,6 +24,7 @@ const ICON_BY_PATH = {
   '/reports': 'reports',
   '/requests': 'requests',
   '/availability': 'agenda',
+  '/agenda': 'agenda',
   '/budgets': 'budgets',
   '/contracts': 'contracts',
   '/companies': 'companies',
