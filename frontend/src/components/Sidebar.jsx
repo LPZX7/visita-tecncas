@@ -23,6 +23,7 @@ const ICON_BY_PATH = {
   '/dashboard': 'dashboard',
   '/reports': 'reports',
   '/requests': 'requests',
+  '/availability': 'agenda',
   '/budgets': 'budgets',
   '/contracts': 'contracts',
   '/companies': 'companies',

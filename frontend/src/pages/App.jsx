@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Dashboard from './Dashboard';
+import Availability from './Availability';
 import Requests from './Requests';
 import Budgets from './Budgets';
 import Companies from './Companies';
@@ -75,7 +76,8 @@ export default function App() {
     ];
     if (role === 'tecnico') return [
       { to: '/dashboard', label: 'Agenda' },
-      { to: '/requests', label: 'Chamados' }
+      { to: '/requests', label: 'Chamados' },
+      { to: '/availability', label: 'Disponibilidade' }
     ];
     const empresaGroup = {
       label: 'Empresa',
@@ -88,6 +90,7 @@ export default function App() {
     if (role === 'analista') return [
       { to: '/dashboard', label: 'Dashboard' },
       { to: '/requests', label: 'Chamados' },
+      { to: '/availability', label: 'Disponibilidade' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
       empresaGroup,
@@ -104,6 +107,7 @@ export default function App() {
         ]
       },
       { to: '/requests', label: 'Chamados' },
+      { to: '/availability', label: 'Disponibilidade' },
       { to: '/budgets', label: 'Orçamentos' },
       { to: '/contracts', label: 'Contratos' },
       empresaGroup,
@@ -201,6 +205,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico', 'cliente']}>
                 <Requests />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/availability"
+            element={
+              <ProtectedRoute allowedRoles={['gestor', 'analista', 'tecnico']}>
+                <Availability />
               </ProtectedRoute>
             }
           />
