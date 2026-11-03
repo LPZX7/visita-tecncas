@@ -642,7 +642,7 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
        AND requests.agendado_para >= $1
        AND requests.agendado_para < $2
      ORDER BY requests.agendado_para ASC
-     LIMIT 12`,
+     LIMIT 120`,
     [fromDateTime, untilDateTime]
   );
   return rows.map((row) => ({

@@ -13,21 +13,18 @@ const publicLimiter = rateLimit({
   message: { error: 'Muitas atualizações. Tente novamente em alguns minutos.' }
 });
 
-function saoPauloNow() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return {
-    date: `${values.year}-${values.month}-${values.day}`,
-    dateTime: `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`
-  };
-}
-
 function addDays(dateKey, days) {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+function isValidDateKey(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
 }
 
 function hasValidLinkKey(provided) {
@@ -53,15 +50,23 @@ router.get('/', async (req, res, next) => {
     return res.status(404).json({ error: 'Link da agenda inválido.' });
   }
 
+  const fromDate = String(req.query.from || '');
+  const toDate = String(req.query.to || '');
+  if (!isValidDateKey(fromDate) || !isValidDateKey(toDate)) {
+    return res.status(400).json({ error: 'Informe o período do calendário.' });
+  }
+  const rangeDays = (Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`)) / 86400000;
+  if (rangeDays < 0 || rangeDays > 41) {
+    return res.status(400).json({ error: 'O calendário pode consultar até 42 dias por vez.' });
+  }
+
   try {
-    const now = saoPauloNow();
-    const untilDateTime = `${addDays(now.date, 7)}T00:00`;
-    const visitas = await db.getTvAgendaVisits(now.dateTime, untilDateTime);
+    const visitas = await db.getTvAgendaVisits(`${fromDate}T00:00`, `${addDays(toDate, 1)}T00:00`);
     const visitasPublicas = visitas.map((visita) => ({
       ...visita,
       technician_avatar: safePublicAvatar(visita.technician_avatar)
     }));
-    res.json({ visitas: visitasPublicas, atualizado_em: new Date().toISOString(), janela_dias: 7 });
+    res.json({ visitas: visitasPublicas, atualizado_em: new Date().toISOString() });
   } catch (err) {
     next(err);
   }

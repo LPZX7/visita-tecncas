@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import './PublicTvAgenda.css';
+
+const WEEKDAYS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
 
 function todayInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -10,19 +12,33 @@ function todayInSaoPaulo() {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function dateLabel(value) {
+function dateKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function buildMonthDays(year, month, today) {
+  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  return Array.from({ length: cellCount }, (_, index) => {
+    const date = new Date(Date.UTC(year, month, 1 - firstWeekday + index));
+    const key = dateKey(date);
+    return { key, day: date.getUTCDate(), inMonth: date.getUTCMonth() === month, isToday: key === today };
+  });
+}
+
+function monthLabel(year, month) {
+  const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month, 1)));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function longDateLabel(value) {
   const [year, month, day] = String(value || '').slice(0, 10).split('-').map(Number);
   if (!year || !month || !day) return 'Data não definida';
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const today = todayInSaoPaulo();
-  const tomorrowDate = new Date(`${today}T12:00:00Z`);
-  tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
-  const tomorrow = tomorrowDate.toISOString().slice(0, 10);
-  if (`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` === today) return 'HOJE';
-  if (`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` === tomorrow) return 'AMANHÃ';
   return new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long', day: '2-digit', month: 'short', timeZone: 'UTC'
-  }).format(date).replace(',', '');
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function visitTime(value) {
@@ -49,12 +65,29 @@ function updatedAtLabel(value) {
 export default function PublicTvAgenda() {
   const location = useLocation();
   const linkKey = location.hash.slice(1).trim();
+  const today = todayInSaoPaulo();
+  const [cursor, setCursor] = useState(() => {
+    const [year, month] = today.split('-').map(Number);
+    return { year, month: month - 1 };
+  });
   const [visits, setVisits] = useState([]);
+  const [selectedVisit, setSelectedVisit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState('');
   const [clock, setClock] = useState(currentTimeLabel());
+  const days = useMemo(() => buildMonthDays(cursor.year, cursor.month, today), [cursor.year, cursor.month, today]);
+  const visibleFrom = days[0]?.key || today;
+  const visibleTo = days[days.length - 1]?.key || today;
+  const visitsByDay = useMemo(() => {
+    const grouped = Object.fromEntries(days.map((day) => [day.key, []]));
+    for (const visit of visits) {
+      const date = String(visit.agendado_para || '').slice(0, 10);
+      if (grouped[date]) grouped[date].push(visit);
+    }
+    return grouped;
+  }, [days, visits]);
 
   useEffect(() => {
     const originalTitle = document.title;
@@ -84,7 +117,8 @@ export default function PublicTvAgenda() {
       inFlight = true;
       if (active) setRefreshing(true);
       try {
-        const response = await fetch('/api/public/agenda-tv', {
+        const query = new URLSearchParams({ from: visibleFrom, to: visibleTo });
+        const response = await fetch(`/api/public/agenda-tv?${query}`, {
           method: 'GET',
           cache: 'no-store',
           headers: { 'X-Agenda-TV-Key': linkKey }
@@ -123,7 +157,21 @@ export default function PublicTvAgenda() {
       if (originalRobots) originalRobots.content = originalRobotsContent;
       else robots.remove();
     };
-  }, [linkKey]);
+  }, [linkKey, visibleFrom, visibleTo]);
+
+  function changeMonth(delta) {
+    setCursor((current) => {
+      const next = new Date(Date.UTC(current.year, current.month + delta, 1));
+      return { year: next.getUTCFullYear(), month: next.getUTCMonth() };
+    });
+    setSelectedVisit(null);
+  }
+
+  function goToCurrentMonth() {
+    const [year, month] = today.split('-').map(Number);
+    setCursor({ year, month: month - 1 });
+    setSelectedVisit(null);
+  }
 
   return (
     <main className="tv-agenda">
@@ -151,9 +199,9 @@ export default function PublicTvAgenda() {
         <section className="tv-agenda__summary" aria-live="polite">
           <div>
             <span className="tv-agenda__live-dot" />
-            <span>PRÓXIMOS 7 DIAS</span>
+            <span>VISITAS DO MÊS</span>
           </div>
-          <strong>{visits.length} visita{visits.length === 1 ? '' : 's'} agendada{visits.length === 1 ? '' : 's'}</strong>
+          <strong>{visits.length === 0 ? 'Nenhuma visita neste mês' : `${visits.length} visita${visits.length === 1 ? '' : 's'} neste mês`}</strong>
           <small>{refreshing ? 'Atualizando…' : `Atualizado às ${updatedAtLabel(updatedAt)}`}</small>
         </section>
 
@@ -165,65 +213,55 @@ export default function PublicTvAgenda() {
           </section>
         ) : loading ? (
           <section className="tv-agenda__state"><span className="tv-agenda__spinner" /><h2>Carregando agenda…</h2></section>
-        ) : visits.length === 0 ? (
-          <section className="tv-agenda__state tv-agenda__state--empty">
-            <span className="tv-agenda__empty-icon" aria-hidden="true">✓</span>
-            <h2>Nenhuma visita agendada para os próximos dias</h2>
-            <p>As próximas visitas aparecerão aqui automaticamente.</p>
-          </section>
         ) : (
-          <section className="tv-agenda__grid" aria-label="Próximas visitas">
-            {visits.map((visit) => (
-              <article className="tv-visit" key={`${visit.milvus_codigo}-${visit.agendado_para}`}>
-                <div className="tv-visit__header">
-                  <div className="tv-visit__schedule">
-                    <div className="tv-visit__date">
-                      <span>DIA DA VISITA</span>
-                      <strong>{dateLabel(visit.agendado_para)}</strong>
-                    </div>
-                    <div className="tv-visit__time">
-                      <span>HORÁRIO</span>
-                      <strong>{visitTime(visit.agendado_para)}</strong>
-                    </div>
-                  </div>
-                  <div className="tv-visit__badges">
-                    <span className="tv-visit__milvus"><small>CHAMADO MILVUS</small><strong>#{visit.milvus_codigo}</strong></span>
-                    <span className={`tv-visit__confirmation ${visit.confirmacao === 'Confirmada' ? 'is-confirmed' : ''}`}>
-                      <span aria-hidden="true">{visit.confirmacao === 'Confirmada' ? '✓' : '◷'}</span>
-                      {visit.confirmacao || 'Aguardando confirmação'}
-                    </span>
-                  </div>
-                </div>
-                <div className="tv-visit__details">
-                  <section className="tv-visit__technician">
-                    <div className="tv-visit__avatar">
-                      {visit.technician_avatar ? (
-                        <img src={visit.technician_avatar} alt={`Foto de ${visit.technician_name}`} />
-                      ) : (
-                        <span aria-hidden="true">{initialsFor(visit.technician_name)}</span>
+          <section className="tv-calendar" aria-label="Calendário mensal das visitas">
+            <div className="tv-calendar__toolbar">
+              <div className="tv-calendar__controls">
+                <button className="tv-calendar__today" type="button" onClick={goToCurrentMonth}>Hoje</button>
+                <button className="tv-calendar__arrow" type="button" onClick={() => changeMonth(-1)} aria-label="Mês anterior">‹</button>
+                <button className="tv-calendar__arrow" type="button" onClick={() => changeMonth(1)} aria-label="Próximo mês">›</button>
+              </div>
+              <h2>{monthLabel(cursor.year, cursor.month)}</h2>
+              <span className="tv-calendar__view">MÊS</span>
+            </div>
+            <div className="tv-calendar__weekdays" aria-hidden="true">
+              {WEEKDAYS.map((weekday) => <span key={weekday}>{weekday}</span>)}
+            </div>
+            <div className={`tv-calendar__grid ${days.length === 42 ? 'has-six-weeks' : ''}`}>
+              {days.map((day) => {
+                const dayVisits = visitsByDay[day.key] || [];
+                return (
+                  <section className={`tv-calendar__day ${day.inMonth ? '' : 'is-outside'} ${day.isToday ? 'is-today' : ''}`} key={day.key}>
+                    <header className="tv-calendar__date">
+                      <span className={day.isToday ? 'tv-calendar__today-number' : ''}>{day.day}</span>
+                      {day.isToday && <small>HOJE</small>}
+                    </header>
+                    <div className="tv-calendar__events">
+                      {dayVisits.slice(0, 3).map((visit) => (
+                        <button
+                          className="tv-calendar__event"
+                          type="button"
+                          key={`${visit.milvus_codigo}-${visit.agendado_para}`}
+                          onClick={() => setSelectedVisit(visit)}
+                          aria-label={`${visitTime(visit.agendado_para)}, ${visit.technician_name}, ${visit.company_name}, ${visit.local}. Ver detalhes`}
+                        >
+                          <span className="tv-calendar__event-avatar">
+                            {visit.technician_avatar ? <img src={visit.technician_avatar} alt="" /> : initialsFor(visit.technician_name)}
+                          </span>
+                          <span className="tv-calendar__event-copy">
+                            <strong><span>{visitTime(visit.agendado_para)}</span> {visit.technician_name}</strong>
+                            <small>{visit.company_name} · {visit.local}</small>
+                          </span>
+                        </button>
+                      ))}
+                      {dayVisits.length > 3 && (
+                        <span className="tv-calendar__more">+ {dayVisits.length - 3} visita{dayVisits.length - 3 === 1 ? '' : 's'}</span>
                       )}
                     </div>
-                    <div className="tv-visit__technician-copy">
-                      <span className="tv-visit__label">TÉCNICO MIRONTEC</span>
-                      <strong>{visit.technician_name}</strong>
-                      <small>Profissional responsável por realizar o atendimento.</small>
-                    </div>
                   </section>
-                  <div className="tv-visit__info-grid">
-                    <section className="tv-visit__info">
-                      <span className="tv-visit__label">EMPRESA ATENDIDA</span>
-                      <strong>{visit.company_name}</strong>
-                      <small>Empresa vinculada a este chamado.</small>
-                    </section>
-                    <section className="tv-visit__info">
-                      <span className="tv-visit__label">LOCAL DA VISITA</span>
-                      <strong>{visit.local}</strong>
-                      <small>Unidade e cidade cadastradas no sistema.</small>
-                    </section>
-                  </div>
-                </div>
-              </article>
-            ))}
+                );
+              })}
+            </div>
           </section>
         )}
 
@@ -232,6 +270,37 @@ export default function PublicTvAgenda() {
           <span>Atualização automática a cada minuto</span>
         </footer>
       </div>
+      {selectedVisit && (
+        <div className="tv-visit-modal" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelectedVisit(null)}>
+          <section className="tv-visit-modal__card" role="dialog" aria-modal="true" aria-labelledby="tv-visit-modal-title">
+            <button className="tv-visit-modal__close" type="button" onClick={() => setSelectedVisit(null)} aria-label="Fechar detalhes">×</button>
+            <div className="tv-visit-modal__heading">
+              <span className="tv-visit-modal__avatar">
+                {selectedVisit.technician_avatar ? <img src={selectedVisit.technician_avatar} alt={`Foto de ${selectedVisit.technician_name}`} /> : initialsFor(selectedVisit.technician_name)}
+              </span>
+              <div>
+                <span>TÉCNICO MIRONTEC</span>
+                <h2 id="tv-visit-modal-title">{selectedVisit.technician_name}</h2>
+              </div>
+            </div>
+            <div className="tv-visit-modal__schedule">
+              <strong>{visitTime(selectedVisit.agendado_para)}</strong>
+              <span>{longDateLabel(selectedVisit.agendado_para)}</span>
+            </div>
+            <div className="tv-visit-modal__details">
+              <div><span>EMPRESA ATENDIDA</span><strong>{selectedVisit.company_name}</strong></div>
+              <div><span>LOCAL DA VISITA</span><strong>{selectedVisit.local}</strong></div>
+              <div><span>CHAMADO MILVUS</span><strong>#{selectedVisit.milvus_codigo}</strong></div>
+              <div>
+                <span>CONFIRMAÇÃO</span>
+                <strong className={selectedVisit.confirmacao === 'Confirmada' ? 'is-confirmed' : ''}>
+                  {selectedVisit.confirmacao === 'Confirmada' ? '✓ Confirmada pelo técnico' : '◷ Aguardando confirmação'}
+                </strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

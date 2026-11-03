@@ -2,123 +2,155 @@
   position: relative;
   min-height: 100vh;
   min-height: 100dvh;
-  overflow: hidden;
-  padding: clamp(18px, 3.2vw, 54px);
-  color: #f8fbff;
-  background: #071629;
+  overflow-x: hidden;
+  padding: clamp(16px, 2.3vw, 34px);
+  color: #f0f4f9;
+  background: #080b10;
   isolation: isolate;
 }
 
 .tv-agenda__glow {
   position: absolute;
   z-index: -1;
-  width: min(52vw, 740px);
+  width: min(48vw, 680px);
   aspect-ratio: 1;
   border-radius: 50%;
-  filter: blur(100px);
-  opacity: .22;
+  filter: blur(110px);
+  opacity: .14;
   pointer-events: none;
 }
-.tv-agenda__glow--one { top: -40%; right: -10%; background: #2869b3; }
-.tv-agenda__glow--two { bottom: -55%; left: -15%; background: #168666; opacity: .16; }
+.tv-agenda__glow--one { top: -45%; right: -12%; background: #2869b3; }
+.tv-agenda__glow--two { bottom: -60%; left: -18%; background: #168666; opacity: .11; }
 
-.tv-agenda__content { position: relative; display: grid; width: min(100%, 1760px); gap: clamp(18px, 2vw, 30px); margin: 0 auto; }
-.tv-agenda__header { display: grid; grid-template-columns: 1fr 1.4fr 1fr; align-items: center; gap: 22px; }
-.tv-agenda__brand { display: flex; align-items: center; gap: 13px; }
-.tv-agenda__logo { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgba(134, 182, 238, .3); border-radius: 15px; color: #9bc9ff; background: rgba(65, 113, 176, .18); font-size: 1.45rem; font-weight: 900; }
+.tv-agenda__content { position: relative; display: grid; width: min(100%, 1760px); gap: clamp(13px, 1.5vw, 22px); margin: 0 auto; }
+.tv-agenda__header { display: grid; grid-template-columns: 1fr 1.4fr 1fr; align-items: center; gap: 20px; }
+.tv-agenda__brand { display: flex; align-items: center; gap: 12px; }
+.tv-agenda__logo { display: grid; width: 43px; height: 43px; place-items: center; border: 1px solid rgba(134, 182, 238, .3); border-radius: 13px; color: #9bc9ff; background: rgba(65, 113, 176, .18); font-size: 1.3rem; font-weight: 900; }
 .tv-agenda__brand div { display: grid; gap: 4px; }
-.tv-agenda__brand strong { font-size: .9rem; letter-spacing: .17em; }
-.tv-agenda__brand div span { color: #91a4bb; font-size: .57rem; font-weight: 750; letter-spacing: .15em; }
+.tv-agenda__brand strong { font-size: .82rem; letter-spacing: .17em; }
+.tv-agenda__brand div span { color: #91a4bb; font-size: .53rem; font-weight: 750; letter-spacing: .15em; }
 .tv-agenda__heading { text-align: center; }
-.tv-agenda__eyebrow { color: #80b2f0; font-size: .64rem; font-weight: 800; letter-spacing: .2em; }
-.tv-agenda__heading h1 { margin: 5px 0 0; font-size: clamp(1.65rem, 3.3vw, 3.1rem); font-weight: 700; letter-spacing: -.04em; }
-.tv-agenda__clock { display: grid; justify-items: end; gap: 4px; }
-.tv-agenda__clock strong { color: #fff; font-size: clamp(2rem, 4.5vw, 3.85rem); font-weight: 650; letter-spacing: -.055em; font-variant-numeric: tabular-nums; line-height: 1; }
-.tv-agenda__clock span { color: #8fa3bd; font-size: .6rem; font-weight: 750; letter-spacing: .16em; }
+.tv-agenda__eyebrow { color: #80b2f0; font-size: .59rem; font-weight: 800; letter-spacing: .2em; }
+.tv-agenda__heading h1 { margin: 4px 0 0; font-size: clamp(1.4rem, 2.7vw, 2.35rem); font-weight: 700; letter-spacing: -.04em; }
+.tv-agenda__clock { display: grid; justify-items: end; gap: 3px; }
+.tv-agenda__clock strong { color: #fff; font-size: clamp(1.7rem, 3vw, 2.6rem); font-weight: 650; letter-spacing: -.055em; font-variant-numeric: tabular-nums; line-height: 1; }
+.tv-agenda__clock span { color: #8fa3bd; font-size: .54rem; font-weight: 750; letter-spacing: .16em; }
 
-.tv-agenda__summary { display: flex; min-height: 50px; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 16px; border: 1px solid rgba(139, 164, 196, .15); border-radius: 14px; background: rgba(255, 255, 255, .045); }
-.tv-agenda__summary > div { display: flex; align-items: center; gap: 9px; color: #a6b9d0; font-size: .65rem; font-weight: 800; letter-spacing: .12em; }
-.tv-agenda__summary > strong { color: #d9e8fa; font-size: .85rem; }
-.tv-agenda__summary > small { color: #8092a9; font-size: .68rem; }
-.tv-agenda__live-dot { width: 8px; height: 8px; border-radius: 50%; background: #42d39a; box-shadow: 0 0 12px rgba(66, 211, 154, .7); }
+.tv-agenda__summary { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 13px; border: 1px solid rgba(139, 164, 196, .13); border-radius: 11px; background: rgba(255, 255, 255, .035); }
+.tv-agenda__summary > div { display: flex; align-items: center; gap: 8px; color: #a6b9d0; font-size: .59rem; font-weight: 800; letter-spacing: .12em; }
+.tv-agenda__summary > strong { color: #d9e8fa; font-size: .78rem; }
+.tv-agenda__summary > small { color: #8092a9; font-size: .63rem; }
+.tv-agenda__live-dot { width: 7px; height: 7px; border-radius: 50%; background: #42d39a; box-shadow: 0 0 12px rgba(66, 211, 154, .7); }
 
-.tv-agenda__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.tv-visit { display: grid; min-width: 0; gap: 16px; padding: clamp(17px, 1.8vw, 25px); border: 1px solid rgba(151, 177, 208, .17); border-radius: 20px; background: linear-gradient(145deg, rgba(23, 47, 76, .98), rgba(13, 31, 53, .98)); box-shadow: 0 15px 32px rgba(0, 0, 0, .18); }
-.tv-visit__header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(137, 163, 194, .17); }
-.tv-visit__schedule { display: flex; align-items: center; gap: clamp(15px, 2vw, 28px); }
-.tv-visit__date,
-.tv-visit__time { display: grid; gap: 6px; }
-.tv-visit__date > span,
-.tv-visit__time > span { color: #8ebcf0; font-size: .59rem; font-weight: 850; letter-spacing: .12em; }
-.tv-visit__date > strong { color: #edf5ff; font-size: clamp(.92rem, 1.35vw, 1.12rem); font-weight: 700; text-transform: capitalize; }
-.tv-visit__time > strong { color: #fff; font-size: clamp(1.75rem, 3vw, 2.45rem); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.05em; line-height: .95; }
-.tv-visit__badges { display: grid; justify-items: end; gap: 8px; }
-.tv-visit__milvus { display: grid; justify-items: end; gap: 3px; padding: 6px 9px; border: 1px solid rgba(116, 155, 206, .24); border-radius: 9px; color: #a9c8ee; background: rgba(67, 107, 158, .13); }
-.tv-visit__milvus small { color: #829dbd; font-size: .5rem; font-weight: 850; letter-spacing: .11em; }
-.tv-visit__milvus strong { font-size: .72rem; font-weight: 850; letter-spacing: .04em; }
-.tv-visit__details { display: grid; min-width: 0; gap: 15px; }
-.tv-visit__technician { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.tv-visit__avatar { display: grid; width: clamp(62px, 5.5vw, 82px); height: clamp(62px, 5.5vw, 82px); flex: 0 0 auto; overflow: hidden; place-items: center; border: 2px solid rgba(139, 187, 242, .4); border-radius: 50%; color: #d8eaff; background: linear-gradient(135deg, #326194, #183958); box-shadow: 0 0 0 5px rgba(111, 160, 216, .08); font-size: 1.05rem; font-weight: 850; }
-.tv-visit__avatar img { width: 100%; height: 100%; object-fit: cover; }
-.tv-visit__technician-copy { display: grid; min-width: 0; gap: 4px; }
-.tv-visit__label { color: #83a8d4; font-size: .55rem; font-weight: 850; letter-spacing: .12em; }
-.tv-visit__technician-copy strong { overflow: hidden; color: #f4f8ff; font-size: clamp(.98rem, 1.45vw, 1.23rem); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.tv-visit__technician-copy small,
-.tv-visit__info small { color: #8fa4bd; font-size: .65rem; line-height: 1.4; }
-.tv-visit__info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.tv-visit__info { display: grid; min-width: 0; align-content: start; gap: 5px; padding: 12px 13px; border: 1px solid rgba(151, 177, 208, .12); border-radius: 12px; background: rgba(255, 255, 255, .035); }
-.tv-visit__info strong { display: -webkit-box; overflow: hidden; color: #e3edf9; font-size: .83rem; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.tv-visit__confirmation { display: flex; max-width: 180px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(211, 164, 84, .2); border-radius: 999px; color: #d9b776; background: rgba(131, 91, 25, .12); font-size: .55rem; font-weight: 750; white-space: nowrap; }
-.tv-visit__confirmation span { font-size: .8rem; }
-.tv-visit__confirmation.is-confirmed { border-color: rgba(76, 201, 144, .2); color: #72d5a8; background: rgba(26, 113, 77, .14); }
+.tv-calendar { overflow: hidden; border: 1px solid rgba(147, 160, 178, .22); border-radius: 17px; background: rgba(17, 20, 25, .96); box-shadow: 0 16px 42px rgba(0, 0, 0, .2); }
+.tv-calendar__toolbar { display: grid; min-height: 57px; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 15px; padding: 8px 14px; border-bottom: 1px solid rgba(147, 160, 178, .2); }
+.tv-calendar__controls { display: flex; align-items: center; gap: 6px; }
+.tv-calendar__controls button { display: inline-grid; height: 34px; place-items: center; border: 1px solid rgba(158, 174, 193, .24); color: #e1e9f4; background: rgba(255, 255, 255, .035); cursor: pointer; }
+.tv-calendar__controls button:hover { background: rgba(134, 173, 220, .16); }
+.tv-calendar__today { min-width: 58px; padding: 0 12px; border-radius: 999px; font-size: .72rem; font-weight: 650; }
+.tv-calendar__arrow { width: 34px; border-radius: 50%; font-family: Arial, sans-serif; font-size: 1.45rem; line-height: 1; }
+.tv-calendar__toolbar h2 { margin: 0; color: #f0f4f9; font-size: clamp(1.05rem, 1.8vw, 1.52rem); font-weight: 600; letter-spacing: -.025em; text-align: center; text-transform: capitalize; }
+.tv-calendar__view { justify-self: end; padding: 7px 11px; border: 1px solid rgba(158, 174, 193, .23); border-radius: 8px; color: #c0ccda; font-size: .57rem; font-weight: 800; letter-spacing: .12em; }
+.tv-calendar__weekdays,
+.tv-calendar__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.tv-calendar__weekdays { min-height: 31px; align-items: center; border-bottom: 1px solid rgba(147, 160, 178, .18); }
+.tv-calendar__weekdays span { color: #a9b2bf; font-size: .57rem; font-weight: 750; letter-spacing: .07em; text-align: center; }
+.tv-calendar__grid { grid-auto-rows: minmax(112px, 1fr); }
+.tv-calendar__day { min-width: 0; padding: 7px 7px 9px; border-right: 1px solid rgba(147, 160, 178, .16); border-bottom: 1px solid rgba(147, 160, 178, .16); background: rgba(14, 17, 21, .62); }
+.tv-calendar__day:nth-child(7n) { border-right: 0; }
+.tv-calendar__day:nth-last-child(-n + 7) { border-bottom: 0; }
+.tv-calendar__day.is-outside { background: rgba(255, 255, 255, .012); }
+.tv-calendar__date { display: flex; min-height: 23px; align-items: center; justify-content: center; gap: 6px; margin-bottom: 4px; color: #e4eaf2; font-size: .72rem; font-weight: 600; }
+.tv-calendar__day.is-outside .tv-calendar__date { color: #657080; }
+.tv-calendar__today-number { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 50%; color: #09101a; background: #8dbaff; }
+.tv-calendar__date small { color: #90baff; font-size: .46rem; font-weight: 800; letter-spacing: .05em; }
+.tv-calendar__events { display: grid; align-content: start; gap: 4px; }
+.tv-calendar__event { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; padding: 4px 6px; border: 1px solid rgba(111, 174, 236, .18); border-radius: 6px; color: #e8f3ff; background: rgba(45, 107, 165, .2); cursor: pointer; text-align: left; }
+.tv-calendar__event:hover { border-color: rgba(125, 190, 251, .55); background: rgba(54, 125, 190, .36); }
+.tv-calendar__event-avatar { display: grid; width: 25px; height: 25px; flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: 50%; color: #e5f2ff; background: linear-gradient(135deg, #527aa4, #28445f); font-size: .52rem; font-weight: 800; }
+.tv-calendar__event-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.tv-calendar__event-copy { display: grid; min-width: 0; gap: 2px; }
+.tv-calendar__event-copy strong,
+.tv-calendar__event-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-calendar__event-copy strong { color: #ecf5ff; font-size: .58rem; font-weight: 700; }
+.tv-calendar__event-copy strong span { color: #a7d0ff; font-variant-numeric: tabular-nums; }
+.tv-calendar__event-copy small { color: #b5c6d8; font-size: .51rem; }
+.tv-calendar__more { padding: 2px 4px; color: #9daabc; font-size: .57rem; font-weight: 650; }
 
-.tv-agenda__state { display: grid; min-height: 360px; align-content: center; justify-items: center; gap: 13px; padding: 32px; border: 1px solid rgba(151, 177, 208, .13); border-radius: 20px; background: rgba(255, 255, 255, .035); text-align: center; }
+.tv-agenda__state { display: grid; min-height: 290px; align-content: center; justify-items: center; gap: 13px; padding: 32px; border: 1px solid rgba(151, 177, 208, .13); border-radius: 18px; background: rgba(255, 255, 255, .035); text-align: center; }
 .tv-agenda__state h2 { max-width: 680px; margin: 0; color: #e6effa; font-size: clamp(1rem, 2vw, 1.5rem); font-weight: 650; }
 .tv-agenda__state p { max-width: 600px; margin: 0; color: #8ea0b5; font-size: .8rem; }
 .tv-agenda__state--error { border-color: rgba(222, 118, 109, .2); background: rgba(95, 38, 38, .12); }
 .tv-agenda__state-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 50%; color: #ffc2b8; background: rgba(191, 83, 74, .18); font-size: 1.3rem; font-weight: 900; }
-.tv-agenda__empty-icon { display: grid; width: 55px; height: 55px; place-items: center; border: 1px solid rgba(74, 205, 148, .3); border-radius: 50%; color: #66d5a4; background: rgba(24, 125, 85, .15); font-size: 1.45rem; }
 .tv-agenda__spinner { width: 30px; height: 30px; border: 3px solid rgba(160, 191, 228, .2); border-top-color: #72b4ff; border-radius: 50%; animation: tv-agenda-spin .7s linear infinite; }
 @keyframes tv-agenda-spin { to { transform: rotate(360deg); } }
 
-.tv-agenda__footer { display: flex; justify-content: space-between; gap: 14px; padding: 0 4px; color: #71839a; font-size: .62rem; letter-spacing: .03em; }
+.tv-agenda__footer { display: flex; justify-content: space-between; gap: 14px; padding: 0 4px; color: #71839a; font-size: .58rem; letter-spacing: .03em; }
 
-@media (max-width: 1150px) {
+.tv-visit-modal { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .72); backdrop-filter: blur(8px); }
+.tv-visit-modal__card { position: relative; width: min(100%, 560px); padding: clamp(22px, 4vw, 34px); border: 1px solid rgba(151, 177, 208, .24); border-radius: 20px; background: #121c29; box-shadow: 0 28px 80px rgba(0, 0, 0, .45); }
+.tv-visit-modal__close { position: absolute; top: 12px; right: 14px; width: 35px; height: 35px; border: 0; border-radius: 50%; color: #e4edf8; background: rgba(255, 255, 255, .08); cursor: pointer; font-size: 1.55rem; line-height: 1; }
+.tv-visit-modal__heading { display: flex; align-items: center; gap: 15px; padding-right: 35px; }
+.tv-visit-modal__avatar { display: grid; width: 66px; height: 66px; flex: 0 0 auto; overflow: hidden; place-items: center; border: 2px solid rgba(139, 187, 242, .4); border-radius: 50%; color: #d8eaff; background: linear-gradient(135deg, #326194, #183958); font-size: 1rem; font-weight: 850; }
+.tv-visit-modal__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.tv-visit-modal__heading > div { display: grid; gap: 5px; }
+.tv-visit-modal__heading > div > span,
+.tv-visit-modal__details > div > span { color: #83a8d4; font-size: .55rem; font-weight: 850; letter-spacing: .12em; }
+.tv-visit-modal__heading h2 { margin: 0; color: #f4f8ff; font-size: clamp(1.15rem, 3vw, 1.5rem); }
+.tv-visit-modal__schedule { display: grid; gap: 5px; margin: 22px 0 16px; padding: 15px; border: 1px solid rgba(151, 177, 208, .15); border-radius: 12px; background: rgba(255, 255, 255, .035); }
+.tv-visit-modal__schedule strong { color: #fff; font-size: 1.75rem; font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
+.tv-visit-modal__schedule span { color: #b1c0d1; font-size: .78rem; text-transform: capitalize; }
+.tv-visit-modal__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tv-visit-modal__details > div { display: grid; min-width: 0; align-content: start; gap: 6px; padding: 12px; border: 1px solid rgba(151, 177, 208, .12); border-radius: 11px; background: rgba(255, 255, 255, .025); }
+.tv-visit-modal__details > div > strong { color: #e3edf9; font-size: .82rem; line-height: 1.4; overflow-wrap: anywhere; }
+.tv-visit-modal__details > div > strong.is-confirmed { color: #72d5a8; }
+
+@media (max-width: 1050px) {
   .tv-agenda__header { grid-template-columns: 1fr auto; }
-  .tv-agenda__heading { grid-column: 1 / -1; grid-row: 2; text-align: left; }
-  .tv-agenda__clock { grid-column: 2; grid-row: 1; }
-  .tv-agenda__grid { grid-template-columns: minmax(0, 1fr); }
+  .tv-agenda__heading { grid-column: 1; grid-row: 2; text-align: left; }
+  .tv-agenda__clock { grid-column: 2; grid-row: 1 / span 2; }
+  .tv-calendar__grid { grid-auto-rows: minmax(100px, 1fr); }
 }
 
 @media (max-width: 650px) {
-  .tv-agenda { padding: 17px 13px; }
-  .tv-agenda__content { gap: 15px; }
-  .tv-agenda__logo { width: 39px; height: 39px; border-radius: 12px; font-size: 1.2rem; }
-  .tv-agenda__brand { gap: 9px; }
-  .tv-agenda__brand strong { font-size: .72rem; }
-  .tv-agenda__brand div span { font-size: .48rem; }
-  .tv-agenda__eyebrow { font-size: .55rem; }
-  .tv-agenda__heading h1 { font-size: 1.65rem; }
-  .tv-agenda__clock strong { font-size: 2rem; }
-  .tv-agenda__clock span { font-size: .47rem; }
-  .tv-agenda__summary { flex-wrap: wrap; justify-content: flex-start; gap: 7px 13px; padding: 10px 12px; }
+  .tv-agenda { padding: 13px 9px; }
+  .tv-agenda__content { gap: 12px; }
+  .tv-agenda__logo { width: 36px; height: 36px; border-radius: 11px; font-size: 1.1rem; }
+  .tv-agenda__brand { gap: 8px; }
+  .tv-agenda__brand strong { font-size: .68rem; }
+  .tv-agenda__brand div span { font-size: .44rem; }
+  .tv-agenda__eyebrow { font-size: .49rem; }
+  .tv-agenda__heading h1 { font-size: 1.35rem; }
+  .tv-agenda__clock strong { font-size: 1.7rem; }
+  .tv-agenda__clock span { font-size: .4rem; }
+  .tv-agenda__summary { flex-wrap: wrap; justify-content: flex-start; gap: 5px 10px; padding: 8px 10px; }
   .tv-agenda__summary > div { width: 100%; }
-  .tv-agenda__summary > strong { font-size: .73rem; }
-  .tv-agenda__summary > small { font-size: .61rem; }
-  .tv-visit { gap: 13px; padding: 14px; border-radius: 16px; }
-  .tv-visit__header { align-items: flex-start; flex-direction: column; gap: 10px; }
-  .tv-visit__schedule { width: 100%; justify-content: space-between; }
-  .tv-visit__badges { width: 100%; align-items: flex-start; justify-items: start; }
-  .tv-visit__date > span,
-  .tv-visit__time > span { font-size: .53rem; }
-  .tv-visit__date > strong { font-size: .88rem; }
-  .tv-visit__time > strong { font-size: 1.8rem; }
-  .tv-visit__avatar { width: 60px; height: 60px; }
-  .tv-visit__technician-copy small,
-  .tv-visit__info small { font-size: .6rem; }
-  .tv-visit__info-grid { grid-template-columns: minmax(0, 1fr); }
-  .tv-visit__info { padding: 10px 11px; }
-  .tv-agenda__footer { flex-direction: column; gap: 4px; font-size: .58rem; }
+  .tv-agenda__summary > strong { font-size: .68rem; }
+  .tv-agenda__summary > small { font-size: .55rem; }
+  .tv-calendar { border-radius: 12px; }
+  .tv-calendar__toolbar { min-height: 48px; gap: 8px; padding: 6px 8px; }
+  .tv-calendar__controls { gap: 4px; }
+  .tv-calendar__controls button { height: 30px; }
+  .tv-calendar__today { min-width: 48px; padding: 0 8px; font-size: .65rem; }
+  .tv-calendar__arrow { width: 30px; font-size: 1.25rem; }
+  .tv-calendar__toolbar h2 { font-size: .98rem; }
+  .tv-calendar__view { padding: 6px 7px; font-size: .48rem; }
+  .tv-calendar__weekdays { min-height: 26px; }
+  .tv-calendar__weekdays span { font-size: .48rem; }
+  .tv-calendar__grid { grid-auto-rows: minmax(82px, 1fr); }
+  .tv-calendar__day { padding: 4px 3px 6px; }
+  .tv-calendar__date { min-height: 19px; gap: 3px; margin-bottom: 3px; font-size: .63rem; }
+  .tv-calendar__today-number { width: 19px; height: 19px; }
+  .tv-calendar__date small { font-size: .36rem; }
+  .tv-calendar__event { gap: 3px; padding: 3px; border-radius: 4px; }
+  .tv-calendar__event-avatar { width: 18px; height: 18px; font-size: .38rem; }
+  .tv-calendar__event-copy { gap: 1px; }
+  .tv-calendar__event-copy strong { font-size: .45rem; }
+  .tv-calendar__event-copy small { font-size: .39rem; }
+  .tv-calendar__events { gap: 2px; }
+  .tv-calendar__more { font-size: .46rem; }
+  .tv-agenda__footer { flex-direction: column; gap: 4px; font-size: .53rem; }
+  .tv-visit-modal__details { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
