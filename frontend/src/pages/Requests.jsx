@@ -291,13 +291,6 @@ export default function Requests() {
   const saveManaged = async (req) => {
     const draft = draftFor(req);
     const hasVisitTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.agendado_para || '');
-    const requiresPastVisitConfirmation = hasVisitTime
-      && isPastSchedule(draft.agendado_para)
-      && !['Concluída', 'Cancelada'].includes(req.status);
-    if (requiresPastVisitConfirmation && !draft.visita_realizada) {
-      setError('A data e o horário já passaram. Confirme se a visita já foi realizada ou escolha um horário futuro.');
-      return;
-    }
     const status = draft.visita_realizada
       ? 'Concluída'
       : (draft.status === 'Aberta' && draft.assigned_technician && hasVisitTime ? 'Agendada' : draft.status);
@@ -465,7 +458,8 @@ export default function Requests() {
     }
   };
 
-  const rescheduleUnavailable = technicianUnavailability.some((entry) => entry.date === rescheduleDay);
+  const rescheduleUnavailable = rescheduleDay >= todayInSaoPaulo()
+    && technicianUnavailability.some((entry) => entry.date === rescheduleDay);
   const proposedReschedule = combineSchedule(rescheduleDay, rescheduleTime);
   const sameReschedule = proposedReschedule === rescheduleRequest?.agendado_para;
   const rescheduleTimeFitsAvailability = Boolean(!rescheduleUnavailable && rescheduleTime
@@ -608,9 +602,9 @@ export default function Requests() {
             const scheduleDay = scheduledDate(draft.agendado_para);
             const scheduleTime = scheduledTime(draft.agendado_para);
             const scheduleIsPast = isPastSchedule(draft.agendado_para);
-            const requiresPastVisitConfirmation = scheduleIsPast
+            const showPastVisitCompletionOption = scheduleIsPast
               && !['Concluída', 'Cancelada'].includes(req.status);
-            const selectedTechnicianUnavailable = technicianUnavailability.some((entry) => (
+            const selectedTechnicianUnavailable = !scheduleIsPast && technicianUnavailability.some((entry) => (
               entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
             ));
             const scheduleTimeFitsAvailability = Boolean(!selectedTechnicianUnavailable
@@ -688,7 +682,7 @@ export default function Requests() {
                         {draft.assigned_technician && scheduleDay && (
                           <span className={`request-availability-note ${scheduleIsPast ? 'is-unset' : scheduleTimeFitsAvailability ? 'is-available' : 'is-unset'}`}>
                             {scheduleIsPast
-                              ? 'Esse dia e horário já passaram. Se a visita foi realizada, confirme abaixo; caso contrário, escolha um horário futuro.'
+                              ? 'Esse horário já passou. A visita pode ficar agendada como atrasada; marque abaixo se ela já foi realizada.'
                               : selectedTechnicianUnavailable
                               ? 'O técnico marcou esse dia como indisponível.'
                               : !scheduleTime
@@ -698,7 +692,7 @@ export default function Requests() {
                                   : `Horário ${scheduleTime} fora do expediente (07:00–15:00).`}
                           </span>
                         )}
-                        {requiresPastVisitConfirmation && (
+                        {showPastVisitCompletionOption && (
                           <label className="request-past-visit-confirm">
                             <input
                               type="checkbox"
@@ -716,7 +710,7 @@ export default function Requests() {
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>
-                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)} disabled={requiresPastVisitConfirmation && !draft.visita_realizada}>Salvar e sincronizar</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)}>Salvar e sincronizar</button>
                         {isGestor && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(req)}>Excluir</button>}
                       </div>
                     </td>
@@ -1021,7 +1015,6 @@ export default function Requests() {
                   <input
                     className="form-input"
                     type="date"
-                    min={todayInSaoPaulo()}
                     value={rescheduleDay}
                     onChange={(event) => setRescheduleDay(event.target.value)}
                     required
@@ -1045,7 +1038,9 @@ export default function Requests() {
                 <span className={`request-availability-note ${rescheduleUnavailable ? 'is-unset' : 'is-available'}`}>
                   {rescheduleUnavailable
                     ? 'Você marcou esse dia como indisponível no calendário.'
-                    : 'Este dia está livre para atendimento entre 07:00 e 15:00.'}
+                    : rescheduleDay < todayInSaoPaulo()
+                      ? 'Data passada: a visita ficará agendada como atrasada até ser realizada.'
+                      : 'Este dia está livre para atendimento entre 07:00 e 15:00.'}
                 </span>
               )}
               {sameReschedule && <span className="request-availability-note is-unset">Escolha uma data ou horário diferente do agendamento atual.</span>}

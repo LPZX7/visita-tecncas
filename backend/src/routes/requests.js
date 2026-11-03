@@ -513,9 +513,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!slot) {
           return res.status(400).json({ error: 'Informe a data e o horário da visita.' });
         }
-        if (`${slot.date}T${slot.time}` < currentDateTimeInSaoPaulo()) {
-          return res.status(400).json({ error: 'A visita deve ser agendada para um horário futuro.' });
-        }
+        const slotIsPast = `${slot.date}T${slot.time}` < currentDateTimeInSaoPaulo();
         if (!effectiveTechnicianId) {
           return res.status(400).json({ error: 'Selecione um técnico para esta visita.' });
         }
@@ -523,9 +521,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!String(destination || '').trim()) {
           return res.status(400).json({ error: 'Informe o endereço de destino da visita.' });
         }
-        const unavailable = await db.getTechnicianUnavailabilityForDate(effectiveTechnicianId, slot.date);
-        if (unavailable) {
-          return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
+        if (!slotIsPast) {
+          const unavailable = await db.getTechnicianUnavailabilityForDate(effectiveTechnicianId, slot.date);
+          if (unavailable) {
+            return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
+          }
         }
         if (slot.time < TECHNICIAN_WORKING_HOURS.from || slot.time > TECHNICIAN_WORKING_HOURS.until) {
           return res.status(409).json({ error: `O horário padrão de atendimento é das ${TECHNICIAN_WORKING_HOURS.from} às ${TECHNICIAN_WORKING_HOURS.until}.` });

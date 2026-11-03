@@ -138,12 +138,11 @@ export default function ScheduleCalendar() {
   const cells = useMemo(() => makeCalendarCells(cursor.year, cursor.month), [cursor.year, cursor.month]);
   const today = todayKey();
   const currentTime = currentTimeInSaoPaulo();
-  const minimumBookingTime = selectedDate === today && currentTime > OPENING_TIME ? currentTime : OPENING_TIME;
   const blockedDateSet = useMemo(() => new Set(
     unavailableDates
-      .filter((entry) => entry.technician_id === selectedTechnicianId)
+      .filter((entry) => entry.technician_id === selectedTechnicianId && String(entry.date).slice(0, 10) >= today)
       .map((entry) => String(entry.date).slice(0, 10))
-  ), [unavailableDates, selectedTechnicianId]);
+  ), [unavailableDates, selectedTechnicianId, today]);
   const technicianRequests = requests.filter((request) => (
     request.assigned_technician === selectedTechnicianId
     && request.agendado_para
@@ -175,7 +174,7 @@ export default function ScheduleCalendar() {
     && !['Cancelada', 'Concluída'].includes(request.status)
     && visitOverlapsBooking(request, selectedDate, bookingTime, bookingEndEnabled ? bookingEndTime : '')
   ));
-  const bookingTimeOutsideRange = bookingTime < minimumBookingTime || bookingTime > CLOSING_TIME
+  const bookingTimeOutsideRange = bookingTime < OPENING_TIME || bookingTime > CLOSING_TIME
     || (bookingEndEnabled && bookingEndTime && (bookingEndTime < OPENING_TIME || bookingEndTime > CLOSING_TIME));
   const bookingEndNotAfterStart = bookingEndEnabled && bookingEndTime && bookingEndTime <= bookingTime;
   const bookingEndNotPast = bookingVisitAlreadyDone && proposedScheduleEnd
@@ -227,10 +226,6 @@ export default function ScheduleCalendar() {
     }
     if (bookingEndNotPast) {
       setError('Como a visita já foi realizada, o horário de fim também precisa estar no passado.');
-      return;
-    }
-    if (bookingSlotIsPast && !bookingVisitAlreadyDone) {
-      setError('Esse horário já passou. Confirme se a visita foi realizada ou escolha uma data futura.');
       return;
     }
     setError('');
@@ -373,13 +368,13 @@ export default function ScheduleCalendar() {
                 <h3>{selectedDate ? formatDate(selectedDate) : 'Escolha um dia'}</h3>
               </div>
               {selectedDate && <span className={selectedDateUnavailable ? 'schedule-status schedule-status--blocked' : 'schedule-status schedule-status--free'}>
-                {selectedDateUnavailable ? 'Indisponível' : 'Livre · 07h–15h'}
+                {selectedDate < today ? 'Data passada' : selectedDateUnavailable ? 'Indisponível' : 'Livre · 07h–15h'}
               </span>}
             </div>
             {selectedDate ? (
               <>
                 {selectedDateUnavailable && <p className="schedule-day-panel__note">O técnico bloqueou esta data. Escolha outro dia para agendar.</p>}
-                {!selectedDateUnavailable && dayVisits.length === 0 && <p className="schedule-day-panel__note">Nenhuma visita neste dia. Expediente disponível das 07h às 15h.</p>}
+                {!selectedDateUnavailable && dayVisits.length === 0 && <p className="schedule-day-panel__note">{selectedDate < today ? 'Nenhuma visita registrada neste dia. Você ainda pode lançar um agendamento atrasado.' : 'Nenhuma visita neste dia. Expediente disponível das 07h às 15h.'}</p>}
                 <div className="schedule-visit-list">
                   {dayVisits.map((visit) => (
                     <article className="schedule-visit" key={visit.id}>
@@ -393,9 +388,9 @@ export default function ScheduleCalendar() {
                     </article>
                   ))}
                 </div>
-                {canManage && selectedDate >= today && !selectedDateUnavailable && selectedTechnicianId && (
+                {canManage && !selectedDateUnavailable && selectedTechnicianId && (
                   <button type="button" className="schedule-add-button" onClick={openBooking}>
-                    <span>＋</span> Agendar chamado neste dia
+                    <span>＋</span> {selectedDate < today ? 'Registrar visita atrasada neste dia' : 'Agendar chamado neste dia'}
                   </button>
                 )}
               </>
@@ -433,7 +428,7 @@ export default function ScheduleCalendar() {
               <div className="schedule-booking-dialog__grid">
                 <label className="form-field">
                   Dia
-                  <input className="form-input" type="date" value={selectedDate} min={today} readOnly />
+                  <input className="form-input" type="date" value={selectedDate} readOnly />
                 </label>
                 <label className="form-field">
                   Horário de início
@@ -452,14 +447,15 @@ export default function ScheduleCalendar() {
               )}
               {bookingEndNotAfterStart && <p className="schedule-booking-dialog__conflict">O horário de fim precisa ser depois do início.</p>}
               {hasTimeConflict && <p className="schedule-booking-dialog__conflict">O técnico já tem outra visita nesse horário. Escolha outro horário.</p>}
-              {bookingSlotIsPast ? (
+              {bookingSlotIsPast && (
                 <label className="schedule-booking-dialog__completed-confirm">
                   <input type="checkbox" checked={bookingVisitAlreadyDone} onChange={(event) => setBookingVisitAlreadyDone(event.target.checked)} />
-                  <span><strong>A visita já foi realizada?</strong><small>Marque para registrar o chamado como concluído. Se ainda não aconteceu, escolha uma data futura.</small></span>
+                  <span><strong>A visita já foi realizada?</strong><small>Marque para concluir o chamado. Sem marcar, ele ficará como visita atrasada e pendente.</small></span>
                 </label>
-              ) : bookingTimeOutsideRange ? (
+              )}
+              {bookingTimeOutsideRange && (
                 <p className="schedule-booking-dialog__conflict">O expediente é das 07h às 15h. Escolha um horário dentro desse período.</p>
-              ) : null}
+              )}
               <label className="form-field">
                 Endereço da visita
                 <input className="form-input" value={bookingAddress} onChange={(event) => setBookingAddress(event.target.value)} placeholder="Rua, número, bairro e cidade" required />
@@ -468,7 +464,7 @@ export default function ScheduleCalendar() {
             </div>
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeBooking} disabled={saving}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={saving || !selectedBookingRequest || !bookingAddress.trim() || hasTimeConflict || (bookingTimeOutsideRange && !bookingVisitAlreadyDone) || (bookingSlotIsPast && !bookingVisitAlreadyDone) || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart)) || bookingEndNotPast}>
+              <button type="submit" className="btn btn-primary" disabled={saving || !selectedBookingRequest || !bookingAddress.trim() || hasTimeConflict || (bookingTimeOutsideRange && !bookingVisitAlreadyDone) || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart)) || bookingEndNotPast}>
                 {saving ? 'Salvando agenda…' : bookingVisitAlreadyDone ? 'Confirmar visita realizada' : 'Confirmar agendamento'}
               </button>
             </div>
