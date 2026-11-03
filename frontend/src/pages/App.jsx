@@ -4,6 +4,7 @@ import Login from './Login';
 import Dashboard from './Dashboard';
 import Availability from './Availability';
 import ScheduleCalendar from './ScheduleCalendar';
+import PublicTvAgenda from './PublicTvAgenda';
 import Requests from './Requests';
 import Budgets from './Budgets';
 import Companies from './Companies';
@@ -37,10 +38,11 @@ import { useNavigate } from 'react-router-dom';
 export default function App() {
   const user = getUser();
   const navigate = useNavigate();
+  const isAgendaTvRoute = /^\/agenda\/tv\/?$/.test(window.location.pathname);
   const [status, setStatus] = useState({ visitasHoje: 0, tecnicosEmCampo: 0, orcamentosPendentes: 0 });
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || isAgendaTvRoute) return;
     async function loadStatus() {
       try {
         const [requestsRes, budgetsRes] = await Promise.all([api.get('/requests'), api.get('/budgets')]);
@@ -59,7 +61,7 @@ export default function App() {
       }
     }
     loadStatus();
-  }, [user?.id]);
+  }, [user?.id, isAgendaTvRoute]);
 
   const handleLogout = () => {
     clearAuth();
@@ -126,11 +128,12 @@ export default function App() {
 
   const links = linksForRole(user?.role);
 
-  const isPublicStandaloneRoute = /^\/(aprovar-orcamento|aprovar-visita|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
+  const isPublicStandaloneRoute = isAgendaTvRoute || /^\/(aprovar-orcamento|aprovar-visita|cadastro|esqueci-senha|redefinir-senha|validar)(\/|$)/.test(window.location.pathname);
   if (isPublicStandaloneRoute) {
     return (
       <>
         <Routes>
+          <Route path="/agenda/tv" element={<PublicTvAgenda />} />
           <Route path="/aprovar-orcamento/:token" element={<ApproveBudget />} />
           <Route path="/aprovar-visita/:token" element={<ApproveVisit />} />
           <Route path="/cadastro" element={<Signup />} />
@@ -138,7 +141,7 @@ export default function App() {
           <Route path="/redefinir-senha/:token" element={<ResetPassword />} />
           <Route path="/validar/:codigo" element={<ValidarTermo />} />
         </Routes>
-        <WhatsAppButton />
+        {!isAgendaTvRoute && <WhatsAppButton />}
       </>
     );
   }

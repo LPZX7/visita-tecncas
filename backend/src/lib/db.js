@@ -622,6 +622,41 @@ async function getTechnicianBookingsForDate(technicianId, date) {
   return rows;
 }
 
+async function getTvAgendaVisits(fromDateTime, untilDateTime) {
+  const { rows } = await pool.query(
+    `SELECT requests.milvus_codigo, requests.agendado_para, requests.confirmacao_tecnico,
+            COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+            COALESCE(NULLIF(empresas.nome_fantasia, ''), empresas.razao_social) AS company_name,
+            unidades.tipo AS unit_type, unidades.nome AS unit_name,
+            unidades.cidade, unidades.estado
+     FROM requests
+     LEFT JOIN users ON users.id = requests.assigned_technician
+     LEFT JOIN empresas ON empresas.id = requests.empresa_id
+     LEFT JOIN equipamentos ON equipamentos.id = requests.equipamento_id
+     LEFT JOIN unidades ON unidades.id = equipamentos.unidade_id
+     WHERE requests.status = 'Agendada'
+       AND requests.hora_checkout IS NULL
+       AND requests.assigned_technician IS NOT NULL
+       AND requests.milvus_codigo IS NOT NULL
+       AND requests.agendado_para >= $1
+       AND requests.agendado_para < $2
+     ORDER BY requests.agendado_para ASC
+     LIMIT 12`,
+    [fromDateTime, untilDateTime]
+  );
+  return rows.map((row) => ({
+    milvus_codigo: row.milvus_codigo,
+    agendado_para: row.agendado_para,
+    technician_name: row.technician_name || 'Técnico não definido',
+    company_name: row.company_name || 'Empresa não definida',
+    local: [
+      [row.unit_type, row.unit_name].filter(Boolean).join(' — '),
+      [row.cidade, row.estado].filter(Boolean).join('/')
+    ].filter(Boolean).join(' · ') || 'Local cadastrado no chamado',
+    confirmacao: row.confirmacao_tecnico === 'confirmada' ? 'Confirmada' : 'Aguardando confirmação'
+  }));
+}
+
 async function findUserByEmail(email) {
   const { rows } = await pool.query('SELECT * FROM users WHERE lower(email) = lower($1)', [email || '']);
   return toUser(rows[0] || null);
@@ -1262,6 +1297,7 @@ module.exports = {
   deleteTechnicianUnavailable,
   getTechnicianBookingAt,
   getTechnicianBookingsForDate,
+  getTvAgendaVisits,
   findUserByEmail,
   findUserByMilvusEmail,
   createUser,

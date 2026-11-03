@@ -1,0 +1,110 @@
+.tv-agenda {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  padding: clamp(18px, 3.2vw, 54px);
+  color: #f8fbff;
+  background: #071629;
+  isolation: isolate;
+}
+
+.tv-agenda__glow {
+  position: absolute;
+  z-index: -1;
+  width: min(52vw, 740px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: .22;
+  pointer-events: none;
+}
+.tv-agenda__glow--one { top: -40%; right: -10%; background: #2869b3; }
+.tv-agenda__glow--two { bottom: -55%; left: -15%; background: #168666; opacity: .16; }
+
+.tv-agenda__content { position: relative; display: grid; width: min(100%, 1760px); gap: clamp(18px, 2vw, 30px); margin: 0 auto; }
+.tv-agenda__header { display: grid; grid-template-columns: 1fr 1.4fr 1fr; align-items: center; gap: 22px; }
+.tv-agenda__brand { display: flex; align-items: center; gap: 13px; }
+.tv-agenda__logo { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgba(134, 182, 238, .3); border-radius: 15px; color: #9bc9ff; background: rgba(65, 113, 176, .18); font-size: 1.45rem; font-weight: 900; }
+.tv-agenda__brand div { display: grid; gap: 4px; }
+.tv-agenda__brand strong { font-size: .9rem; letter-spacing: .17em; }
+.tv-agenda__brand div span { color: #91a4bb; font-size: .57rem; font-weight: 750; letter-spacing: .15em; }
+.tv-agenda__heading { text-align: center; }
+.tv-agenda__eyebrow { color: #80b2f0; font-size: .64rem; font-weight: 800; letter-spacing: .2em; }
+.tv-agenda__heading h1 { margin: 5px 0 0; font-size: clamp(1.65rem, 3.3vw, 3.1rem); font-weight: 700; letter-spacing: -.04em; }
+.tv-agenda__clock { display: grid; justify-items: end; gap: 4px; }
+.tv-agenda__clock strong { color: #fff; font-size: clamp(2rem, 4.5vw, 3.85rem); font-weight: 650; letter-spacing: -.055em; font-variant-numeric: tabular-nums; line-height: 1; }
+.tv-agenda__clock span { color: #8fa3bd; font-size: .6rem; font-weight: 750; letter-spacing: .16em; }
+
+.tv-agenda__summary { display: flex; min-height: 50px; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 16px; border: 1px solid rgba(139, 164, 196, .15); border-radius: 14px; background: rgba(255, 255, 255, .045); }
+.tv-agenda__summary > div { display: flex; align-items: center; gap: 9px; color: #a6b9d0; font-size: .65rem; font-weight: 800; letter-spacing: .12em; }
+.tv-agenda__summary > strong { color: #d9e8fa; font-size: .85rem; }
+.tv-agenda__summary > small { color: #8092a9; font-size: .68rem; }
+.tv-agenda__live-dot { width: 8px; height: 8px; border-radius: 50%; background: #42d39a; box-shadow: 0 0 12px rgba(66, 211, 154, .7); }
+
+.tv-agenda__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tv-visit { display: grid; min-height: 132px; grid-template-columns: 104px minmax(0, 1fr) auto; align-items: center; gap: clamp(13px, 1.5vw, 22px); padding: 16px 19px; border: 1px solid rgba(151, 177, 208, .15); border-radius: 17px; background: linear-gradient(135deg, rgba(20, 41, 67, .98), rgba(13, 31, 53, .98)); box-shadow: 0 12px 25px rgba(0, 0, 0, .14); }
+.tv-visit__time { display: grid; align-content: center; gap: 8px; padding-right: 12px; border-right: 1px solid rgba(137, 163, 194, .18); }
+.tv-visit__time > span { color: #8ebcf0; font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.tv-visit__time > strong { color: #fff; font-size: clamp(1.75rem, 3vw, 2.55rem); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.05em; line-height: 1; }
+.tv-visit__details { display: grid; min-width: 0; gap: 12px; }
+.tv-visit__company-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-width: 0; }
+.tv-visit__company-row h2 { min-width: 0; margin: 0; overflow: hidden; color: #f1f6fd; font-size: clamp(.88rem, 1.35vw, 1.12rem); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.tv-visit__milvus { flex: 0 0 auto; padding: 5px 7px; border: 1px solid rgba(116, 155, 206, .24); border-radius: 7px; color: #a9c8ee; background: rgba(67, 107, 158, .13); font-size: .57rem; font-weight: 800; letter-spacing: .04em; }
+.tv-visit__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 14px; }
+.tv-visit__facts > div { display: grid; min-width: 0; gap: 3px; }
+.tv-visit__facts span { color: #8195ad; font-size: .54rem; font-weight: 800; letter-spacing: .12em; }
+.tv-visit__facts strong { display: -webkit-box; overflow: hidden; color: #d7e3f0; font-size: .75rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.tv-visit__confirmation { display: flex; max-width: 155px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(211, 164, 84, .2); border-radius: 999px; color: #d9b776; background: rgba(131, 91, 25, .12); font-size: .57rem; font-weight: 750; white-space: nowrap; }
+.tv-visit__confirmation span { font-size: .8rem; }
+.tv-visit__confirmation.is-confirmed { border-color: rgba(76, 201, 144, .2); color: #72d5a8; background: rgba(26, 113, 77, .14); }
+
+.tv-agenda__state { display: grid; min-height: 360px; align-content: center; justify-items: center; gap: 13px; padding: 32px; border: 1px solid rgba(151, 177, 208, .13); border-radius: 20px; background: rgba(255, 255, 255, .035); text-align: center; }
+.tv-agenda__state h2 { max-width: 680px; margin: 0; color: #e6effa; font-size: clamp(1rem, 2vw, 1.5rem); font-weight: 650; }
+.tv-agenda__state p { max-width: 600px; margin: 0; color: #8ea0b5; font-size: .8rem; }
+.tv-agenda__state--error { border-color: rgba(222, 118, 109, .2); background: rgba(95, 38, 38, .12); }
+.tv-agenda__state-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 50%; color: #ffc2b8; background: rgba(191, 83, 74, .18); font-size: 1.3rem; font-weight: 900; }
+.tv-agenda__empty-icon { display: grid; width: 55px; height: 55px; place-items: center; border: 1px solid rgba(74, 205, 148, .3); border-radius: 50%; color: #66d5a4; background: rgba(24, 125, 85, .15); font-size: 1.45rem; }
+.tv-agenda__spinner { width: 30px; height: 30px; border: 3px solid rgba(160, 191, 228, .2); border-top-color: #72b4ff; border-radius: 50%; animation: tv-agenda-spin .7s linear infinite; }
+@keyframes tv-agenda-spin { to { transform: rotate(360deg); } }
+
+.tv-agenda__footer { display: flex; justify-content: space-between; gap: 14px; padding: 0 4px; color: #71839a; font-size: .62rem; letter-spacing: .03em; }
+
+@media (max-width: 1150px) {
+  .tv-agenda__header { grid-template-columns: 1fr auto; }
+  .tv-agenda__heading { grid-column: 1 / -1; grid-row: 2; text-align: left; }
+  .tv-agenda__clock { grid-column: 2; grid-row: 1; }
+  .tv-agenda__grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 650px) {
+  .tv-agenda { padding: 17px 13px; }
+  .tv-agenda__content { gap: 15px; }
+  .tv-agenda__logo { width: 39px; height: 39px; border-radius: 12px; font-size: 1.2rem; }
+  .tv-agenda__brand { gap: 9px; }
+  .tv-agenda__brand strong { font-size: .72rem; }
+  .tv-agenda__brand div span { font-size: .48rem; }
+  .tv-agenda__eyebrow { font-size: .55rem; }
+  .tv-agenda__heading h1 { font-size: 1.65rem; }
+  .tv-agenda__clock strong { font-size: 2rem; }
+  .tv-agenda__clock span { font-size: .47rem; }
+  .tv-agenda__summary { flex-wrap: wrap; justify-content: flex-start; gap: 7px 13px; padding: 10px 12px; }
+  .tv-agenda__summary > div { width: 100%; }
+  .tv-agenda__summary > strong { font-size: .73rem; }
+  .tv-agenda__summary > small { font-size: .61rem; }
+  .tv-visit { grid-template-columns: 68px minmax(0, 1fr); gap: 11px; padding: 13px; }
+  .tv-visit__time { gap: 6px; padding-right: 8px; }
+  .tv-visit__time > span { font-size: .55rem; letter-spacing: .06em; }
+  .tv-visit__time > strong { font-size: 1.6rem; }
+  .tv-visit__details { gap: 9px; }
+  .tv-visit__company-row { align-items: flex-start; flex-direction: column; }
+  .tv-visit__company-row h2 { max-width: 100%; font-size: .86rem; }
+  .tv-visit__facts { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .tv-visit__facts strong { font-size: .7rem; }
+  .tv-visit__confirmation { grid-column: 2; justify-self: start; margin-top: -3px; font-size: .53rem; }
+  .tv-agenda__footer { flex-direction: column; gap: 4px; font-size: .58rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-agenda__spinner { animation: none; }
+}
