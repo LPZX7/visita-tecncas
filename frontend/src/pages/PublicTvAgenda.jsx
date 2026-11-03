@@ -180,7 +180,7 @@ export default function PublicTvAgenda() {
       <div className="tv-agenda__content">
         <header className="tv-agenda__header">
           <div className="tv-agenda__brand">
-            <span className="tv-agenda__logo" aria-hidden="true">M</span>
+            <img className="tv-agenda__logo" src="/mirontec-logo.jpg" alt="Logo da Mirontec" />
             <div>
               <strong>MIRONTEC</strong>
               <span>OPERAÇÕES DE CAMPO</span>
