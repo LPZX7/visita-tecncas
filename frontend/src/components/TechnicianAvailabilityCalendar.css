@@ -36,6 +36,26 @@
   font-weight: 750;
 }
 
+.availability-technician-select {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+  margin: 0 0 16px;
+  color: #52667f;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
+.availability-manager-empty {
+  padding: 18px;
+  border: 1px dashed #cdd8e6;
+  border-radius: 14px;
+  color: #425a76;
+  background: #f8fafc;
+}
+.availability-manager-empty strong { display: block; font-size: .75rem; }
+.availability-manager-empty p { margin: 7px 0 0; color: #78899d; font-size: .68rem; line-height: 1.55; }
+
 .availability-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(235px, .9fr); gap: 18px; }
 .availability-calendar { min-width: 0; }
 

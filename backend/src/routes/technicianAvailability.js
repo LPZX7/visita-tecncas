@@ -37,9 +37,28 @@ function validateFutureDate(date, res) {
   return true;
 }
 
+async function findActiveTechnician(technicianId, res) {
+  const technician = await db.getUserById(technicianId);
+  if (!technician || technician.role !== 'tecnico' || !technician.ativo) {
+    res.status(404).json({ error: 'Técnico ativo não encontrado' });
+    return null;
+  }
+  return technician;
+}
+
 router.get('/team', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
     res.json(await db.getTeamTechnicianAvailability(todayInSaoPaulo()));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/team/:technicianId', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const technician = await findActiveTechnician(req.params.technicianId, res);
+    if (!technician) return;
+    res.json(await db.getTechnicianAvailability(technician.id));
   } catch (err) {
     next(err);
   }
@@ -53,6 +72,20 @@ router.get('/', requireRole('tecnico'), async (req, res, next) => {
   }
 });
 
+router.put('/team/:technicianId/:date', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const technician = await findActiveTechnician(req.params.technicianId, res);
+    if (!technician || !validateFutureDate(req.params.date, res)) return;
+    const availableUntil = String(req.body?.available_until || '');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(availableUntil)) {
+      return res.status(400).json({ error: 'Informe um horário válido no formato HH:MM' });
+    }
+    res.json(await db.setTechnicianAvailability(technician.id, req.params.date, availableUntil));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/:date', requireRole('tecnico'), async (req, res, next) => {
   try {
     if (!validateFutureDate(req.params.date, res)) return;
@@ -61,6 +94,17 @@ router.put('/:date', requireRole('tecnico'), async (req, res, next) => {
       return res.status(400).json({ error: 'Informe um horário válido no formato HH:MM' });
     }
     res.json(await db.setTechnicianAvailability(req.user.sub, req.params.date, availableUntil));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/team/:technicianId/:date', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const technician = await findActiveTechnician(req.params.technicianId, res);
+    if (!technician || !validateFutureDate(req.params.date, res)) return;
+    await db.deleteTechnicianAvailability(technician.id, req.params.date);
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

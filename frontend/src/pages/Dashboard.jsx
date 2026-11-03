@@ -1157,6 +1157,8 @@ export default function Dashboard() {
         </div>
       )}
 
+      {!loading && role === 'gestor' && <TechnicianAvailabilityCalendar manager />}
+
       {!loading && role === 'gestor' && (
         <div className="charts-grid charts-grid--split">
           <div className="chart-card">
