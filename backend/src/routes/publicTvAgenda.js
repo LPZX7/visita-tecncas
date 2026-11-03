@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const db = require('../lib/db');
 
 const router = express.Router();
+const MAX_PUBLIC_AVATAR_LENGTH = 400 * 1024;
 const publicLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 120,
@@ -38,6 +39,11 @@ function hasValidLinkKey(provided) {
     && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
+function safePublicAvatar(value) {
+  if (typeof value !== 'string' || value.length > MAX_PUBLIC_AVATAR_LENGTH) return null;
+  return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value) ? value : null;
+}
+
 router.use(publicLimiter);
 
 router.get('/', async (req, res, next) => {
@@ -51,7 +57,11 @@ router.get('/', async (req, res, next) => {
     const now = saoPauloNow();
     const untilDateTime = `${addDays(now.date, 7)}T00:00`;
     const visitas = await db.getTvAgendaVisits(now.dateTime, untilDateTime);
-    res.json({ visitas, atualizado_em: new Date().toISOString(), janela_dias: 7 });
+    const visitasPublicas = visitas.map((visita) => ({
+      ...visita,
+      technician_avatar: safePublicAvatar(visita.technician_avatar)
+    }));
+    res.json({ visitas: visitasPublicas, atualizado_em: new Date().toISOString(), janela_dias: 7 });
   } catch (err) {
     next(err);
   }

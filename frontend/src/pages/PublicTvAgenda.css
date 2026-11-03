@@ -43,19 +43,32 @@
 .tv-agenda__live-dot { width: 8px; height: 8px; border-radius: 50%; background: #42d39a; box-shadow: 0 0 12px rgba(66, 211, 154, .7); }
 
 .tv-agenda__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.tv-visit { display: grid; min-height: 132px; grid-template-columns: 104px minmax(0, 1fr) auto; align-items: center; gap: clamp(13px, 1.5vw, 22px); padding: 16px 19px; border: 1px solid rgba(151, 177, 208, .15); border-radius: 17px; background: linear-gradient(135deg, rgba(20, 41, 67, .98), rgba(13, 31, 53, .98)); box-shadow: 0 12px 25px rgba(0, 0, 0, .14); }
-.tv-visit__time { display: grid; align-content: center; gap: 8px; padding-right: 12px; border-right: 1px solid rgba(137, 163, 194, .18); }
-.tv-visit__time > span { color: #8ebcf0; font-size: .65rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.tv-visit__time > strong { color: #fff; font-size: clamp(1.75rem, 3vw, 2.55rem); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.05em; line-height: 1; }
-.tv-visit__details { display: grid; min-width: 0; gap: 12px; }
-.tv-visit__company-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-width: 0; }
-.tv-visit__company-row h2 { min-width: 0; margin: 0; overflow: hidden; color: #f1f6fd; font-size: clamp(.88rem, 1.35vw, 1.12rem); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.tv-visit__milvus { flex: 0 0 auto; padding: 5px 7px; border: 1px solid rgba(116, 155, 206, .24); border-radius: 7px; color: #a9c8ee; background: rgba(67, 107, 158, .13); font-size: .57rem; font-weight: 800; letter-spacing: .04em; }
-.tv-visit__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 14px; }
-.tv-visit__facts > div { display: grid; min-width: 0; gap: 3px; }
-.tv-visit__facts span { color: #8195ad; font-size: .54rem; font-weight: 800; letter-spacing: .12em; }
-.tv-visit__facts strong { display: -webkit-box; overflow: hidden; color: #d7e3f0; font-size: .75rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.tv-visit__confirmation { display: flex; max-width: 155px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(211, 164, 84, .2); border-radius: 999px; color: #d9b776; background: rgba(131, 91, 25, .12); font-size: .57rem; font-weight: 750; white-space: nowrap; }
+.tv-visit { display: grid; min-width: 0; gap: 16px; padding: clamp(17px, 1.8vw, 25px); border: 1px solid rgba(151, 177, 208, .17); border-radius: 20px; background: linear-gradient(145deg, rgba(23, 47, 76, .98), rgba(13, 31, 53, .98)); box-shadow: 0 15px 32px rgba(0, 0, 0, .18); }
+.tv-visit__header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(137, 163, 194, .17); }
+.tv-visit__schedule { display: flex; align-items: center; gap: clamp(15px, 2vw, 28px); }
+.tv-visit__date,
+.tv-visit__time { display: grid; gap: 6px; }
+.tv-visit__date > span,
+.tv-visit__time > span { color: #8ebcf0; font-size: .59rem; font-weight: 850; letter-spacing: .12em; }
+.tv-visit__date > strong { color: #edf5ff; font-size: clamp(.92rem, 1.35vw, 1.12rem); font-weight: 700; text-transform: capitalize; }
+.tv-visit__time > strong { color: #fff; font-size: clamp(1.75rem, 3vw, 2.45rem); font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.05em; line-height: .95; }
+.tv-visit__badges { display: grid; justify-items: end; gap: 8px; }
+.tv-visit__milvus { display: grid; justify-items: end; gap: 3px; padding: 6px 9px; border: 1px solid rgba(116, 155, 206, .24); border-radius: 9px; color: #a9c8ee; background: rgba(67, 107, 158, .13); }
+.tv-visit__milvus small { color: #829dbd; font-size: .5rem; font-weight: 850; letter-spacing: .11em; }
+.tv-visit__milvus strong { font-size: .72rem; font-weight: 850; letter-spacing: .04em; }
+.tv-visit__details { display: grid; min-width: 0; gap: 15px; }
+.tv-visit__technician { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.tv-visit__avatar { display: grid; width: clamp(62px, 5.5vw, 82px); height: clamp(62px, 5.5vw, 82px); flex: 0 0 auto; overflow: hidden; place-items: center; border: 2px solid rgba(139, 187, 242, .4); border-radius: 50%; color: #d8eaff; background: linear-gradient(135deg, #326194, #183958); box-shadow: 0 0 0 5px rgba(111, 160, 216, .08); font-size: 1.05rem; font-weight: 850; }
+.tv-visit__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.tv-visit__technician-copy { display: grid; min-width: 0; gap: 4px; }
+.tv-visit__label { color: #83a8d4; font-size: .55rem; font-weight: 850; letter-spacing: .12em; }
+.tv-visit__technician-copy strong { overflow: hidden; color: #f4f8ff; font-size: clamp(.98rem, 1.45vw, 1.23rem); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.tv-visit__technician-copy small,
+.tv-visit__info small { color: #8fa4bd; font-size: .65rem; line-height: 1.4; }
+.tv-visit__info-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tv-visit__info { display: grid; min-width: 0; align-content: start; gap: 5px; padding: 12px 13px; border: 1px solid rgba(151, 177, 208, .12); border-radius: 12px; background: rgba(255, 255, 255, .035); }
+.tv-visit__info strong { display: -webkit-box; overflow: hidden; color: #e3edf9; font-size: .83rem; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.tv-visit__confirmation { display: flex; max-width: 180px; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(211, 164, 84, .2); border-radius: 999px; color: #d9b776; background: rgba(131, 91, 25, .12); font-size: .55rem; font-weight: 750; white-space: nowrap; }
 .tv-visit__confirmation span { font-size: .8rem; }
 .tv-visit__confirmation.is-confirmed { border-color: rgba(76, 201, 144, .2); color: #72d5a8; background: rgba(26, 113, 77, .14); }
 
@@ -92,16 +105,19 @@
   .tv-agenda__summary > div { width: 100%; }
   .tv-agenda__summary > strong { font-size: .73rem; }
   .tv-agenda__summary > small { font-size: .61rem; }
-  .tv-visit { grid-template-columns: 68px minmax(0, 1fr); gap: 11px; padding: 13px; }
-  .tv-visit__time { gap: 6px; padding-right: 8px; }
-  .tv-visit__time > span { font-size: .55rem; letter-spacing: .06em; }
-  .tv-visit__time > strong { font-size: 1.6rem; }
-  .tv-visit__details { gap: 9px; }
-  .tv-visit__company-row { align-items: flex-start; flex-direction: column; }
-  .tv-visit__company-row h2 { max-width: 100%; font-size: .86rem; }
-  .tv-visit__facts { grid-template-columns: minmax(0, 1fr); gap: 7px; }
-  .tv-visit__facts strong { font-size: .7rem; }
-  .tv-visit__confirmation { grid-column: 2; justify-self: start; margin-top: -3px; font-size: .53rem; }
+  .tv-visit { gap: 13px; padding: 14px; border-radius: 16px; }
+  .tv-visit__header { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .tv-visit__schedule { width: 100%; justify-content: space-between; }
+  .tv-visit__badges { width: 100%; align-items: flex-start; justify-items: start; }
+  .tv-visit__date > span,
+  .tv-visit__time > span { font-size: .53rem; }
+  .tv-visit__date > strong { font-size: .88rem; }
+  .tv-visit__time > strong { font-size: 1.8rem; }
+  .tv-visit__avatar { width: 60px; height: 60px; }
+  .tv-visit__technician-copy small,
+  .tv-visit__info small { font-size: .6rem; }
+  .tv-visit__info-grid { grid-template-columns: minmax(0, 1fr); }
+  .tv-visit__info { padding: 10px 11px; }
   .tv-agenda__footer { flex-direction: column; gap: 4px; font-size: .58rem; }
 }
 

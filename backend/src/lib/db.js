@@ -626,6 +626,7 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
   const { rows } = await pool.query(
     `SELECT requests.milvus_codigo, requests.agendado_para, requests.confirmacao_tecnico,
             COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+            users.avatar AS technician_avatar,
             COALESCE(NULLIF(empresas.nome_fantasia, ''), empresas.razao_social) AS company_name,
             unidades.tipo AS unit_type, unidades.nome AS unit_name,
             unidades.cidade, unidades.estado
@@ -648,6 +649,7 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
     milvus_codigo: row.milvus_codigo,
     agendado_para: row.agendado_para,
     technician_name: row.technician_name || 'Técnico não definido',
+    technician_avatar: row.technician_avatar || null,
     company_name: row.company_name || 'Empresa não definida',
     local: [
       [row.unit_type, row.unit_name].filter(Boolean).join(' — '),

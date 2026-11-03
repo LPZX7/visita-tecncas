@@ -29,6 +29,10 @@ function visitTime(value) {
   return String(value || '').match(/[T ](\d{2}:\d{2})/)?.[1] || '--:--';
 }
 
+function initialsFor(value) {
+  return String(value || '?').split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
 function currentTimeLabel() {
   return new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
@@ -171,23 +175,52 @@ export default function PublicTvAgenda() {
           <section className="tv-agenda__grid" aria-label="Próximas visitas">
             {visits.map((visit) => (
               <article className="tv-visit" key={`${visit.milvus_codigo}-${visit.agendado_para}`}>
-                <div className="tv-visit__time">
-                  <span>{dateLabel(visit.agendado_para)}</span>
-                  <strong>{visitTime(visit.agendado_para)}</strong>
+                <div className="tv-visit__header">
+                  <div className="tv-visit__schedule">
+                    <div className="tv-visit__date">
+                      <span>DIA DA VISITA</span>
+                      <strong>{dateLabel(visit.agendado_para)}</strong>
+                    </div>
+                    <div className="tv-visit__time">
+                      <span>HORÁRIO</span>
+                      <strong>{visitTime(visit.agendado_para)}</strong>
+                    </div>
+                  </div>
+                  <div className="tv-visit__badges">
+                    <span className="tv-visit__milvus"><small>CHAMADO MILVUS</small><strong>#{visit.milvus_codigo}</strong></span>
+                    <span className={`tv-visit__confirmation ${visit.confirmacao === 'Confirmada' ? 'is-confirmed' : ''}`}>
+                      <span aria-hidden="true">{visit.confirmacao === 'Confirmada' ? '✓' : '◷'}</span>
+                      {visit.confirmacao || 'Aguardando confirmação'}
+                    </span>
+                  </div>
                 </div>
                 <div className="tv-visit__details">
-                  <div className="tv-visit__company-row">
-                    <h2>{visit.company_name}</h2>
-                    <span className="tv-visit__milvus">MILVUS #{visit.milvus_codigo}</span>
+                  <section className="tv-visit__technician">
+                    <div className="tv-visit__avatar">
+                      {visit.technician_avatar ? (
+                        <img src={visit.technician_avatar} alt={`Foto de ${visit.technician_name}`} />
+                      ) : (
+                        <span aria-hidden="true">{initialsFor(visit.technician_name)}</span>
+                      )}
+                    </div>
+                    <div className="tv-visit__technician-copy">
+                      <span className="tv-visit__label">TÉCNICO MIRONTEC</span>
+                      <strong>{visit.technician_name}</strong>
+                      <small>Profissional responsável por realizar o atendimento.</small>
+                    </div>
+                  </section>
+                  <div className="tv-visit__info-grid">
+                    <section className="tv-visit__info">
+                      <span className="tv-visit__label">EMPRESA ATENDIDA</span>
+                      <strong>{visit.company_name}</strong>
+                      <small>Empresa vinculada a este chamado.</small>
+                    </section>
+                    <section className="tv-visit__info">
+                      <span className="tv-visit__label">LOCAL DA VISITA</span>
+                      <strong>{visit.local}</strong>
+                      <small>Unidade e cidade cadastradas no sistema.</small>
+                    </section>
                   </div>
-                  <div className="tv-visit__facts">
-                    <div><span>TÉCNICO</span><strong>{visit.technician_name}</strong></div>
-                    <div><span>LOCAL</span><strong>{visit.local}</strong></div>
-                  </div>
-                </div>
-                <div className={`tv-visit__confirmation ${visit.confirmacao === 'Confirmada' ? 'is-confirmed' : ''}`}>
-                  <span aria-hidden="true">{visit.confirmacao === 'Confirmada' ? '✓' : '◷'}</span>
-                  {visit.confirmacao || 'Aguardando confirmação'}
                 </div>
               </article>
             ))}
