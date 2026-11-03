@@ -58,6 +58,20 @@ function todayInSaoPaulo() {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+function currentDateTimeInSaoPaulo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+function isPastSchedule(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')
+    && value < currentDateTimeInSaoPaulo();
+}
+
 export default function Requests() {
   const user = getUser();
   const navigate = useNavigate();
@@ -265,7 +279,8 @@ export default function Requests() {
     assigned_analyst: req.assigned_analyst || '',
     assigned_technician: req.assigned_technician || '',
     agendado_para: req.agendado_para || '',
-    endereco: req.endereco || ''
+    endereco: req.endereco || '',
+    visita_realizada: false
   };
 
   const setDraft = (req, patch) => {
@@ -275,9 +290,16 @@ export default function Requests() {
   const saveManaged = async (req) => {
     const draft = draftFor(req);
     const hasVisitTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(draft.agendado_para || '');
-    const status = draft.status === 'Aberta' && draft.assigned_technician && hasVisitTime
-      ? 'Agendada'
-      : draft.status;
+    const requiresPastVisitConfirmation = hasVisitTime
+      && isPastSchedule(draft.agendado_para)
+      && !['Concluída', 'Cancelada'].includes(req.status);
+    if (requiresPastVisitConfirmation && !draft.visita_realizada) {
+      setError('A data e o horário já passaram. Confirme se a visita já foi realizada ou escolha um horário futuro.');
+      return;
+    }
+    const status = draft.visita_realizada
+      ? 'Concluída'
+      : (draft.status === 'Aberta' && draft.assigned_technician && hasVisitTime ? 'Agendada' : draft.status);
     setError('');
     setSuccess('');
     try {
@@ -286,6 +308,7 @@ export default function Requests() {
         assigned_analyst: draft.assigned_analyst || null,
         assigned_technician: draft.assigned_technician || null,
         agendado_para: draft.agendado_para || null,
+        visita_realizada: Boolean(draft.visita_realizada),
         endereco: draft.endereco || '',
         sincronizar_responsaveis_milvus: true
       });
@@ -294,7 +317,9 @@ export default function Requests() {
         delete next[req.id];
         return next;
       });
-      setSuccess('Chamado e agenda atualizados.');
+      setSuccess(draft.visita_realizada
+        ? 'Visita registrada como realizada e chamado concluído.'
+        : 'Chamado e agenda atualizados.');
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível salvar o agendamento.');
@@ -570,6 +595,9 @@ export default function Requests() {
             const latestBudget = latestBudgetFor(req.id);
             const scheduleDay = scheduledDate(draft.agendado_para);
             const scheduleTime = scheduledTime(draft.agendado_para);
+            const scheduleIsPast = isPastSchedule(draft.agendado_para);
+            const requiresPastVisitConfirmation = scheduleIsPast
+              && !['Concluída', 'Cancelada'].includes(req.status);
             const selectedTechnicianUnavailable = technicianUnavailability.some((entry) => (
               entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
             ));
@@ -623,7 +651,7 @@ export default function Requests() {
                               className="form-input"
                               type="date"
                               value={scheduleDay}
-                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(e.target.value, scheduleTime) })}
+                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(e.target.value, scheduleTime), visita_realizada: false })}
                             />
                           </label>
                           <label>
@@ -632,9 +660,7 @@ export default function Requests() {
                               className="form-input"
                               type="time"
                               value={scheduleTime}
-                              min="07:00"
-                              max="15:00"
-                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(scheduleDay, e.target.value) })}
+                              onChange={(e) => setDraft(req, { agendado_para: combineSchedule(scheduleDay, e.target.value), visita_realizada: false })}
                             />
                           </label>
                         </div>
@@ -648,8 +674,10 @@ export default function Requests() {
                           />
                         </label>
                         {draft.assigned_technician && scheduleDay && (
-                          <span className={`request-availability-note ${scheduleTimeFitsAvailability ? 'is-available' : 'is-unset'}`}>
-                            {selectedTechnicianUnavailable
+                          <span className={`request-availability-note ${scheduleIsPast ? 'is-unset' : scheduleTimeFitsAvailability ? 'is-available' : 'is-unset'}`}>
+                            {scheduleIsPast
+                              ? 'Esse dia e horário já passaram. Se a visita foi realizada, confirme abaixo; caso contrário, escolha um horário futuro.'
+                              : selectedTechnicianUnavailable
                               ? 'O técnico marcou esse dia como indisponível.'
                               : !scheduleTime
                                 ? 'Dia livre para o técnico. Informe um horário entre 07:00 e 15:00.'
@@ -657,6 +685,16 @@ export default function Requests() {
                                   ? `Técnico livre nesse dia; horário dentro do expediente (07:00–15:00).`
                                   : `Horário ${scheduleTime} fora do expediente (07:00–15:00).`}
                           </span>
+                        )}
+                        {requiresPastVisitConfirmation && (
+                          <label className="request-past-visit-confirm">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(draft.visita_realizada)}
+                              onChange={(e) => setDraft(req, { visita_realizada: e.target.checked })}
+                            />
+                            <span>Sim, a visita já foi realizada pelo técnico. Registrar o chamado como concluído.</span>
+                          </label>
                         )}
                         {req.status === 'Agendada' && (
                           <span className={`request-availability-note ${req.confirmacao_tecnico === 'confirmada' ? 'is-available' : 'is-unset'}`}>
@@ -666,7 +704,7 @@ export default function Requests() {
                         <select className="form-select" value={draft.status} onChange={(e) => setDraft(req, { status: e.target.value })}>
                           {STAFF_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
                         </select>
-                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)}>Salvar e sincronizar</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => saveManaged(req)} disabled={requiresPastVisitConfirmation && !draft.visita_realizada}>Salvar e sincronizar</button>
                         {isGestor && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(req)}>Excluir</button>}
                       </div>
                     </td>
@@ -675,7 +713,7 @@ export default function Requests() {
                     <td>
                       {!isMine ? (
                         <span>—</span>
-                      ) : req.hora_checkout ? (
+                      ) : req.status === 'Concluída' || req.hora_checkout ? (
                         <span className="badge badge-concluida">Visita concluída</span>
                       ) : req.hora_checkin ? (
                         <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Finalizar atendimento</button>

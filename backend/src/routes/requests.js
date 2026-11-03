@@ -296,6 +296,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       custo_adicional,
       observacao_final,
       confirmacao_tecnico,
+      visita_realizada,
       sincronizar_responsaveis_milvus
     } = req.body;
     const patch = {};
@@ -311,11 +312,21 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const jaTemAceite = await db.getVisitaAceiteByRequestId(request.id);
-    if (jaTemAceite && (relatorio_visita !== undefined || assigned_analyst !== undefined || assigned_technician !== undefined || agendado_para !== undefined || endereco !== undefined)) {
+    const dadosProtegidosAlterados = (
+      (relatorio_visita !== undefined && relatorio_visita !== request.relatorio_visita)
+      || (assigned_analyst !== undefined && (assigned_analyst || null) !== (request.assigned_analyst || null))
+      || (assigned_technician !== undefined && (assigned_technician || null) !== (request.assigned_technician || null))
+      || (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
+      || (endereco !== undefined && String(endereco || '').trim() !== String(request.endereco || '').trim())
+    );
+    if (jaTemAceite && dadosProtegidosAlterados) {
       return res.status(409).json({ error: 'Esta visita já tem um termo de conclusão assinado pelo cliente — os dados do atendimento não podem ser alterados diretamente. Fale com o desenvolvedor do sistema se precisar corrigir algo.' });
     }
 
     if (req.user.role === 'tecnico') {
+      if (visita_realizada !== undefined) {
+        return res.status(403).json({ error: 'Somente gestor ou analista pode registrar uma visita passada como realizada.' });
+      }
       if (request.assigned_technician !== req.user.sub) {
         return res.status(403).json({ error: 'Você não está atribuído a este chamado' });
       }
@@ -390,6 +401,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         }
       }
     } else {
+      if (visita_realizada !== undefined && typeof visita_realizada !== 'boolean') {
+        return res.status(400).json({ error: 'Confirmação de visita realizada inválida.' });
+      }
       if (status !== undefined) {
         if (!STAFF_STATUSES.includes(status)) {
           return res.status(400).json({ error: 'Status inválido' });
@@ -437,9 +451,34 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const effectiveTechnicianId = 'assigned_technician' in patch ? patch.assigned_technician : request.assigned_technician;
     const effectiveScheduledAt = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
     const effectiveStatus = patch.status || request.status;
+    const visitaConfirmadaPelaEquipe = req.user.role !== 'tecnico' && visita_realizada === true;
+    if (visitaConfirmadaPelaEquipe) {
+      if (request.status === 'Cancelada') {
+        return res.status(409).json({ error: 'Um chamado cancelado não pode ser registrado como visita realizada.' });
+      }
+      if (effectiveStatus !== 'Concluída') {
+        return res.status(400).json({ error: 'Confirme a visita como realizada e marque o chamado como concluído.' });
+      }
+      const slot = parseScheduledSlot(effectiveScheduledAt);
+      if (!slot || `${slot.date}T${slot.time}` >= currentDateTimeInSaoPaulo()) {
+        return res.status(400).json({ error: 'Só é possível confirmar como realizada uma data e horário que já passaram.' });
+      }
+      if (!effectiveTechnicianId) {
+        return res.status(400).json({ error: 'Selecione o técnico que realizou a visita.' });
+      }
+      const destination = 'endereco' in patch ? patch.endereco : request.endereco;
+      if (!String(destination || '').trim()) {
+        return res.status(400).json({ error: 'Informe o endereço de destino da visita.' });
+      }
+      patch.relatorio_visita = request.relatorio_visita
+        || `Registro administrativo: ${req.user.role} confirmou que a visita foi realizada em ${slot.date} às ${slot.time}. Relatório técnico não informado.`;
+      patch.observacao_final = request.observacao_final
+        || `Visita confirmada como realizada por ${req.user.name || req.user.role}.`;
+    }
     const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
     const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
-    const shouldValidateSchedule = technicianChanged || scheduleChanged || patch.status === 'Agendada';
+    const shouldValidateSchedule = !visitaConfirmadaPelaEquipe
+      && (technicianChanged || scheduleChanged || patch.status === 'Agendada');
 
     if (shouldValidateSchedule) {
       if (!effectiveScheduledAt) {
@@ -505,10 +544,13 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     if (patch.status) {
       const company = await db.getCompanyById(updated.empresa_id);
-      const signatureUser = updated.assigned_technician
-        ? await db.getUserById(updated.assigned_technician)
-        : (updated.assigned_analyst ? await db.getUserById(updated.assigned_analyst) : await db.getUserById(req.user.sub));
-      const isTechnicalCompletion = patch.status === 'Concluída' && Boolean(patch.hora_checkout);
+      const signatureUser = visitaConfirmadaPelaEquipe
+        ? await db.getUserById(req.user.sub)
+        : updated.assigned_technician
+          ? await db.getUserById(updated.assigned_technician)
+          : (updated.assigned_analyst ? await db.getUserById(updated.assigned_analyst) : await db.getUserById(req.user.sub));
+      const isTechnicalCompletion = patch.status === 'Concluída'
+        && (Boolean(patch.hora_checkout) || visitaConfirmadaPelaEquipe);
       const statusEmail = updated.solicitante_email || company?.email;
       if (statusEmail && !isTechnicalCompletion) {
         sendMail({
@@ -536,7 +578,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         const unit = approvedContext.budget?.unidade_id
           ? await db.getUnitById(approvedContext.budget.unidade_id)
           : null;
-        const approvedParts = approvedContext.parts;
+        const approvedParts = visitaConfirmadaPelaEquipe ? [] : approvedContext.parts;
         const emailDestino = updated.solicitante_email || company?.email;
         const completionEmail = buildCompletionEmail({
           request: updated,
@@ -545,22 +587,29 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           equipment,
           technician,
           approvedParts,
-          portalUrl: `${FRONTEND_URL}/requests`
+          portalUrl: `${FRONTEND_URL}/requests`,
+          administrativeConfirmation: visitaConfirmadaPelaEquipe
         });
 
         await Promise.all([
-          syncRequestUpdateToMilvus(updated, { tipo: 'concluida', approvedParts, technician: technician?.nome }),
+          syncRequestUpdateToMilvus(updated, {
+            tipo: visitaConfirmadaPelaEquipe ? 'concluida_administrativamente' : 'concluida',
+            approvedParts,
+            technician: technician?.nome
+          }),
           emailDestino
-            ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html, signatureUser: technician || signatureUser })
+            ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html, signatureUser: visitaConfirmadaPelaEquipe ? signatureUser : technician || signatureUser })
             : Promise.resolve()
         ]);
 
         await db.logAudit({
           user: req.user,
-          acao: 'visita_finalizada',
+          acao: visitaConfirmadaPelaEquipe ? 'visita_registrada_como_realizada' : 'visita_finalizada',
           entidade: 'request',
           entidade_id: updated.id,
-          detalhes: `Chamado #${updated.numero} finalizado${updated.teve_adicional ? ` com adicional de R$ ${Number(updated.custo_adicional).toFixed(2)}` : ' sem custo adicional'}${emailDestino ? ` — resumo enviado ao contato do chamado (${emailDestino})` : ' — sem email de destinatário cadastrado'}`
+          detalhes: visitaConfirmadaPelaEquipe
+            ? `Chamado #${updated.numero}: visita confirmada como realizada administrativamente por ${req.user.name || req.user.role}, para ${effectiveScheduledAt}.`
+            : `Chamado #${updated.numero} finalizado${updated.teve_adicional ? ` com adicional de R$ ${Number(updated.custo_adicional).toFixed(2)}` : ' sem custo adicional'}${emailDestino ? ` — resumo enviado ao contato do chamado (${emailDestino})` : ' — sem email de destinatário cadastrado'}`
         });
       }
     }

@@ -332,11 +332,15 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
         descricao: `Check-in realizado${technician ? ` pelo técnico ${technician}` : ''} em ${new Date(request.hora_checkin).toLocaleString('pt-BR')}.`
       });
       console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${ticketCodigo}`);
-    } else if (tipo === 'concluida') {
+    } else if (tipo === 'concluida' || tipo === 'concluida_administrativamente') {
       const resumo = buildCompletionSummary({ request, approvedParts, technician });
+      const completedAt = request.hora_checkout || request.concluded_at || new Date().toISOString();
+      const completionLabel = tipo === 'concluida_administrativamente'
+        ? `Visita confirmada como realizada pelo gestor/analista em ${new Date(completedAt).toLocaleString('pt-BR')}.`
+        : `Check-out em ${new Date(completedAt).toLocaleString('pt-BR')}.`;
       await criarAcompanhamento({
         ticketCodigo,
-        descricao: `Check-out em ${new Date(request.hora_checkout).toLocaleString('pt-BR')}.\n\n${resumo}`
+        descricao: `${completionLabel}\n\n${resumo}`
       });
       await finalizarChamado({ ticketCodigo, servicoRealizado: resumo });
       console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${ticketCodigo}`);

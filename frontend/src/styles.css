@@ -2777,6 +2777,18 @@ a:hover {
 
 .request-availability-note.is-available { color: #176b3c; background: #e8f7ed; }
 .request-availability-note.is-unset { color: #94621b; background: #fff6e5; }
+.request-past-visit-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: #714b0b;
+  background: #fff6e5;
+  font-size: .68rem;
+  line-height: 1.4;
+}
+.request-past-visit-confirm input { flex: 0 0 auto; margin: 1px 0 0; }
 
 .request-tech-action-stack,
 .request-tech-visit-response {

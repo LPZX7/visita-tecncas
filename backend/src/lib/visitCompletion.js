@@ -59,7 +59,7 @@ function buildCompletionSummary({ request, approvedParts = [], technician, inclu
   ]);
 }
 
-function buildCompletionEmail({ request, company, unit, equipment, technician, approvedParts = [], portalUrl }) {
+function buildCompletionEmail({ request, company, unit, equipment, technician, approvedParts = [], portalUrl, administrativeConfirmation = false }) {
   const summary = buildCompletionSummary({ request, approvedParts, technician: technician?.nome });
   const destination = unit ? `${unit.tipo} — ${unit.nome}` : company?.razao_social;
   const equipmentLabel = equipment ? `${equipment.modelo} — Série ${equipment.numero_serie}` : 'Não informado';
@@ -67,14 +67,18 @@ function buildCompletionEmail({ request, company, unit, equipment, technician, a
   const text = [
     'Olá,',
     '',
-    `A visita técnica do chamado #${request.numero} foi concluída.`,
+    administrativeConfirmation
+      ? `A equipe confirmou administrativamente que a visita técnica do chamado #${request.numero} foi realizada.`
+      : `A visita técnica do chamado #${request.numero} foi concluída.`,
     `Empresa/unidade: ${destination || 'Não informada'}`,
     `Equipamento: ${equipmentLabel}`,
     `Técnico: ${technician?.nome || 'Não informado'}`,
     '',
     summary,
     '',
-    'Caso exista valor adicional, ele foi registrado para conferência da equipe.',
+    administrativeConfirmation
+      ? 'O relatório técnico não foi informado no registro administrativo. A equipe pode complementar os detalhes pelo portal.'
+      : 'Caso exista valor adicional, ele foi registrado para conferência da equipe.',
     `Acompanhe o atendimento: ${portalUrl}`
   ].join('\n');
 
@@ -89,14 +93,14 @@ function buildCompletionEmail({ request, company, unit, equipment, technician, a
         <p style="margin:8px 0 0;color:#cbd5e1;">Chamado #${escapeHtml(request.numero)}</p>
       </div>
       <div style="padding:28px 30px;">
-        <p style="margin:0 0 20px;color:#475569;line-height:1.6;">O atendimento foi finalizado pelo técnico. Confira abaixo o resumo registrado no sistema e no Milvus.</p>
+        <p style="margin:0 0 20px;color:#475569;line-height:1.6;">${administrativeConfirmation ? 'A equipe confirmou administrativamente que a visita foi realizada. Confira o registro abaixo.' : 'O atendimento foi finalizado pelo técnico. Confira abaixo o resumo registrado no sistema e no Milvus.'}</p>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin-bottom:20px;line-height:1.6;color:#334155;">
           <strong>${escapeHtml(destination || 'Empresa não informada')}</strong><br />
           Equipamento: ${escapeHtml(equipmentLabel)}<br />
           Técnico: ${escapeHtml(technician?.nome || 'Não informado')}
         </div>
         <div style="padding:18px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;color:#334155;font-size:14px;line-height:1.65;">${summaryHtml}</div>
-        <p style="margin:20px 0;color:#64748b;font-size:13px;line-height:1.5;">Caso exista valor adicional, ele foi registrado para conferência da equipe.</p>
+        <p style="margin:20px 0;color:#64748b;font-size:13px;line-height:1.5;">${administrativeConfirmation ? 'O relatório técnico pode ser complementado pela equipe no portal.' : 'Caso exista valor adicional, ele foi registrado para conferência da equipe.'}</p>
         <div style="text-align:center;margin-top:24px;"><a href="${escapeHtml(portalUrl)}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:13px 26px;border-radius:10px;font-weight:600;display:inline-block;">Acompanhar atendimento</a></div>
       </div>
     </div>
