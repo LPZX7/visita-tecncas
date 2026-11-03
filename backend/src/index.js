@@ -24,6 +24,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5183,http:/
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({
+  // The public TV agenda is intentionally embedded by Milvus. Keep framing
+  // protections on every other page and allow only Milvus to frame this route.
+  xFrameOptions: false,
+  crossOriginResourcePolicy: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -32,10 +36,22 @@ app.use(helmet({
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'", 'https://viacep.com.br'],
-      frameSrc: ['https://www.google.com']
+      frameSrc: ['https://www.google.com'],
+      frameAncestors: [
+        (req) => req.path === '/agenda/tv' || req.path === '/agenda/tv/'
+          ? "'self' https://app.milvus.com.br"
+          : "'self'"
+      ]
     }
   }
 }));
+app.use((req, res, next) => {
+  if (req.path !== '/agenda/tv' && req.path !== '/agenda/tv/') {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  }
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (req, res) => res.json({ ok: true }));
