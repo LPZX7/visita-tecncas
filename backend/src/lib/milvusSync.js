@@ -126,6 +126,13 @@ function normalizeMilvusClient(client) {
   };
 }
 
+function formatPortalSchedule(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, time] = match;
+  return `${day}/${month}/${year} às ${time}`;
+}
+
 async function syncMilvusClientes() {
   const clientes = await listarClientes();
   const companies = await db.getCompanies();
@@ -281,6 +288,25 @@ async function syncRequestAssigneeToMilvus(request, { analyst, technician } = {}
   }
 }
 
+async function syncRequestScheduleToMilvus(request, { actor } = {}) {
+  if (!request?.milvus_codigo || !process.env.MILVUS_API_TOKEN || !request.agendado_para) return false;
+  try {
+    const start = formatPortalSchedule(request.agendado_para) || request.agendado_para;
+    const end = formatPortalSchedule(request.agendado_ate);
+    const technician = request.assigned_technician ? await db.getUserById(request.assigned_technician) : null;
+    const lines = [`Visita técnica agendada pelo portal para ${start}${end ? ` até ${end}` : ''}.`];
+    if (technician?.nome) lines.push(`Técnico responsável: ${technician.nome}.`);
+    if (request.endereco) lines.push(`Endereço: ${request.endereco}.`);
+    if (actor) lines.push(`Registro atualizado por ${actor}.`);
+    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n') });
+    console.log(`[milvus] Agenda do chamado #${request.numero} sincronizada com o ticket #${request.milvus_codigo}`);
+    return true;
+  } catch (error) {
+    console.error(`[milvus] Falha ao sincronizar a agenda do chamado #${request.numero}:`, error.message);
+    return false;
+  }
+}
+
 async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
   if (!process.env.MILVUS_API_TOKEN) return;
 
@@ -313,18 +339,17 @@ async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items
   }
 }
 
-// Depois que a visita técnica já foi aprovada e criada no Milvus (budget com
-// milvus_codigo), mantém aquele mesmo ticket atualizado conforme o
-// atendimento avança — check-in, check-out e conclusão. Não faz nada se o
-// chamado ainda não tiver orçamento aprovado com ticket no Milvus.
+// Mantém o ticket vinculado ao chamado atualizado conforme o atendimento
+// avança. O orçamento aprovado fornece peças/custos, mas não é necessário
+// para registrar a conclusão da visita no ticket do Milvus.
 async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedParts = [] }) {
-  if (!process.env.MILVUS_API_TOKEN) return;
+  if (!process.env.MILVUS_API_TOKEN) return false;
 
   try {
     const budgets = await db.getBudgets();
     const aprovado = budgets.find((b) => b.request_id === request.id && b.status === 'Aprovado');
     const ticketCodigo = request.milvus_codigo || aprovado?.milvus_codigo;
-    if (!aprovado || !ticketCodigo) return;
+    if (!ticketCodigo) return false;
 
     if (tipo === 'checkin') {
       await criarAcompanhamento({
@@ -332,6 +357,7 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
         descricao: `Check-in realizado${technician ? ` pelo técnico ${technician}` : ''} em ${new Date(request.hora_checkin).toLocaleString('pt-BR')}.`
       });
       console.log(`[milvus] Check-in do chamado #${request.numero} sincronizado com o ticket #${ticketCodigo}`);
+      return true;
     } else if (tipo === 'concluida' || tipo === 'concluida_administrativamente') {
       const resumo = buildCompletionSummary({ request, approvedParts, technician });
       const completedAt = request.hora_checkout || request.concluded_at || new Date().toISOString();
@@ -344,9 +370,12 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
       });
       await finalizarChamado({ ticketCodigo, servicoRealizado: resumo });
       console.log(`[milvus] Conclusão do chamado #${request.numero} sincronizada com o ticket #${ticketCodigo}`);
+      return true;
     }
+    return false;
   } catch (err) {
     console.error(`[milvus] Falha ao sincronizar atualização do chamado #${request.numero}:`, err.message);
+    return false;
   }
 }
 
@@ -355,6 +384,7 @@ module.exports = {
   syncMilvusClientes,
   ensureRequestInMilvus,
   syncRequestAssigneeToMilvus,
+  syncRequestScheduleToMilvus,
   pushVisitaTecnicaAprovadaToMilvus,
   syncRequestUpdateToMilvus
 };

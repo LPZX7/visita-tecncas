@@ -23,6 +23,20 @@ function formatApprovedParts(items = []) {
   return items.map(partWithQuantity).join('\n');
 }
 
+function formatScheduledAt(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, time] = match;
+  return `${day}/${month}/${year} às ${time}`;
+}
+
+function scheduledWindow(request) {
+  const start = formatScheduledAt(request?.agendado_para);
+  if (!start) return null;
+  const end = formatScheduledAt(request?.agendado_ate);
+  return end ? `${start} até ${end}` : start;
+}
+
 function buildAutomaticServiceReport(approvedParts = []) {
   if (!approvedParts.length) {
     return 'Atendimento concluído no local.';
@@ -50,6 +64,7 @@ function buildCompletionSummary({ request, approvedParts = [], technician, inclu
 
   return composeSections([
     section('Problema identificado', problem),
+    scheduledWindow(request) ? section('Horário agendado', scheduledWindow(request)) : '',
     section('Serviço realizado', service),
     section(approvedParts.length === 1 ? 'Peça utilizada' : 'Peças utilizadas', formatApprovedParts(approvedParts)),
     section('Item ou custo adicional', additionalLines),

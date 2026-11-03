@@ -41,13 +41,14 @@ function combineSchedule(date, time) {
   return time ? `${date}T${time}` : date;
 }
 
-function formatScheduledDateTime(value) {
+function formatScheduledDateTime(value, endValue) {
   if (!value) return 'Não agendado';
   const date = scheduledDate(value);
   const [, year, month, day] = date.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
   if (!year) return formatDateTime(value);
   const time = scheduledTime(value);
-  return `${day}/${month}/${year}${time ? ` às ${time}` : ''}`;
+  const endTime = scheduledTime(endValue);
+  return `${day}/${month}/${year}${time ? ` às ${time}${endTime ? `–${endTime}` : ''}` : ''}`;
 }
 
 function todayInSaoPaulo() {
@@ -303,7 +304,7 @@ export default function Requests() {
     setError('');
     setSuccess('');
     try {
-      await api.patch(`/requests/${req.id}`, {
+      const response = await api.patch(`/requests/${req.id}`, {
         status,
         assigned_analyst: draft.assigned_analyst || null,
         assigned_technician: draft.assigned_technician || null,
@@ -317,9 +318,16 @@ export default function Requests() {
         delete next[req.id];
         return next;
       });
-      setSuccess(draft.visita_realizada
-        ? 'Visita registrada como realizada e chamado concluído.'
-        : 'Chamado e agenda atualizados.');
+      const milvusSynced = draft.visita_realizada
+        ? response.data.milvus_visita_sincronizada
+        : response.data.agenda_milvus_sincronizada;
+      if (milvusSynced === false) {
+        setError('A atualização foi salva na agenda do site/TV, mas não foi enviada ao Milvus. Confira a integração.');
+      } else {
+        setSuccess(draft.visita_realizada
+          ? 'Visita registrada como realizada e chamado concluído.'
+          : 'Chamado e agenda atualizados.');
+      }
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível salvar o agendamento.');
@@ -392,9 +400,13 @@ export default function Requests() {
     setRescheduleSaving(true);
     try {
       const agendado_para = combineSchedule(rescheduleDay, rescheduleTime);
-      await api.patch(`/requests/${rescheduleRequest.id}`, { agendado_para });
+      const response = await api.patch(`/requests/${rescheduleRequest.id}`, { agendado_para });
       setRescheduleRequest(null);
-      setSuccess(`Visita remarcada para ${formatScheduledDateTime(agendado_para)}.`);
+      if (response.data.agenda_milvus_sincronizada === false) {
+        setError('A remarcação foi salva na agenda do site/TV, mas não foi enviada ao Milvus. Confira a integração.');
+      } else {
+        setSuccess(`Visita remarcada para ${formatScheduledDateTime(agendado_para)}.`);
+      }
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível remarcar a visita.');
@@ -786,7 +798,7 @@ export default function Requests() {
                           </div>
                           <div>
                             <strong>Agendado para</strong>
-                            <p>{formatScheduledDateTime(req.agendado_para)}</p>
+                            <p>{formatScheduledDateTime(req.agendado_para, req.agendado_ate)}</p>
                           </div>
                           {req.status === 'Agendada' && (
                             <div>
@@ -1001,7 +1013,7 @@ export default function Requests() {
             <div className="checkout-modal__body">
               <div className="checkout-auto-summary">
                 <strong>Agendamento atual</strong>
-                <p>{formatScheduledDateTime(rescheduleRequest.agendado_para)} · {rescheduleRequest.endereco || 'Endereço não informado'}</p>
+                <p>{formatScheduledDateTime(rescheduleRequest.agendado_para, rescheduleRequest.agendado_ate)} · {rescheduleRequest.endereco || 'Endereço não informado'}</p>
               </div>
               <div className="request-schedule-inputs request-reschedule-inputs">
                 <label className="form-field">

@@ -6,7 +6,7 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
-const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { validateVisitExecution } = require('../lib/visitWorkflow');
@@ -289,6 +289,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       assigned_analyst,
       assigned_technician,
       agendado_para,
+      agendado_ate,
       endereco,
       relatorio_visita,
       teve_adicional,
@@ -317,6 +318,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       || (assigned_analyst !== undefined && (assigned_analyst || null) !== (request.assigned_analyst || null))
       || (assigned_technician !== undefined && (assigned_technician || null) !== (request.assigned_technician || null))
       || (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
+      || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
       || (endereco !== undefined && String(endereco || '').trim() !== String(request.endereco || '').trim())
     );
     if (jaTemAceite && dadosProtegidosAlterados) {
@@ -362,6 +364,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
             return res.status(400).json({ error: 'Escolha uma data ou horário diferente do agendamento atual.' });
           }
           patch.agendado_para = agendado_para;
+          patch.agendado_ate = null;
           patch.confirmacao_tecnico = null;
           patch.confirmacao_tecnico_em = null;
         }
@@ -437,11 +440,19 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       if (agendado_para !== undefined) {
         patch.agendado_para = agendado_para || null;
       }
+      if (agendado_ate !== undefined) {
+        patch.agendado_ate = agendado_ate || null;
+      } else if (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null)) {
+        patch.agendado_ate = null;
+      }
       if (endereco !== undefined) {
         patch.endereco = String(endereco || '').trim();
       }
       const managerChangedTechnician = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
-      const managerChangedSchedule = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
+      const managerChangedSchedule = (
+        ('agendado_para' in patch && patch.agendado_para !== request.agendado_para)
+        || ('agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate)
+      );
       if (managerChangedTechnician || managerChangedSchedule) {
         patch.confirmacao_tecnico = null;
         patch.confirmacao_tecnico_em = null;
@@ -450,6 +461,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     const effectiveTechnicianId = 'assigned_technician' in patch ? patch.assigned_technician : request.assigned_technician;
     const effectiveScheduledAt = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
+    const effectiveScheduledUntil = 'agendado_ate' in patch ? patch.agendado_ate : request.agendado_ate;
     const effectiveStatus = patch.status || request.status;
     const visitaConfirmadaPelaEquipe = req.user.role !== 'tecnico' && visita_realizada === true;
     if (visitaConfirmadaPelaEquipe) {
@@ -462,6 +474,13 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       const slot = parseScheduledSlot(effectiveScheduledAt);
       if (!slot || `${slot.date}T${slot.time}` >= currentDateTimeInSaoPaulo()) {
         return res.status(400).json({ error: 'Só é possível confirmar como realizada uma data e horário que já passaram.' });
+      }
+      if (effectiveScheduledUntil) {
+        const endSlot = parseScheduledSlot(effectiveScheduledUntil);
+        if (!endSlot || endSlot.date !== slot.date || endSlot.time <= slot.time
+          || `${endSlot.date}T${endSlot.time}` >= currentDateTimeInSaoPaulo()) {
+          return res.status(400).json({ error: 'O horário de fim precisa ser depois do início e também já ter passado.' });
+        }
       }
       if (!effectiveTechnicianId) {
         return res.status(400).json({ error: 'Selecione o técnico que realizou a visita.' });
@@ -477,13 +496,17 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
     const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
     const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
+    const scheduleEndChanged = 'agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate;
     const shouldValidateSchedule = !visitaConfirmadaPelaEquipe
-      && (technicianChanged || scheduleChanged || patch.status === 'Agendada');
+      && (technicianChanged || scheduleChanged || scheduleEndChanged || patch.status === 'Agendada');
 
     if (shouldValidateSchedule) {
       if (!effectiveScheduledAt) {
         if (effectiveStatus === 'Agendada') {
           return res.status(400).json({ error: 'Escolha o técnico, dia e horário antes de marcar o chamado como agendado.' });
+        }
+        if (effectiveScheduledUntil) {
+          return res.status(400).json({ error: 'Informe o horário de início antes do horário de fim.' });
         }
       } else {
         const slot = parseScheduledSlot(effectiveScheduledAt);
@@ -507,13 +530,23 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (slot.time < TECHNICIAN_WORKING_HOURS.from || slot.time > TECHNICIAN_WORKING_HOURS.until) {
           return res.status(409).json({ error: `O horário padrão de atendimento é das ${TECHNICIAN_WORKING_HOURS.from} às ${TECHNICIAN_WORKING_HOURS.until}.` });
         }
+        if (effectiveScheduledUntil) {
+          const endSlot = parseScheduledSlot(effectiveScheduledUntil);
+          if (!endSlot || endSlot.date !== slot.date || endSlot.time <= slot.time) {
+            return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do horário de início.' });
+          }
+          if (endSlot.time > TECHNICIAN_WORKING_HOURS.until) {
+            return res.status(409).json({ error: `O horário de fim precisa ser até ${TECHNICIAN_WORKING_HOURS.until}.` });
+          }
+        }
         const conflictingBooking = await db.getTechnicianBookingAt(
           effectiveTechnicianId,
           `${slot.date}T${slot.time}`,
+          effectiveScheduledUntil,
           request.id
         );
         if (conflictingBooking) {
-          return res.status(409).json({ error: `O técnico já tem uma visita marcada às ${slot.time} nesse dia.` });
+          return res.status(409).json({ error: `O horário conflita com outra visita do técnico nesse dia.` });
         }
       }
     }
@@ -541,6 +574,13 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const updated = await db.updateRequest(request.id, patch);
+    let agendaMilvusSync = null;
+    let visitaMilvusSync = null;
+    const scheduleWasActivated = request.status !== 'Agendada' && updated.status === 'Agendada';
+    if ((scheduleChanged || scheduleEndChanged || technicianChanged || scheduleWasActivated)
+      && updated.status === 'Agendada' && !visitaConfirmadaPelaEquipe) {
+      agendaMilvusSync = await syncRequestScheduleToMilvus(updated, { actor: req.user.name || req.user.role });
+    }
 
     if (patch.status) {
       const company = await db.getCompanyById(updated.empresa_id);
@@ -591,7 +631,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           administrativeConfirmation: visitaConfirmadaPelaEquipe
         });
 
-        await Promise.all([
+        const [milvusSynced] = await Promise.all([
           syncRequestUpdateToMilvus(updated, {
             tipo: visitaConfirmadaPelaEquipe ? 'concluida_administrativamente' : 'concluida',
             approvedParts,
@@ -601,6 +641,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
             ? sendMail({ to: emailDestino, subject: completionEmail.subject, text: completionEmail.text, html: completionEmail.html, signatureUser: visitaConfirmadaPelaEquipe ? signatureUser : technician || signatureUser })
             : Promise.resolve()
         ]);
+        visitaMilvusSync = milvusSynced;
 
         await db.logAudit({
           user: req.user,
@@ -614,7 +655,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       }
     }
 
-    res.json(updated);
+    res.json({
+      ...updated,
+      ...(agendaMilvusSync !== null ? { agenda_milvus_sincronizada: agendaMilvusSync } : {}),
+      ...(visitaMilvusSync !== null ? { milvus_visita_sincronizada: visitaMilvusSync } : {})
+    });
   } catch (err) {
     if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
     next(err);

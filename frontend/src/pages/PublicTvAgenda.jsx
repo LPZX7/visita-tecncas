@@ -45,6 +45,12 @@ function visitTime(value) {
   return String(value || '').match(/[T ](\d{2}:\d{2})/)?.[1] || '--:--';
 }
 
+function visitTimeRange(visit) {
+  const start = visitTime(visit.agendado_para);
+  const end = visitTime(visit.agendado_ate);
+  return end === '--:--' ? start : `${start}–${end}`;
+}
+
 function initialsFor(value) {
   return String(value || '?').split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 }
@@ -239,17 +245,17 @@ export default function PublicTvAgenda() {
                     <div className="tv-calendar__events">
                       {dayVisits.slice(0, 3).map((visit) => (
                         <button
-                          className="tv-calendar__event"
+                          className={`tv-calendar__event ${visit.status === 'Concluída' ? 'is-completed' : ''}`}
                           type="button"
                           key={`${visit.milvus_codigo}-${visit.agendado_para}`}
                           onClick={() => setSelectedVisit(visit)}
-                          aria-label={`${visitTime(visit.agendado_para)}, ${visit.technician_name}, ${visit.company_name}, ${visit.local}. Ver detalhes`}
+                          aria-label={`${visitTimeRange(visit)}, ${visit.technician_name}, ${visit.company_name}, ${visit.local}${visit.status === 'Concluída' ? ', visita concluída' : ''}. Ver detalhes`}
                         >
                           <span className="tv-calendar__event-avatar">
                             {visit.technician_avatar ? <img src={visit.technician_avatar} alt="" /> : initialsFor(visit.technician_name)}
                           </span>
                           <span className="tv-calendar__event-copy">
-                            <strong><span>{visitTime(visit.agendado_para)}</span> {visit.technician_name}</strong>
+                            <strong><span>{visitTimeRange(visit)}</span> {visit.technician_name}</strong>
                             <small>{visit.company_name} · {visit.local}</small>
                           </span>
                         </button>
@@ -284,10 +290,11 @@ export default function PublicTvAgenda() {
               </div>
             </div>
             <div className="tv-visit-modal__schedule">
-              <strong>{visitTime(selectedVisit.agendado_para)}</strong>
+              <strong>{visitTimeRange(selectedVisit)}</strong>
               <span>{longDateLabel(selectedVisit.agendado_para)}</span>
             </div>
             <div className="tv-visit-modal__details">
+              <div><span>STATUS DA VISITA</span><strong>{selectedVisit.status === 'Concluída' ? '✓ Concluída' : 'Agendada'}</strong></div>
               <div><span>EMPRESA ATENDIDA</span><strong>{selectedVisit.company_name}</strong></div>
               <div><span>LOCAL DA VISITA</span><strong>{selectedVisit.local}</strong></div>
               <div><span>CHAMADO MILVUS</span><strong>#{selectedVisit.milvus_codigo}</strong></div>

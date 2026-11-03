@@ -166,6 +166,7 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS custo_adicional REAL NOT NULL DEFAULT 0;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS observacao_final TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS assigned_analyst TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS agendado_ate TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico_em TEXT;
   UPDATE requests AS r SET assigned_analyst = r.aberto_por
@@ -597,15 +598,24 @@ async function deleteTechnicianUnavailable(technicianId, date) {
   return rowCount > 0;
 }
 
-async function getTechnicianBookingAt(technicianId, scheduledAt, exceptRequestId) {
+async function getTechnicianBookingAt(technicianId, scheduledAt, scheduledUntil, exceptRequestId) {
   const { rows } = await pool.query(
     `SELECT id, numero FROM requests
      WHERE assigned_technician = $1
-       AND agendado_para = $2
-       AND id <> $3
+       AND id <> $4
        AND status NOT IN ('Cancelada', 'Concluída')
+       AND (
+         ($3::text IS NULL AND (
+           agendado_para = $2
+           OR (agendado_ate IS NOT NULL AND agendado_para < $2 AND agendado_ate > $2)
+         ))
+         OR ($3::text IS NOT NULL AND (
+           (agendado_para >= $2 AND agendado_para < $3)
+           OR (agendado_ate IS NOT NULL AND agendado_para < $3 AND agendado_ate > $2)
+         ))
+       )
      LIMIT 1`,
-    [technicianId, scheduledAt, exceptRequestId]
+    [technicianId, scheduledAt, scheduledUntil || null, exceptRequestId]
   );
   return rows[0] || null;
 }
@@ -624,7 +634,8 @@ async function getTechnicianBookingsForDate(technicianId, date) {
 
 async function getTvAgendaVisits(fromDateTime, untilDateTime) {
   const { rows } = await pool.query(
-    `SELECT requests.milvus_codigo, requests.agendado_para, requests.confirmacao_tecnico,
+    `SELECT requests.milvus_codigo, requests.agendado_para, requests.agendado_ate,
+            requests.status, requests.confirmacao_tecnico,
             COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
             users.avatar AS technician_avatar,
             COALESCE(NULLIF(empresas.nome_fantasia, ''), empresas.razao_social) AS company_name,
@@ -635,8 +646,8 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
      LEFT JOIN empresas ON empresas.id = requests.empresa_id
      LEFT JOIN equipamentos ON equipamentos.id = requests.equipamento_id
      LEFT JOIN unidades ON unidades.id = equipamentos.unidade_id
-     WHERE requests.status = 'Agendada'
-       AND requests.hora_checkout IS NULL
+     WHERE requests.status IN ('Agendada', 'Concluída')
+       AND (requests.status = 'Concluída' OR requests.hora_checkout IS NULL)
        AND requests.assigned_technician IS NOT NULL
        AND requests.milvus_codigo IS NOT NULL
        AND requests.agendado_para >= $1
@@ -648,6 +659,8 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
   return rows.map((row) => ({
     milvus_codigo: row.milvus_codigo,
     agendado_para: row.agendado_para,
+    agendado_ate: row.agendado_ate,
+    status: row.status,
     technician_name: row.technician_name || 'Técnico não definido',
     technician_avatar: row.technician_avatar || null,
     company_name: row.company_name || 'Empresa não definida',
