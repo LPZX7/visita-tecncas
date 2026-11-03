@@ -163,8 +163,8 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
           <span className="availability-card__eyebrow">AGENDA DE ATENDIMENTO</span>
           <h3 id="availability-title">{teamMode ? 'Dias indisponíveis dos técnicos' : 'Minha disponibilidade'}</h3>
           <p>{teamMode
-            ? 'Consulte os dias bloqueados pela equipe. Nos demais dias, o horário padrão é das 07h às 15h.'
-            : 'Marque somente os dias em que você não poderá atender. Os outros dias ficam livres das 07h às 15h.'}</p>
+            ? 'Consulte os dias bloqueados pela equipe. Nos demais dias, os horários ficam livres para agendamento.'
+            : 'Marque somente os dias em que você não poderá atender. Nos outros dias, os horários ficam livres para agendamento.'}</p>
         </div>
         <span className="availability-card__count">
           {teamMode && !selectedTechnicianId
@@ -225,7 +225,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                 ].filter(Boolean).join(' ');
                 const dateLabel = unavailable
                   ? `${formatLongDate(cell.key)}, indisponível`
-                  : `${formatLongDate(cell.key)}, disponível das 07 às 15`;
+                  : `${formatLongDate(cell.key)}, disponível para agendamento`;
                 return (
                   <button
                     key={cell.key}
@@ -235,7 +235,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                     onClick={() => selectDate(cell.key)}
                     aria-pressed={isSelected}
                     aria-label={dateLabel}
-                    title={unavailable ? 'Indisponível' : 'Disponível das 07:00 às 15:00'}
+                    title={unavailable ? 'Indisponível' : 'Disponível para agendamento'}
                   >
                     <span>{cell.day}</span>
                     {unavailable && <i aria-hidden="true" />}
@@ -243,7 +243,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                 );
               })}
             </div>
-            <div className="availability-calendar__legend"><i /> Indisponível · demais dias livres das 07h às 15h</div>
+            <div className="availability-calendar__legend"><i /> Indisponível · demais dias livres para agendamento</div>
           </div>
 
           <div className="availability-editor">
@@ -255,7 +255,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                   <p className="availability-editor__hint">
                     {isDateUnavailable
                       ? `${selectedTechnician?.nome || 'Este técnico'} marcou este dia como indisponível.`
-                      : `${selectedTechnician?.nome || 'Este técnico'} está livre das 07h às 15h.`}
+                      : `${selectedTechnician?.nome || 'Este técnico'} está disponível para agendamento.`}
                   </p>
                 ) : (
                   <>
@@ -280,7 +280,7 @@ export default function TechnicianAvailabilityCalendar({ manager = false, readOn
                       {isDateUnavailable && !hasChanges
                         ? 'Este dia está bloqueado para novos agendamentos.'
                         : !isDateUnavailable && !hasChanges
-                          ? 'Este dia está livre para atendimento das 07h às 15h.'
+                          ? 'Este dia está livre para agendamento.'
                           : 'Salve a alteração para atualizar sua agenda.'}
                     </p>
                   </>

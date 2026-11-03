@@ -14,7 +14,6 @@ const { buildTechnicalPlan } = require('../lib/technicalPlan');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
-const TECHNICIAN_WORKING_HOURS = { from: '07:00', until: '15:00' };
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
@@ -527,16 +526,10 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
             return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
           }
         }
-        if (slot.time < TECHNICIAN_WORKING_HOURS.from || slot.time > TECHNICIAN_WORKING_HOURS.until) {
-          return res.status(409).json({ error: `O horário padrão de atendimento é das ${TECHNICIAN_WORKING_HOURS.from} às ${TECHNICIAN_WORKING_HOURS.until}.` });
-        }
         if (effectiveScheduledUntil) {
           const endSlot = parseScheduledSlot(effectiveScheduledUntil);
           if (!endSlot || endSlot.date !== slot.date || endSlot.time <= slot.time) {
             return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do horário de início.' });
-          }
-          if (endSlot.time > TECHNICIAN_WORKING_HOURS.until) {
-            return res.status(409).json({ error: `O horário de fim precisa ser até ${TECHNICIAN_WORKING_HOURS.until}.` });
           }
         }
         const conflictingBooking = await db.getTechnicianBookingAt(

@@ -462,9 +462,7 @@ export default function Requests() {
     && technicianUnavailability.some((entry) => entry.date === rescheduleDay);
   const proposedReschedule = combineSchedule(rescheduleDay, rescheduleTime);
   const sameReschedule = proposedReschedule === rescheduleRequest?.agendado_para;
-  const rescheduleTimeFitsAvailability = Boolean(!rescheduleUnavailable && rescheduleTime
-    && rescheduleTime >= '07:00'
-    && rescheduleTime <= '15:00');
+  const rescheduleTimeFitsAvailability = Boolean(!rescheduleUnavailable && rescheduleTime);
 
   return (
     <div>
@@ -607,9 +605,7 @@ export default function Requests() {
             const selectedTechnicianUnavailable = !scheduleIsPast && technicianUnavailability.some((entry) => (
               entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
             ));
-            const scheduleTimeFitsAvailability = Boolean(!selectedTechnicianUnavailable
-              && scheduleTime >= '07:00'
-              && scheduleTime <= '15:00');
+            const scheduleTimeFitsAvailability = Boolean(!selectedTechnicianUnavailable && scheduleTime);
             return (
               <Fragment key={req.id}>
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
@@ -686,10 +682,10 @@ export default function Requests() {
                               : selectedTechnicianUnavailable
                               ? 'O técnico marcou esse dia como indisponível.'
                               : !scheduleTime
-                                ? 'Dia livre para o técnico. Informe um horário entre 07:00 e 15:00.'
+                                ? 'Dia livre para o técnico. Informe o horário da visita.'
                                 : scheduleTimeFitsAvailability
-                                  ? `Técnico livre nesse dia; horário dentro do expediente (07:00–15:00).`
-                                  : `Horário ${scheduleTime} fora do expediente (07:00–15:00).`}
+                                  ? 'Técnico sem bloqueio neste dia.'
+                                  : 'O técnico marcou esse dia como indisponível.'}
                           </span>
                         )}
                         {showPastVisitCompletionOption && (
@@ -1000,7 +996,7 @@ export default function Requests() {
               <div>
                 <span className="checkout-modal__eyebrow">AGENDA DO TÉCNICO</span>
                 <h3 id="reschedule-title">Remarcar visita</h3>
-                <p>Escolha um dia em que você não esteja bloqueado e um horário entre 07h e 15h. A nova agenda ficará visível para toda a equipe.</p>
+                <p>Escolha um dia e horário sem conflito na sua agenda. A nova agenda ficará visível para toda a equipe.</p>
               </div>
               <button type="button" className="checkout-modal__close" onClick={closeReschedule} aria-label="Fechar">×</button>
             </div>
@@ -1025,8 +1021,6 @@ export default function Requests() {
                   <input
                     className="form-input"
                     type="time"
-                    min="07:00"
-                    max="15:00"
                     value={rescheduleTime}
                     onChange={(event) => setRescheduleTime(event.target.value)}
                     required
@@ -1040,13 +1034,10 @@ export default function Requests() {
                     ? 'Você marcou esse dia como indisponível no calendário.'
                     : rescheduleDay < todayInSaoPaulo()
                       ? 'Data passada: a visita ficará agendada como atrasada até ser realizada.'
-                      : 'Este dia está livre para atendimento entre 07:00 e 15:00.'}
+                      : 'Este dia não está bloqueado. Escolha o horário necessário.'}
                 </span>
               )}
               {sameReschedule && <span className="request-availability-note is-unset">Escolha uma data ou horário diferente do agendamento atual.</span>}
-              {!rescheduleUnavailable && rescheduleTime && !rescheduleTimeFitsAvailability && (
-                <span className="request-availability-note is-unset">O horário precisa ficar entre 07:00 e 15:00.</span>
-              )}
             </div>
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeReschedule} disabled={rescheduleSaving}>Cancelar</button>

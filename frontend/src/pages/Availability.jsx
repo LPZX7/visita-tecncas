@@ -9,7 +9,7 @@ export default function Availability() {
   return (
     <div className="availability-page">
       <h2 className="page-title">Disponibilidade</h2>
-      <p className="section-text">Técnicos bloqueiam os dias em que não podem atender. Nos demais dias, o expediente é das 07h às 15h.</p>
+      <p className="section-text">Técnicos bloqueiam os dias em que não podem atender. Nos demais dias, os horários ficam livres para agendamento.</p>
       <TechnicianAvailabilityCalendar manager={manager} readOnly={readOnly} />
     </div>
   );
