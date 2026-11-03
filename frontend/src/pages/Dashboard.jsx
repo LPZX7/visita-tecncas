@@ -1110,7 +1110,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {!loading && role === 'gestor' && (
+      {!loading && ['gestor', 'analista'].includes(role) && (
         <div className="panel-card panel-card--calendar">
           <div className="panel-card__header-row">
             <div>
