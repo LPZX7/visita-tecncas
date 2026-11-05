@@ -252,7 +252,7 @@ export default function PublicTvAgenda() {
                         <button
                           className={`tv-calendar__event ${visit.status === 'Concluída' ? 'is-completed' : ''}`}
                           type="button"
-                          key={`${visit.milvus_codigo}-${visit.agendado_para}`}
+                          key={`${visit.manual_id || visit.milvus_codigo}-${visit.agendado_para}`}
                           onClick={() => setSelectedVisit(visit)}
                           aria-label={`${visitTimeRange(visit)}, ${visit.technician_name}, ${visit.company_name}, ${visit.local}${visit.status === 'Concluída' ? ', visita concluída' : ''}. Ver detalhes`}
                         >
@@ -286,7 +286,7 @@ export default function PublicTvAgenda() {
                   <button
                     className={`tv-visit-card ${visit.status === 'Concluída' ? 'is-completed' : ''}`}
                     type="button"
-                    key={`${visit.milvus_codigo}-${visit.agendado_para}`}
+                    key={`${visit.manual_id || visit.milvus_codigo}-${visit.agendado_para}`}
                     onClick={() => setSelectedVisit(visit)}
                   >
                     <span className="tv-visit-card__avatar">
@@ -305,14 +305,14 @@ export default function PublicTvAgenda() {
                 {sortedVisits.length > 5 && <div className="tv-visit-board__more">+ {sortedVisits.length - 5} outras visitas no calendário</div>}
               </div>
             ) : (
-              <div className="tv-visit-board__empty"><span>✓</span><strong>Nenhuma visita programada</strong><small>Os novos chamados agendados aparecem aqui automaticamente.</small></div>
+              <div className="tv-visit-board__empty"><span>✓</span><strong>Nenhuma visita programada</strong><small>Chamados e visitas manuais aparecem aqui automaticamente.</small></div>
             )}
           </aside>
           </div>
         )}
 
         <footer className="tv-agenda__footer">
-          <span>Agenda sincronizada com os chamados do Milvus</span>
+          <span>Chamados do Milvus e visitas manuais da equipe</span>
           <span>Atualização automática a cada minuto</span>
         </footer>
       </div>
@@ -337,11 +337,16 @@ export default function PublicTvAgenda() {
               <div><span>STATUS DA VISITA</span><strong>{selectedVisit.status === 'Concluída' ? '✓ Concluída' : 'Agendada'}</strong></div>
               <div><span>EMPRESA ATENDIDA</span><strong>{selectedVisit.company_name}</strong></div>
               <div><span>LOCAL DA VISITA</span><strong>{selectedVisit.local}</strong></div>
-              <div><span>CHAMADO MILVUS</span><strong>#{selectedVisit.milvus_codigo}</strong></div>
+              <div>
+                <span>{selectedVisit.manual_id ? 'TIPO DE REGISTRO' : 'CHAMADO MILVUS'}</span>
+                <strong>{selectedVisit.manual_id ? 'Agendamento manual' : `#${selectedVisit.milvus_codigo}`}</strong>
+              </div>
               <div>
                 <span>CONFIRMAÇÃO</span>
                 <strong className={selectedVisit.confirmacao === 'Confirmada' ? 'is-confirmed' : ''}>
-                  {selectedVisit.confirmacao === 'Confirmada' ? '✓ Confirmada pelo técnico' : '◷ Aguardando confirmação'}
+                  {selectedVisit.confirmacao === 'Confirmada'
+                    ? '✓ Confirmada pelo técnico'
+                    : selectedVisit.manual_id ? 'Criada pelo técnico' : '◷ Aguardando confirmação'}
                 </strong>
               </div>
             </div>

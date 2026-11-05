@@ -169,6 +169,25 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS agendado_ate TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico_em TEXT;
+  CREATE TABLE IF NOT EXISTS manual_visits (
+    id TEXT PRIMARY KEY,
+    assigned_technician TEXT NOT NULL REFERENCES users(id),
+    empresa_id TEXT REFERENCES empresas(id),
+    empresa_nome TEXT NOT NULL,
+    endereco TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    agendado_para TEXT NOT NULL,
+    agendado_ate TEXT,
+    status TEXT NOT NULL DEFAULT 'Agendada',
+    criado_por TEXT NOT NULL REFERENCES users(id),
+    criado_em TEXT NOT NULL,
+    atualizado_em TEXT NOT NULL,
+    CHECK (agendado_ate IS NULL OR agendado_ate > agendado_para)
+  );
+  CREATE INDEX IF NOT EXISTS idx_manual_visits_technician_schedule
+    ON manual_visits(assigned_technician, agendado_para);
+  ALTER TABLE manual_visits ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE manual_visits FROM PUBLIC, anon, authenticated, service_role;
   UPDATE requests AS r SET assigned_analyst = r.aberto_por
   FROM users AS u
   WHERE r.assigned_analyst IS NULL AND r.aberto_por = u.id AND u.role = 'analista';
@@ -614,6 +633,20 @@ async function getTechnicianBookingAt(technicianId, scheduledAt, scheduledUntil,
            OR (agendado_ate IS NOT NULL AND agendado_para < $3 AND agendado_ate > $2)
          ))
        )
+     UNION ALL
+     SELECT id, NULL::integer AS numero FROM manual_visits
+     WHERE assigned_technician = $1
+       AND status NOT IN ('Cancelada', 'Concluída')
+       AND (
+         ($3::text IS NULL AND (
+           agendado_para = $2
+           OR (agendado_ate IS NOT NULL AND agendado_para < $2 AND agendado_ate > $2)
+         ))
+         OR ($3::text IS NOT NULL AND (
+           (agendado_para >= $2 AND agendado_para < $3)
+           OR (agendado_ate IS NOT NULL AND agendado_para < $3 AND agendado_ate > $2)
+         ))
+       )
      LIMIT 1`,
     [technicianId, scheduledAt, scheduledUntil || null, exceptRequestId]
   );
@@ -622,7 +655,12 @@ async function getTechnicianBookingAt(technicianId, scheduledAt, scheduledUntil,
 
 async function getTechnicianBookingsForDate(technicianId, date) {
   const { rows } = await pool.query(
-    `SELECT id, numero FROM requests
+    `SELECT id, numero, agendado_para FROM requests
+     WHERE assigned_technician = $1
+       AND agendado_para LIKE $2 || 'T%'
+       AND status NOT IN ('Cancelada', 'Concluída')
+     UNION ALL
+     SELECT id, NULL::integer AS numero, agendado_para FROM manual_visits
      WHERE assigned_technician = $1
        AND agendado_para LIKE $2 || 'T%'
        AND status NOT IN ('Cancelada', 'Concluída')
@@ -633,14 +671,15 @@ async function getTechnicianBookingsForDate(technicianId, date) {
 }
 
 async function getTvAgendaVisits(fromDateTime, untilDateTime) {
-  const { rows } = await pool.query(
+  const [{ rows: requestRows }, { rows: manualRows }] = await Promise.all([
+    pool.query(
     `SELECT requests.milvus_codigo, requests.agendado_para, requests.agendado_ate,
-            requests.status, requests.confirmacao_tecnico,
+            requests.status, requests.confirmacao_tecnico, NULL::text AS manual_id,
             COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
             users.avatar AS technician_avatar,
             COALESCE(NULLIF(empresas.nome_fantasia, ''), empresas.razao_social) AS company_name,
             unidades.tipo AS unit_type, unidades.nome AS unit_name,
-            unidades.cidade, unidades.estado
+            unidades.cidade, unidades.estado, NULL::text AS manual_address
      FROM requests
      LEFT JOIN users ON users.id = requests.assigned_technician
      LEFT JOIN empresas ON empresas.id = requests.empresa_id
@@ -654,21 +693,46 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
        AND requests.agendado_para < $2
      ORDER BY requests.agendado_para ASC
      LIMIT 120`,
-    [fromDateTime, untilDateTime]
-  );
+      [fromDateTime, untilDateTime]
+    ),
+    pool.query(
+      `SELECT NULL::text AS milvus_codigo, manual_visits.agendado_para, manual_visits.agendado_ate,
+              manual_visits.status, NULL::text AS confirmacao_tecnico, manual_visits.id AS manual_id,
+              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+              users.avatar AS technician_avatar,
+              COALESCE(NULLIF(empresas.nome_fantasia, ''), NULLIF(manual_visits.empresa_nome, ''), empresas.razao_social) AS company_name,
+              NULL::text AS unit_type, NULL::text AS unit_name,
+              NULL::text AS cidade, NULL::text AS estado, manual_visits.endereco AS manual_address
+       FROM manual_visits
+       LEFT JOIN users ON users.id = manual_visits.assigned_technician
+       LEFT JOIN empresas ON empresas.id = manual_visits.empresa_id
+       WHERE manual_visits.status IN ('Agendada', 'Concluída')
+         AND manual_visits.agendado_para >= $1
+         AND manual_visits.agendado_para < $2
+       ORDER BY manual_visits.agendado_para ASC
+       LIMIT 120`,
+      [fromDateTime, untilDateTime]
+    )
+  ]);
+  const rows = [...requestRows, ...manualRows]
+    .sort((a, b) => a.agendado_para.localeCompare(b.agendado_para))
+    .slice(0, 120);
   return rows.map((row) => ({
     milvus_codigo: row.milvus_codigo,
+    manual_id: row.manual_id,
     agendado_para: row.agendado_para,
     agendado_ate: row.agendado_ate,
     status: row.status,
     technician_name: row.technician_name || 'Técnico não definido',
     technician_avatar: row.technician_avatar || null,
     company_name: row.company_name || 'Empresa não definida',
-    local: [
+    local: row.manual_address || [
       [row.unit_type, row.unit_name].filter(Boolean).join(' — '),
       [row.cidade, row.estado].filter(Boolean).join('/')
     ].filter(Boolean).join(' · ') || 'Local cadastrado no chamado',
-    confirmacao: row.confirmacao_tecnico === 'confirmada' ? 'Confirmada' : 'Aguardando confirmação'
+    confirmacao: row.manual_id
+      ? 'Registro manual'
+      : row.confirmacao_tecnico === 'confirmada' ? 'Confirmada' : 'Aguardando confirmação'
   }));
 }
 
@@ -920,6 +984,63 @@ async function getRequests() {
 async function getRequestById(id) {
   const { rows } = await pool.query('SELECT * FROM requests WHERE id = $1', [id]);
   return rows[0] || null;
+}
+
+async function getManualVisits(technicianId = null) {
+  const query = technicianId
+    ? `SELECT manual_visits.*,
+              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+       FROM manual_visits
+       LEFT JOIN users ON users.id = manual_visits.assigned_technician
+       WHERE manual_visits.assigned_technician = $1
+         AND manual_visits.status <> 'Cancelada'
+       ORDER BY manual_visits.agendado_para`
+    : `SELECT manual_visits.*,
+              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+       FROM manual_visits
+       LEFT JOIN users ON users.id = manual_visits.assigned_technician
+       WHERE manual_visits.status <> 'Cancelada'
+       ORDER BY manual_visits.agendado_para`;
+  const { rows } = await pool.query(query, technicianId ? [technicianId] : []);
+  return rows.map((row) => ({ ...row, manual_visit: true }));
+}
+
+async function getManualVisitById(id) {
+  const { rows } = await pool.query(
+    `SELECT manual_visits.*,
+            COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+     FROM manual_visits
+     LEFT JOIN users ON users.id = manual_visits.assigned_technician
+     WHERE manual_visits.id = $1`,
+    [id]
+  );
+  return rows[0] ? { ...rows[0], manual_visit: true } : null;
+}
+
+async function createManualVisit(visit) {
+  const row = {
+    id: uuid(),
+    assigned_technician: visit.assigned_technician,
+    empresa_id: visit.empresa_id || null,
+    empresa_nome: visit.empresa_nome,
+    endereco: visit.endereco,
+    descricao: visit.descricao,
+    agendado_para: visit.agendado_para,
+    agendado_ate: visit.agendado_ate || null,
+    status: 'Agendada',
+    criado_por: visit.criado_por,
+    criado_em: now(),
+    atualizado_em: now()
+  };
+  await pool.query(
+    `INSERT INTO manual_visits (
+       id, assigned_technician, empresa_id, empresa_nome, endereco, descricao,
+       agendado_para, agendado_ate, status, criado_por, criado_em, atualizado_em
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [row.id, row.assigned_technician, row.empresa_id, row.empresa_nome, row.endereco, row.descricao,
+      row.agendado_para, row.agendado_ate, row.status, row.criado_por, row.criado_em, row.atualizado_em]
+  );
+  return getManualVisitById(row.id);
 }
 
 async function nextRequestNumber() {
@@ -1346,6 +1467,9 @@ module.exports = {
   deletePricingRule,
   getRequests,
   getRequestById,
+  getManualVisits,
+  getManualVisitById,
+  createManualVisit,
   createRequest,
   updateRequest,
   deleteRequest,

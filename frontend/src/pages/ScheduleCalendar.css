@@ -156,6 +156,8 @@
 }
 .schedule-add-button:hover { background: #1d4ed8; }
 .schedule-add-button span { font-size: 1.2rem; line-height: .8; }
+.schedule-add-button--manual { background: #13845d; }
+.schedule-add-button--manual:hover { background: #0f6c4b; }
 
 .schedule-empty-card { display: grid; justify-items: center; gap: 10px; padding: 42px 22px; text-align: center; }
 .schedule-empty-card__icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 16px; color: #2563eb; background: #eaf2ff; font-size: 1.7rem; }
