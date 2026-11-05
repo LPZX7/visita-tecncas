@@ -24,8 +24,8 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5183,http:/
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({
-  // The public TV agenda is intentionally embedded by Milvus. Keep framing
-  // protections on every other page and allow only Milvus to frame this route.
+  // The public TV agenda is intentionally embedded by the Milvus dashboard
+  // and TV-mode hosts. Keep framing protections on every other page.
   xFrameOptions: false,
   crossOriginResourcePolicy: false,
   contentSecurityPolicy: {
@@ -39,7 +39,7 @@ app.use(helmet({
       frameSrc: ['https://www.google.com'],
       frameAncestors: [
         (req) => req.path === '/agenda/tv' || req.path === '/agenda/tv/'
-          ? "'self' https://app.milvus.com.br"
+          ? "'self' https://app.milvus.com.br https://iotv.milvus.com.br"
           : "'self'"
       ]
     }
