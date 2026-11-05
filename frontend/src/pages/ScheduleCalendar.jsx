@@ -55,6 +55,15 @@ function companyDisplayName(company) {
   return String(company?.nome || company?.nome_fantasia || company?.razao_social || '').trim();
 }
 
+function visitVisualState(visit) {
+  if (visit.status === 'Concluída') return { kind: 'completed', icon: '✓', label: 'Realizada' };
+  const scheduledAt = String(visit.agendado_para || '').slice(0, 16);
+  if (scheduledAt && scheduledAt < `${todayKey()}T${currentTimeInSaoPaulo()}`) {
+    return { kind: 'overdue', icon: '⚠️', label: 'Atrasada' };
+  }
+  return { kind: 'pending', icon: '🕒', label: 'Pendente' };
+}
+
 function visitOverlapsBooking(visit, date, start, end) {
   if (String(visit.agendado_para).slice(0, 10) !== date) return false;
   const existingStart = timeOf(visit.agendado_para);
@@ -445,7 +454,12 @@ export default function ScheduleCalendar() {
                     {!unavailable && canManage && visits.length === 0 && cell.key >= today && <span className="schedule-day__free">Livre</span>}
                     <span className="schedule-day__events">
                       {visits.slice(0, 3).map((visit) => (
-                        <span className="schedule-event" key={visit.id} title={`${timeRangeOf(visit)} · ${visit.descricao}`}>
+                        <span
+                          className={`schedule-event schedule-event--${visitVisualState(visit).kind}`}
+                          key={visit.id}
+                          title={`${visitVisualState(visit).label} · ${timeRangeOf(visit)} · ${visit.descricao}`}
+                        >
+                          <span className="schedule-event__marker" aria-hidden="true">{visitVisualState(visit).icon}</span>
                           <b>{timeRangeOf(visit)}</b> {visit.descricao}
                         </span>
                       ))}
@@ -456,8 +470,10 @@ export default function ScheduleCalendar() {
               })}
             </div>
             <div className="schedule-legend">
+              <span><b className="schedule-legend__icon schedule-legend__icon--completed">✓</b> Visita realizada</span>
+              <span><b className="schedule-legend__icon schedule-legend__icon--pending">🕒</b> Visita pendente</span>
+              <span><b className="schedule-legend__icon schedule-legend__icon--overdue">⚠️</b> Data/horário passou</span>
               <span><i className="schedule-legend__free" /> Livre para agendamento</span>
-              <span><i className="schedule-legend__busy" /> Visita marcada</span>
               <span><i className="schedule-legend__blocked" /> Técnico indisponível</span>
             </div>
           </section>
@@ -478,13 +494,17 @@ export default function ScheduleCalendar() {
                 {!selectedDateUnavailable && dayVisits.length === 0 && <p className="schedule-day-panel__note">{selectedDate < today ? 'Nenhuma visita registrada neste dia. Você ainda pode lançar um agendamento atrasado.' : 'Nenhuma visita neste dia. Escolha o horário de atendimento conforme a necessidade.'}</p>}
                 <div className="schedule-visit-list">
                   {dayVisits.map((visit) => (
-                    <article className="schedule-visit" key={visit.id}>
-                      <div className="schedule-visit__time">{timeRangeOf(visit)}</div>
+                    <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={visit.id}>
+                      <div className={`schedule-visit__time schedule-visit__time--${visitVisualState(visit).kind}`}>
+                        <span aria-hidden="true">{visitVisualState(visit).icon}</span> {timeRangeOf(visit)}
+                      </div>
                       <div>
                         <strong>{visit.descricao}</strong>
                         <span>{visit.empresa_nome || companies.find((company) => company.id === visit.empresa_id)?.nome_fantasia || companies.find((company) => company.id === visit.empresa_id)?.razao_social || 'Empresa'}</span>
                         {visit.endereco && <small>{visit.endereco}</small>}
-                        <span className="schedule-visit__status">{visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}</span>
+                        <span className={`schedule-visit__status schedule-visit__status--${visitVisualState(visit).kind}`}>
+                          {visitVisualState(visit).label} · {visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}
+                        </span>
                         {((canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
                           || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status))) && (
                           <div className="schedule-visit__actions">
