@@ -39,7 +39,7 @@ app.use(helmet({
       frameSrc: ['https://www.google.com'],
       frameAncestors: [
         (req) => req.path === '/agenda/tv' || req.path === '/agenda/tv/'
-          ? "'self' https://app.milvus.com.br https://iotv.milvus.com.br"
+          ? "'self' https://app.milvus.com.br https://modotv.milvus.com.br"
           : "'self'"
       ]
     }
