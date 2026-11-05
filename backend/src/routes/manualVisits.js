@@ -126,7 +126,132 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
       agendado_ate,
       criado_por: technician.id
     });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_manual_agendada',
+      entidade: 'manual_visit',
+      entidade_id: visit.id,
+      detalhes: `${empresa_nome} — ${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}; técnico ${technician.nome}; endereço: ${endereco}.`
+    });
     res.status(201).json(visit);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
+  try {
+    const existing = await db.getManualVisitById(req.params.id);
+    if (!existing || existing.status === 'Cancelada') {
+      return res.status(404).json({ error: 'Visita não encontrada na agenda.' });
+    }
+    if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você só pode alterar suas próprias visitas manuais.' });
+    }
+    if (existing.status === 'Concluída') {
+      return res.status(409).json({ error: 'Uma visita concluída não pode ser alterada.' });
+    }
+
+    const empresa_nome = String(req.body.empresa_nome ?? existing.empresa_nome).trim();
+    const endereco = String(req.body.endereco ?? existing.endereco).trim();
+    const descricao = String(req.body.descricao ?? existing.descricao).trim();
+    const empresa_id = req.body.empresa_id === undefined ? existing.empresa_id : String(req.body.empresa_id || '').trim() || null;
+    const agendado_para = String(req.body.agendado_para ?? existing.agendado_para).trim();
+    const agendado_ate = req.body.agendado_ate === undefined
+      ? (existing.agendado_ate || null)
+      : String(req.body.agendado_ate || '').trim() || null;
+    const start = parseScheduledSlot(agendado_para);
+
+    if (!empresa_nome || empresa_nome.length > 160) {
+      return res.status(400).json({ error: 'Informe o nome da empresa (máximo de 160 caracteres).' });
+    }
+    if (!endereco || endereco.length > 500) {
+      return res.status(400).json({ error: 'Informe o endereço da visita (máximo de 500 caracteres).' });
+    }
+    if (!descricao || descricao.length > 300) {
+      return res.status(400).json({ error: 'A descrição precisa ter até 300 caracteres.' });
+    }
+    if (!start) {
+      return res.status(400).json({ error: 'Escolha uma data e um horário de início válidos.' });
+    }
+    if (agendado_ate) {
+      const end = parseScheduledSlot(agendado_ate);
+      if (!end || end.date !== start.date || end.time <= start.time) {
+        return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do início.' });
+      }
+    }
+
+    if (empresa_id) {
+      const company = await db.getCompanyById(empresa_id);
+      if (!company || String(company.status || '').toLowerCase() !== 'ativo') {
+        return res.status(400).json({ error: 'Selecione uma empresa ativa ou digite o nome para usar neste agendamento.' });
+      }
+      if (companyName(company).toLocaleLowerCase('pt-BR') !== empresa_nome.toLocaleLowerCase('pt-BR')) {
+        return res.status(400).json({ error: 'O nome da empresa selecionada não corresponde ao cadastro.' });
+      }
+    }
+
+    const scheduleChanged = agendado_para !== existing.agendado_para || agendado_ate !== (existing.agendado_ate || null);
+    if (scheduleChanged && agendado_para >= currentDateTimeInSaoPaulo()) {
+      const unavailable = await db.getTechnicianUnavailabilityForDate(existing.assigned_technician, start.date);
+      if (unavailable) {
+        return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
+      }
+    }
+    if (scheduleChanged) {
+      const conflictingBooking = await db.getTechnicianBookingAt(
+        existing.assigned_technician,
+        agendado_para,
+        agendado_ate,
+        existing.id
+      );
+      if (conflictingBooking) {
+        return res.status(409).json({ error: 'O técnico já tem outra visita neste horário. Escolha outro horário.' });
+      }
+    }
+
+    const updated = await db.updateManualVisit(existing.id, {
+      empresa_id,
+      empresa_nome,
+      endereco,
+      descricao,
+      agendado_para,
+      agendado_ate
+    });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_manual_alterada',
+      entidade: 'manual_visit',
+      entidade_id: existing.id,
+      detalhes: `${existing.empresa_nome} (${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}) alterada para ${empresa_nome} (${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}); endereço: ${endereco}.`
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
+  try {
+    const existing = await db.getManualVisitById(req.params.id);
+    if (!existing || existing.status === 'Cancelada') {
+      return res.status(404).json({ error: 'Visita não encontrada na agenda.' });
+    }
+    if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você só pode retirar suas próprias visitas manuais da agenda.' });
+    }
+    if (existing.status === 'Concluída') {
+      return res.status(409).json({ error: 'Uma visita concluída não pode ser retirada da agenda.' });
+    }
+    await db.updateManualVisit(existing.id, { status: 'Cancelada' });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_manual_retirada_agenda',
+      entidade: 'manual_visit',
+      entidade_id: existing.id,
+      detalhes: `${existing.empresa_nome} — ${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}; técnico: ${existing.technician_name || existing.assigned_technician}. Visita cancelada na agenda.`
+    });
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

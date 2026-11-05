@@ -636,6 +636,7 @@ async function getTechnicianBookingAt(technicianId, scheduledAt, scheduledUntil,
      UNION ALL
      SELECT id, NULL::integer AS numero FROM manual_visits
      WHERE assigned_technician = $1
+       AND id <> $4
        AND status NOT IN ('Cancelada', 'Concluída')
        AND (
          ($3::text IS NULL AND (
@@ -1041,6 +1042,13 @@ async function createManualVisit(visit) {
       row.agendado_para, row.agendado_ate, row.status, row.criado_por, row.criado_em, row.atualizado_em]
   );
   return getManualVisitById(row.id);
+}
+
+async function updateManualVisit(id, patch) {
+  const current = await getManualVisitById(id);
+  if (!current) return null;
+  await updateRow('manual_visits', id, patch);
+  return getManualVisitById(id);
 }
 
 async function nextRequestNumber() {
@@ -1470,6 +1478,7 @@ module.exports = {
   getManualVisits,
   getManualVisitById,
   createManualVisit,
+  updateManualVisit,
   createRequest,
   updateRequest,
   deleteRequest,

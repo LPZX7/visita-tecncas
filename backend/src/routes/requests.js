@@ -6,7 +6,7 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
-const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestScheduleRemovalToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { validateVisitExecution } = require('../lib/visitWorkflow');
@@ -299,6 +299,10 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       visita_realizada,
       sincronizar_responsaveis_milvus
     } = req.body;
+    if ((agendado_para !== undefined || agendado_ate !== undefined)
+      && (request.hora_checkin || request.hora_checkout || ['Em Atendimento', 'Concluída'].includes(request.status))) {
+      return res.status(409).json({ error: 'Uma visita que já começou ou foi concluída não pode ser removida ou remarcada pela agenda.' });
+    }
     const patch = {};
     let completionContext = null;
 
@@ -570,9 +574,32 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     let agendaMilvusSync = null;
     let visitaMilvusSync = null;
     const scheduleWasActivated = request.status !== 'Agendada' && updated.status === 'Agendada';
-    if ((scheduleChanged || scheduleEndChanged || technicianChanged || scheduleWasActivated)
+    const scheduleWasRemoved = Boolean(request.agendado_para) && !updated.agendado_para;
+    if (scheduleWasRemoved) {
+      agendaMilvusSync = await syncRequestScheduleRemovalToMilvus(updated, {
+        actor: req.user.name || req.user.role,
+        previousSchedule: request.agendado_para
+      });
+    } else if ((scheduleChanged || scheduleEndChanged || technicianChanged || scheduleWasActivated)
       && updated.status === 'Agendada' && !visitaConfirmadaPelaEquipe) {
       agendaMilvusSync = await syncRequestScheduleToMilvus(updated, { actor: req.user.name || req.user.role });
+    }
+
+    const addressChanged = String(request.endereco || '') !== String(updated.endereco || '');
+    if (scheduleChanged || scheduleEndChanged || technicianChanged || addressChanged) {
+      const previousSlot = request.agendado_para
+        ? `${request.agendado_para}${request.agendado_ate ? ` até ${request.agendado_ate}` : ''}`
+        : 'sem horário agendado';
+      const nextSlot = updated.agendado_para
+        ? `${updated.agendado_para}${updated.agendado_ate ? ` até ${updated.agendado_ate}` : ''}`
+        : 'sem horário agendado';
+      await db.logAudit({
+        user: req.user,
+        acao: scheduleWasRemoved ? 'visita_retirada_agenda' : 'visita_agenda_alterada',
+        entidade: 'request',
+        entidade_id: updated.id,
+        detalhes: `Chamado #${updated.numero}: ${previousSlot} → ${nextSlot}; ${request.endereco || 'endereço não informado'} → ${updated.endereco || 'endereço não informado'}${request.assigned_technician !== updated.assigned_technician ? `; técnico ${request.assigned_technician || 'não atribuído'} → ${updated.assigned_technician || 'não atribuído'}` : ''}.`
+      });
     }
 
     if (patch.status) {

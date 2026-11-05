@@ -137,6 +137,12 @@
 .schedule-visit span,
 .schedule-visit small { overflow-wrap: anywhere; color: #718096; font-size: .68rem; line-height: 1.45; }
 .schedule-visit .schedule-visit__status { color: #55708e; font-size: .63rem; }
+.schedule-visit > div:last-child .schedule-visit__actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.schedule-visit__actions button { padding: 5px 8px; border: 1px solid #cbd8e8; border-radius: 7px; color: #28558e; background: #f7faff; font-size: .65rem; font-weight: 750; cursor: pointer; }
+.schedule-visit__actions button:hover:not(:disabled) { border-color: #8daed8; background: #edf4ff; }
+.schedule-visit__actions button:disabled { opacity: .55; cursor: wait; }
+.schedule-visit__actions .schedule-visit__remove { border-color: #f0caca; color: #a13939; background: #fff8f7; }
+.schedule-visit__actions .schedule-visit__remove:hover:not(:disabled) { border-color: #df9c9c; background: #fff0ef; }
 
 .schedule-add-button {
   display: flex;

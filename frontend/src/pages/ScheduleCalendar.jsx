@@ -51,6 +51,10 @@ function timeRangeOf(visit) {
   return end === 'Horário não definido' ? start : `${start}–${end}`;
 }
 
+function companyDisplayName(company) {
+  return String(company?.nome || company?.nome_fantasia || company?.razao_social || '').trim();
+}
+
 function visitOverlapsBooking(visit, date, start, end) {
   if (String(visit.agendado_para).slice(0, 10) !== date) return false;
   const existingStart = timeOf(visit.agendado_para);
@@ -93,6 +97,7 @@ export default function ScheduleCalendar() {
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [bookingRequestId, setBookingRequestId] = useState('');
   const [bookingMode, setBookingMode] = useState('request');
+  const [editingVisit, setEditingVisit] = useState(null);
   const [manualCompanyName, setManualCompanyName] = useState('');
   const [manualVisitDescription, setManualVisitDescription] = useState('Visita técnica manual');
   const [bookingTime, setBookingTime] = useState('08:00');
@@ -115,6 +120,9 @@ export default function ScheduleCalendar() {
       ]);
       setRequests(requestResponse.data);
       setCompanies(companyResponse.data);
+      setManualCompanyOptions(companyResponse.data
+        .map((company) => ({ id: company.id, nome: companyDisplayName(company), endereco: company.endereco || '' }))
+        .filter((company) => company.nome));
       setManualVisits(manualVisitResponse.data);
       if (canManage) {
         const [usersResponse, unavailableResponse] = await Promise.all([
@@ -186,6 +194,8 @@ export default function ScheduleCalendar() {
     : '';
   const bookingSlotIsPast = Boolean(proposedSchedule && proposedSchedule < `${today}T${currentTime}`);
   const hasTimeConflict = !bookingVisitAlreadyDone && technicianVisits.some((visit) => (
+    !(editingVisit?.id === visit.id)
+    &&
     !(bookingMode === 'request' && visit.id === bookingRequestId)
     && !['Cancelada', 'Concluída'].includes(visit.status)
     && visitOverlapsBooking(visit, selectedDate, bookingTime, bookingEndEnabled ? bookingEndTime : '')
@@ -202,18 +212,22 @@ export default function ScheduleCalendar() {
     setSelectedDate('');
   }
 
-  function openBooking(mode = 'request') {
+  function openBooking(mode = 'request', visit = null) {
     setError('');
     setSuccess('');
     setBookingMode(mode);
-    setBookingRequestId('');
-    setManualCompanyName('');
-    setManualVisitDescription('Visita técnica manual');
-    setBookingEndEnabled(false);
-    setBookingEndTime('');
+    setEditingVisit(visit);
+    setBookingRequestId(mode === 'request' && visit ? visit.id : '');
+    setManualCompanyName(mode === 'manual' && visit ? visit.empresa_nome || '' : '');
+    setManualVisitDescription(mode === 'manual' && visit ? visit.descricao || '' : 'Visita técnica manual');
+    if (visit?.agendado_para) setSelectedDate(String(visit.agendado_para).slice(0, 10));
+    setBookingEndEnabled(Boolean(visit?.agendado_ate));
+    setBookingEndTime(visit?.agendado_ate ? timeOf(visit.agendado_ate) : '');
     setBookingVisitAlreadyDone(false);
-    setBookingTime(selectedDate === today && currentTime > '08:00' ? currentTime : '08:00');
-    setBookingAddress('');
+    setBookingTime(visit?.agendado_para
+      ? timeOf(visit.agendado_para)
+      : selectedDate === today && currentTime > '08:00' ? currentTime : '08:00');
+    setBookingAddress(visit?.endereco || '');
     setBookingOpen(true);
   }
 
@@ -237,7 +251,7 @@ export default function ScheduleCalendar() {
   function chooseManualCompany(value) {
     setManualCompanyName(value);
     const selectedCompany = manualCompanyOptions.find((company) => (
-      company.nome.toLocaleLowerCase('pt-BR') === value.trim().toLocaleLowerCase('pt-BR')
+      companyDisplayName(company).toLocaleLowerCase('pt-BR') === value.trim().toLocaleLowerCase('pt-BR')
     ));
     if (selectedCompany?.endereco && !bookingAddress.trim()) setBookingAddress(selectedCompany.endereco);
   }
@@ -258,18 +272,27 @@ export default function ScheduleCalendar() {
     setSaving(true);
     try {
       if (bookingMode === 'manual') {
-        await api.post('/manual-visits', {
-          empresa_id: manualCompanyOptions.find((company) => (
-            company.nome.toLocaleLowerCase('pt-BR') === manualCompanyName.trim().toLocaleLowerCase('pt-BR')
-          ))?.id || null,
+        const selectedCompany = manualCompanyOptions.find((company) => (
+          companyDisplayName(company).toLocaleLowerCase('pt-BR') === manualCompanyName.trim().toLocaleLowerCase('pt-BR')
+        ));
+        const manualVisitPayload = {
+          empresa_id: selectedCompany?.id || null,
           empresa_nome: manualCompanyName.trim(),
           endereco: bookingAddress.trim(),
           descricao: manualVisitDescription.trim() || 'Visita técnica manual',
           agendado_para: proposedSchedule,
           agendado_ate: proposedScheduleEnd || null
-        });
+        };
+        if (editingVisit?.manual_visit) {
+          await api.patch(`/manual-visits/${editingVisit.id}`, manualVisitPayload);
+        } else {
+          await api.post('/manual-visits', manualVisitPayload);
+        }
         setBookingOpen(false);
-        setSuccess(`Visita para ${manualCompanyName.trim()} cadastrada na agenda de ${formatDateShort(selectedDate)}.`);
+        setEditingVisit(null);
+        setSuccess(editingVisit?.manual_visit
+          ? `Visita para ${manualCompanyName.trim()} atualizada na agenda.`
+          : `Visita para ${manualCompanyName.trim()} cadastrada na agenda de ${formatDateShort(selectedDate)}.`);
         await load();
         return;
       }
@@ -284,6 +307,7 @@ export default function ScheduleCalendar() {
         sincronizar_responsaveis_milvus: true
       });
       setBookingOpen(false);
+      setEditingVisit(null);
       const milvusSynced = bookingVisitAlreadyDone
         ? response.data.milvus_visita_sincronizada
         : response.data.agenda_milvus_sincronizada;
@@ -297,6 +321,41 @@ export default function ScheduleCalendar() {
       await load();
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível agendar esta visita.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeVisit(visit) {
+    const name = visit.manual_visit
+      ? visit.empresa_nome
+      : `chamado #${visit.numero}`;
+    if (!window.confirm(`Tirar ${name} da agenda? O sistema registrará a ação no histórico.`)) return;
+
+    setError('');
+    setSuccess('');
+    setSaving(true);
+    try {
+      let response = null;
+      if (visit.manual_visit) {
+        await api.delete(`/manual-visits/${visit.id}`);
+      } else {
+        response = await api.patch(`/requests/${visit.id}`, {
+          status: 'Aberta',
+          agendado_para: null,
+          agendado_ate: null
+        });
+      }
+      await load();
+      if (response?.data?.agenda_milvus_sincronizada === false) {
+        setError('A visita saiu da agenda do sistema, mas a atualização não foi enviada ao Milvus. Confira a integração.');
+      } else {
+        setSuccess(visit.manual_visit
+          ? `Visita de ${visit.empresa_nome} retirada da agenda. A ação foi registrada no histórico.`
+          : `Chamado #${visit.numero} reaberto e retirado da agenda. A ação foi registrada no histórico.`);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível tirar esta visita da agenda.');
     } finally {
       setSaving(false);
     }
@@ -426,6 +485,17 @@ export default function ScheduleCalendar() {
                         <span>{visit.empresa_nome || companies.find((company) => company.id === visit.empresa_id)?.nome_fantasia || companies.find((company) => company.id === visit.empresa_id)?.razao_social || 'Empresa'}</span>
                         {visit.endereco && <small>{visit.endereco}</small>}
                         <span className="schedule-visit__status">{visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}</span>
+                        {((canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
+                          || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status))) && (
+                          <div className="schedule-visit__actions">
+                            <button type="button" onClick={() => openBooking(visit.manual_visit ? 'manual' : 'request', visit)} disabled={saving}>
+                              Editar
+                            </button>
+                            <button type="button" className="schedule-visit__remove" onClick={() => removeVisit(visit)} disabled={saving}>
+                              Tirar da agenda
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </article>
                   ))}
@@ -453,8 +523,8 @@ export default function ScheduleCalendar() {
           <form className="checkout-modal__dialog schedule-booking-dialog" role="dialog" aria-modal="true" aria-labelledby="schedule-booking-title" onSubmit={saveBooking}>
             <div className="checkout-modal__header">
               <div>
-                <span className="checkout-modal__eyebrow">{bookingMode === 'manual' ? 'VISITA MANUAL' : 'NOVO COMPROMISSO'}</span>
-                <h3 id="schedule-booking-title">Agendar visita</h3>
+                <span className="checkout-modal__eyebrow">{editingVisit ? 'ALTERAR AGENDAMENTO' : bookingMode === 'manual' ? 'VISITA MANUAL' : 'NOVO COMPROMISSO'}</span>
+                <h3 id="schedule-booking-title">{editingVisit ? 'Editar visita' : 'Agendar visita'}</h3>
                 <p>{selectedTechnician?.nome || user?.nome || 'Técnico'} · {formatDate(selectedDate)}</p>
               </div>
               <button type="button" className="checkout-modal__close" onClick={closeBooking} aria-label="Fechar">×</button>
@@ -501,7 +571,7 @@ export default function ScheduleCalendar() {
               <div className="schedule-booking-dialog__grid">
                 <label className="form-field">
                   Dia
-                  <input className="form-input" type="date" value={selectedDate} readOnly />
+                  <input className="form-input" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} required />
                 </label>
                 <label className="form-field">
                   Horário de início
@@ -535,7 +605,7 @@ export default function ScheduleCalendar() {
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeBooking} disabled={saving}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={saving || (bookingMode === 'request' && !selectedBookingRequest) || (bookingMode === 'manual' && !manualCompanyName.trim()) || !bookingAddress.trim() || hasTimeConflict || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart)) || bookingEndNotPast}>
-                {saving ? 'Salvando agenda…' : bookingMode === 'manual' ? 'Agendar visita' : bookingVisitAlreadyDone ? 'Confirmar visita realizada' : 'Confirmar agendamento'}
+                {saving ? 'Salvando agenda…' : editingVisit ? 'Salvar alterações' : bookingMode === 'manual' ? 'Agendar visita' : bookingVisitAlreadyDone ? 'Confirmar visita realizada' : 'Confirmar agendamento'}
               </button>
             </div>
           </form>
