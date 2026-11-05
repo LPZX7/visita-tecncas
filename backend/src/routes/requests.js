@@ -297,6 +297,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       observacao_final,
       confirmacao_tecnico,
       visita_realizada,
+      confirmar_visita_atrasada,
       sincronizar_responsaveis_milvus
     } = req.body;
     if ((agendado_para !== undefined || agendado_ate !== undefined)
@@ -305,6 +306,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
     const patch = {};
     let completionContext = null;
+    let completingOverdueVisitWithoutCheckin = false;
 
     const executionError = validateVisitExecution(request, status);
     if (executionError) {
@@ -377,7 +379,17 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           return res.status(400).json({ error: 'Status não permitido para técnico' });
         }
         if (status === 'Concluída' && !request.hora_checkin) {
-          return res.status(400).json({ error: 'Faça o check-in antes de concluir a visita' });
+          const scheduledSlot = parseScheduledSlot(request.agendado_para);
+          const scheduleHasPassed = scheduledSlot
+            && `${scheduledSlot.date}T${scheduledSlot.time}` < currentDateTimeInSaoPaulo();
+          completingOverdueVisitWithoutCheckin = Boolean(
+            request.status === 'Agendada'
+            && scheduleHasPassed
+            && confirmar_visita_atrasada === true
+          );
+          if (!completingOverdueVisitWithoutCheckin) {
+            return res.status(400).json({ error: 'Faça o check-in antes de concluir a visita.' });
+          }
         }
         if (status === 'Concluída' && request.hora_checkout) {
           return res.status(409).json({ error: 'Esta visita já foi finalizada' });
@@ -398,6 +410,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         }
         if (status === 'Concluída') {
           completionContext = await approvedContextForRequest(request.id);
+          if (completingOverdueVisitWithoutCheckin) {
+            patch.hora_checkin = new Date().toISOString();
+          }
           patch.hora_checkout = new Date().toISOString();
           patch.relatorio_visita = (relatorio_visita || '').trim() || buildAutomaticServiceReport(completionContext.parts);
           patch.teve_adicional = teve_adicional;

@@ -444,6 +444,7 @@ export default function Requests() {
     try {
       await api.patch(`/requests/${checkoutRequest.id}`, {
         status: 'Concluída',
+        confirmar_visita_atrasada: !checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para),
         teve_adicional: checkoutForm.teve_adicional,
         adicional_descricao: checkoutForm.teve_adicional ? checkoutForm.adicional_descricao.trim() : null,
         custo_adicional: checkoutForm.teve_adicional ? Number(checkoutForm.custo_adicional || 0) : 0,
@@ -723,7 +724,11 @@ export default function Requests() {
                         <div className="request-tech-action-stack">
                           {req.status === 'Agendada' && req.agendado_para && (
                             <div className="request-tech-visit-response">
-                              {req.confirmacao_tecnico === 'confirmada' ? (
+                              {scheduleIsPast ? (
+                                req.aprovacao_cliente === 'aprovado'
+                                  ? <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Registrar visita realizada</button>
+                                  : <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
+                              ) : req.confirmacao_tecnico === 'confirmada' ? (
                                 <span className="request-availability-note is-available">Você confirmou que consegue ir.</span>
                               ) : (
                                 <button className="btn btn-primary btn-sm" onClick={() => confirmVisit(req)}>Confirmar que vou</button>
@@ -731,9 +736,9 @@ export default function Requests() {
                               <button className="btn btn-outline btn-sm" onClick={() => openReschedule(req)}>Remarcar visita</button>
                             </div>
                           )}
-                          {req.aprovacao_cliente !== 'aprovado' ? (
+                          {!scheduleIsPast && req.aprovacao_cliente !== 'aprovado' ? (
                             <span className="badge badge-enviado">Aguardando aprovação do orçamento</span>
-                          ) : (
+                          ) : !scheduleIsPast && (
                             <button className="btn btn-outline btn-sm" onClick={() => handleCheckin(req)}>Iniciar visita (check-in)</button>
                           )}
                         </div>
@@ -889,9 +894,11 @@ export default function Requests() {
           <form className="checkout-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-title" onSubmit={handleCheckout}>
             <div className="checkout-modal__header">
               <div>
-                <span className="checkout-modal__eyebrow">FINALIZAÇÃO ASSISTIDA</span>
-                <h3 id="checkout-title">Como foi o atendimento?</h3>
-                <p>Responda só o necessário. O sistema monta o resumo, registra no Milvus e envia ao contato do chamado.</p>
+                <span className="checkout-modal__eyebrow">{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para) ? 'REGISTRO DE VISITA ATRASADA' : 'FINALIZAÇÃO ASSISTIDA'}</span>
+                <h3 id="checkout-title">{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para) ? 'A visita já foi realizada?' : 'Como foi o atendimento?'}</h3>
+                <p>{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para)
+                  ? 'Confirme no final do formulário e o chamado será fechado no sistema e no Milvus.'
+                  : 'Responda só o necessário. O sistema monta o resumo, registra no Milvus e envia ao contato do chamado.'}</p>
               </div>
               <button type="button" className="checkout-modal__close" onClick={closeCheckout} aria-label="Fechar">×</button>
             </div>
