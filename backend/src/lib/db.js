@@ -169,6 +169,9 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS agendado_ate TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico_em TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS pagamento_status TEXT NOT NULL DEFAULT 'Pendente';
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS pagamento_liquidado_em TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS pagamento_liquidado_por TEXT;
   CREATE TABLE IF NOT EXISTS manual_visits (
     id TEXT PRIMARY KEY,
     assigned_technician TEXT NOT NULL REFERENCES users(id),

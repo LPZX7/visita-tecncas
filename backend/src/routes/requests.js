@@ -6,7 +6,7 @@ const { sendMail, actionEmailHtml } = require('../lib/mailer');
 const { generateVisitReportPdf } = require('../lib/visitReportPdf');
 const { generateTermoConclusaoPdf } = require('../lib/termoConclusaoPdf');
 const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/scoping');
-const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestScheduleRemovalToMilvus, syncRequestUpdateToMilvus } = require('../lib/milvusSync');
+const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestScheduleRemovalToMilvus, syncRequestUpdateToMilvus, syncRequestDisapprovalToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { validateVisitExecution } = require('../lib/visitWorkflow');
@@ -300,7 +300,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       confirmar_visita_atrasada,
       sincronizar_responsaveis_milvus
     } = req.body;
-    if ((agendado_para !== undefined || agendado_ate !== undefined)
+    const requestedScheduleChanged = (
+      (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
+      || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
+    );
+    if (requestedScheduleChanged
       && (request.hora_checkin || request.hora_checkout || ['Em Atendimento', 'Concluída'].includes(request.status))) {
       return res.status(409).json({ error: 'Uma visita que já começou ou foi concluída não pode ser removida ou remarcada pela agenda.' });
     }
@@ -419,15 +423,24 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           patch.adicional_descricao = teve_adicional ? adicional_descricao.trim() : null;
           patch.custo_adicional = teve_adicional ? additionalCost : 0;
           patch.observacao_final = (observacao_final || '').trim() || null;
+          patch.pagamento_status = 'Liquidado';
+          patch.pagamento_liquidado_em = new Date().toISOString();
+          patch.pagamento_liquidado_por = req.user.sub;
         }
       }
     } else {
       if (visita_realizada !== undefined && typeof visita_realizada !== 'boolean') {
         return res.status(400).json({ error: 'Confirmação de visita realizada inválida.' });
       }
+      if (visita_realizada === true && req.user.role !== 'gestor') {
+        return res.status(403).json({ error: 'Somente o gestor pode registrar administrativamente uma visita já realizada.' });
+      }
       if (status !== undefined) {
         if (!STAFF_STATUSES.includes(status)) {
           return res.status(400).json({ error: 'Status inválido' });
+        }
+        if (status === 'Concluída' && request.status !== 'Concluída' && visita_realizada !== true) {
+          return res.status(400).json({ error: 'Marque a confirmação de visita realizada para concluir e liquidar o chamado.' });
         }
         patch.status = status;
       }
@@ -481,7 +494,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const effectiveScheduledAt = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
     const effectiveScheduledUntil = 'agendado_ate' in patch ? patch.agendado_ate : request.agendado_ate;
     const effectiveStatus = patch.status || request.status;
-    const visitaConfirmadaPelaEquipe = req.user.role !== 'tecnico' && visita_realizada === true;
+    const visitaConfirmadaPelaEquipe = req.user.role === 'gestor' && visita_realizada === true;
     if (visitaConfirmadaPelaEquipe) {
       if (request.status === 'Cancelada') {
         return res.status(409).json({ error: 'Um chamado cancelado não pode ser registrado como visita realizada.' });
@@ -511,6 +524,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         || `Registro administrativo: ${req.user.role} confirmou que a visita foi realizada em ${slot.date} às ${slot.time}. Relatório técnico não informado.`;
       patch.observacao_final = request.observacao_final
         || `Visita confirmada como realizada por ${req.user.name || req.user.role}.`;
+      patch.hora_checkin = request.hora_checkin || new Date().toISOString();
+      patch.hora_checkout = request.hora_checkout || new Date().toISOString();
+      patch.pagamento_status = 'Liquidado';
+      patch.pagamento_liquidado_em = new Date().toISOString();
+      patch.pagamento_liquidado_por = req.user.sub;
     }
     const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
     const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
@@ -680,7 +698,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
         await db.logAudit({
           user: req.user,
-          acao: visitaConfirmadaPelaEquipe ? 'visita_registrada_como_realizada' : 'visita_finalizada',
+          acao: visitaConfirmadaPelaEquipe
+            ? 'visita_registrada_realizada_pagamento_liquidado'
+            : 'visita_finalizada_pagamento_liquidado',
           entidade: 'request',
           entidade_id: updated.id,
           detalhes: visitaConfirmadaPelaEquipe
@@ -697,6 +717,98 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     });
   } catch (err) {
     if (err.expose) return res.status(err.statusCode || 502).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.patch('/:id/aprovar-visita', requireRole('tecnico', 'gestor'), async (req, res, next) => {
+  try {
+    const request = await db.getRequestById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Solicitação não encontrada' });
+    if (req.user.role === 'tecnico' && request.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você não está atribuído a este chamado.' });
+    }
+    if (request.status === 'Cancelada') {
+      return res.status(409).json({ error: 'Um chamado cancelado não pode ter a visita aprovada.' });
+    }
+    if (request.status !== 'Concluída') {
+      return res.status(409).json({ error: 'Registre a visita como realizada antes de aprovar e liquidar o pagamento.' });
+    }
+    if (request.pagamento_status === 'Liquidado') {
+      return res.status(409).json({ error: 'A visita já está aprovada e o pagamento liquidado.' });
+    }
+
+    const liquidadoEm = new Date().toISOString();
+    const updated = await db.updateRequest(request.id, {
+      pagamento_status: 'Liquidado',
+      pagamento_liquidado_em: liquidadoEm,
+      pagamento_liquidado_por: req.user.sub
+    });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_aprovada_pagamento_liquidado',
+      entidade: 'request',
+      entidade_id: request.id,
+      detalhes: `Chamado #${request.numero}: visita aprovada por ${req.user.name || req.user.role}; pagamento marcado como liquidado.`
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id/desaprovar-visita', requireRole('tecnico', 'gestor'), async (req, res, next) => {
+  try {
+    const request = await db.getRequestById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Solicitação não encontrada' });
+    if (req.user.role === 'tecnico' && request.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você não está atribuído a este chamado.' });
+    }
+    if (request.status !== 'Concluída' || request.pagamento_status !== 'Liquidado') {
+      return res.status(409).json({ error: 'Só é possível desaprovar uma visita concluída com pagamento liquidado.' });
+    }
+    const acceptedTerm = await db.getVisitaAceiteByRequestId(request.id);
+    if (acceptedTerm) {
+      return res.status(409).json({ error: 'Este chamado tem um termo de conclusão assinado. O gestor precisa excluir o termo antes de desaprovar a visita.' });
+    }
+
+    const previousReport = request.relatorio_visita;
+    const reopenedStatus = request.agendado_para ? 'Agendada' : 'Aberta';
+    const updated = await db.updateRequest(request.id, {
+      status: reopenedStatus,
+      hora_checkin: null,
+      hora_checkout: null,
+      confirmacao_tecnico: null,
+      confirmacao_tecnico_em: null,
+      concluded_at: null,
+      relatorio_visita: null,
+      teve_adicional: false,
+      adicional_descricao: null,
+      custo_adicional: 0,
+      observacao_final: null,
+      pagamento_status: 'Pendente',
+      pagamento_liquidado_em: null,
+      pagamento_liquidado_por: null
+    });
+    const milvusSynced = await syncRequestDisapprovalToMilvus(request, {
+      actor: req.user.name || req.user.role,
+      previousReport
+    });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_desaprovada_pagamento_revertido',
+      entidade: 'request',
+      entidade_id: request.id,
+      detalhes: `Chamado #${request.numero}: visita desaprovada por ${req.user.name || req.user.role}; chamado reaberto como ${reopenedStatus}, pagamento voltou para Pendente. Check-in/check-out anteriores: ${request.hora_checkin || 'não registrados'} / ${request.hora_checkout || 'não registrados'}.${previousReport ? ` Relatório anterior: ${previousReport}` : ''}`
+    });
+    await db.createNotification({
+      empresa_id: request.empresa_id,
+      titulo: `Visita do chamado #${request.numero} reaberta`,
+      mensagem: 'A visita foi desaprovada e o pagamento voltou para Pendente.',
+      link: '/requests'
+    });
+    res.json({ ...updated, milvus_desaprovacao_sincronizada: milvusSynced });
+  } catch (err) {
     next(err);
   }
 });

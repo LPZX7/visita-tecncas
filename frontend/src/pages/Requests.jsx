@@ -315,10 +315,12 @@ export default function Requests() {
         ? response.data.milvus_visita_sincronizada
         : response.data.agenda_milvus_sincronizada;
       if (milvusSynced === false) {
-        setError('A atualização foi salva na agenda do site/TV, mas não foi enviada ao Milvus. Confira a integração.');
+        setError(draft.visita_realizada
+          ? 'A visita foi aprovada e o pagamento liquidado no portal, mas o fechamento não foi sincronizado ao Milvus.'
+          : 'A atualização foi salva na agenda do site/TV, mas não foi enviada ao Milvus. Confira a integração.');
       } else {
         setSuccess(draft.visita_realizada
-          ? 'Visita registrada como realizada e chamado concluído.'
+          ? 'Visita aprovada, chamado concluído e pagamento marcado como liquidado.'
           : 'Chamado e agenda atualizados.');
       }
       load();
@@ -358,6 +360,34 @@ export default function Requests() {
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao iniciar visita');
+    }
+  };
+
+  const approveVisit = async (req) => {
+    if (!window.confirm(`Aprovar a visita do chamado #${req.numero} e marcar o pagamento como liquidado?`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      await api.patch(`/requests/${req.id}/aprovar-visita`);
+      setSuccess(`Visita do chamado #${req.numero} aprovada e pagamento liquidado.`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível aprovar a visita.');
+    }
+  };
+
+  const disapproveVisit = async (req) => {
+    if (!window.confirm(`Desaprovar a visita do chamado #${req.numero}? O chamado será reaberto e o pagamento voltará para Pendente.`)) return;
+    setError('');
+    setSuccess('');
+    try {
+      const response = await api.patch(`/requests/${req.id}/desaprovar-visita`);
+      setSuccess(response.data.milvus_desaprovacao_sincronizada === false
+        ? 'Visita desaprovada, chamado reaberto e pagamento pendente. O registro informativo não foi enviado ao Milvus.'
+        : 'Visita desaprovada, chamado reaberto e pagamento pendente. A reversão foi registrada no histórico.');
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível desaprovar a visita.');
     }
   };
 
@@ -442,7 +472,7 @@ export default function Requests() {
     }
     setCheckoutSaving(true);
     try {
-      await api.patch(`/requests/${checkoutRequest.id}`, {
+      const response = await api.patch(`/requests/${checkoutRequest.id}`, {
         status: 'Concluída',
         confirmar_visita_atrasada: !checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para),
         teve_adicional: checkoutForm.teve_adicional,
@@ -451,6 +481,9 @@ export default function Requests() {
         observacao_final: checkoutForm.observacao_final.trim() || null
       });
       setCheckoutRequest(null);
+      setSuccess(response.data.milvus_visita_sincronizada === false
+        ? 'Visita concluída e pagamento liquidado no portal. O fechamento não foi sincronizado ao Milvus.'
+        : 'Visita concluída e pagamento marcado como liquidado.');
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao concluir visita');
@@ -601,7 +634,7 @@ export default function Requests() {
             const scheduleDay = scheduledDate(draft.agendado_para);
             const scheduleTime = scheduledTime(draft.agendado_para);
             const scheduleIsPast = isPastSchedule(draft.agendado_para);
-            const showPastVisitCompletionOption = scheduleIsPast
+            const showPastVisitCompletionOption = isGestor && scheduleIsPast
               && !['Concluída', 'Cancelada'].includes(req.status);
             const selectedTechnicianUnavailable = !scheduleIsPast && technicianUnavailability.some((entry) => (
               entry.technician_id === draft.assigned_technician && entry.date === scheduleDay
@@ -696,8 +729,20 @@ export default function Requests() {
                               checked={Boolean(draft.visita_realizada)}
                               onChange={(e) => setDraft(req, { visita_realizada: e.target.checked })}
                             />
-                            <span>Sim, a visita já foi realizada pelo técnico. Registrar o chamado como concluído.</span>
+                            <span>Aprovar: a visita já foi realizada. Concluir o chamado e marcar o pagamento como liquidado.</span>
                           </label>
+                        )}
+                        {isGestor && req.status === 'Concluída' && req.pagamento_status !== 'Liquidado' && (
+                          <div className="request-payment-actions">
+                            <span className="badge badge-enviado">Pagamento pendente</span>
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => approveVisit(req)}>Aprovar visita e liquidar</button>
+                          </div>
+                        )}
+                        {isGestor && req.status === 'Concluída' && req.pagamento_status === 'Liquidado' && (
+                          <div className="request-payment-actions">
+                            <span className="badge badge-aprovado">Pagamento liquidado</span>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => disapproveVisit(req)}>Desaprovar visita</button>
+                          </div>
                         )}
                         {req.status === 'Agendada' && (
                           <span className={`request-availability-note ${req.confirmacao_tecnico === 'confirmada' ? 'is-available' : 'is-unset'}`}>
@@ -717,7 +762,17 @@ export default function Requests() {
                       {!isMine ? (
                         <span>—</span>
                       ) : req.status === 'Concluída' || req.hora_checkout ? (
-                        <span className="badge badge-concluida">Visita concluída</span>
+                        <div className="request-tech-action-stack">
+                          <span className="badge badge-concluida">Visita concluída</span>
+                          {req.pagamento_status === 'Liquidado' ? (
+                            <>
+                              <span className="badge badge-aprovado">Pagamento liquidado</span>
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => disapproveVisit(req)}>Desaprovar visita</button>
+                            </>
+                          ) : (
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => approveVisit(req)}>Aprovar visita e liquidar</button>
+                          )}
+                        </div>
                       ) : req.hora_checkin ? (
                         <button className="btn btn-primary btn-sm" onClick={() => openCheckout(req)}>Finalizar atendimento</button>
                       ) : (
@@ -811,6 +866,16 @@ export default function Requests() {
                             <strong>Check-out</strong>
                             <p>{formatDateTime(req.hora_checkout)}</p>
                           </div>
+                          {(canManage || isTech) && (
+                            <div>
+                              <strong>Pagamento da visita</strong>
+                              <p>
+                                {req.pagamento_status === 'Liquidado'
+                                  ? `Liquidado${req.pagamento_liquidado_em ? ` em ${formatDateTime(req.pagamento_liquidado_em)}` : ''}`
+                                  : 'Pendente'}
+                              </p>
+                            </div>
+                          )}
                         </div>
                         {canManage && !req.milvus_codigo && (
                           <div className="milvus-link-card">
@@ -897,8 +962,8 @@ export default function Requests() {
                 <span className="checkout-modal__eyebrow">{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para) ? 'REGISTRO DE VISITA ATRASADA' : 'FINALIZAÇÃO ASSISTIDA'}</span>
                 <h3 id="checkout-title">{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para) ? 'A visita já foi realizada?' : 'Como foi o atendimento?'}</h3>
                 <p>{!checkoutRequest.hora_checkin && isPastSchedule(checkoutRequest.agendado_para)
-                  ? 'Confirme no final do formulário e o chamado será fechado no sistema e no Milvus.'
-                  : 'Responda só o necessário. O sistema monta o resumo, registra no Milvus e envia ao contato do chamado.'}</p>
+                  ? 'Confirme no final do formulário. O chamado será concluído, o pagamento marcado como liquidado e a visita registrada no Milvus.'
+                  : 'Responda só o necessário. O sistema monta o resumo, registra a visita no Milvus, marca o pagamento como liquidado e envia ao contato do chamado.'}</p>
               </div>
               <button type="button" className="checkout-modal__close" onClick={closeCheckout} aria-label="Fechar">×</button>
             </div>
@@ -980,7 +1045,7 @@ export default function Requests() {
                   />
                   <span>
                     <strong>Confirmo que a visita foi concluída com sucesso</strong>
-                    <small>Ao confirmar, o chamado será encerrado no site e no Milvus.</small>
+                    <small>Ao confirmar, a visita será concluída e o pagamento marcado como liquidado no sistema.</small>
                   </span>
                 </label>
               )}
@@ -989,7 +1054,7 @@ export default function Requests() {
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeCheckout} disabled={checkoutSaving}>Cancelar</button>
               <button type="submit" className="btn btn-primary" disabled={checkoutSaving || checkoutForm.teve_adicional === null || !checkoutForm.confirmar_conclusao}>
-                {checkoutSaving ? 'Finalizando e enviando...' : 'Confirmar e finalizar atendimento'}
+                {checkoutSaving ? 'Finalizando e enviando...' : 'Concluir visita e liquidar pagamento'}
               </button>
             </div>
           </form>

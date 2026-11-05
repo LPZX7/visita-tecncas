@@ -399,6 +399,27 @@ async function syncRequestUpdateToMilvus(request, { tipo, technician, approvedPa
   }
 }
 
+async function syncRequestDisapprovalToMilvus(request, { actor, previousReport } = {}) {
+  if (!process.env.MILVUS_API_TOKEN || !request?.milvus_codigo) return false;
+
+  try {
+    await criarAcompanhamento({
+      ticketCodigo: request.milvus_codigo,
+      privado: true,
+      descricao: [
+        `A visita do chamado #${request.numero} foi desaprovada no portal por ${actor || 'um responsável'}.`,
+        'O chamado foi reaberto no portal e o pagamento voltou para Pendente.',
+        'Este registro informa a reversão no portal; o status do ticket no Milvus pode precisar ser atualizado separadamente.',
+        previousReport ? `Relatório registrado anteriormente: ${previousReport}` : null
+      ].filter(Boolean).join('\n')
+    });
+    return true;
+  } catch (err) {
+    console.error(`[milvus] Falha ao registrar desaprovação da visita #${request.numero}:`, err.message);
+    return false;
+  }
+}
+
 module.exports = {
   syncMilvusChamados,
   syncMilvusClientes,
@@ -407,5 +428,6 @@ module.exports = {
   syncRequestScheduleToMilvus,
   syncRequestScheduleRemovalToMilvus,
   pushVisitaTecnicaAprovadaToMilvus,
-  syncRequestUpdateToMilvus
+  syncRequestUpdateToMilvus,
+  syncRequestDisapprovalToMilvus
 };
