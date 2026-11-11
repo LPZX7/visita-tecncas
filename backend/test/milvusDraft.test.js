@@ -75,7 +75,25 @@ test('mapeia empresa, filial e equipamento somente quando o resultado é único'
   assert.equal(resolution.analysis.items[0].peca_id, 'sensor');
 });
 
-test('mantém para revisão quando existem dois equipamentos igualmente possíveis', () => {
+test('identifica empresa por qualquer email válido de uma lista cadastrada', () => {
+  const companies = [
+    { id: 'c1', razao_social: 'Empresa X', email: 'suporte@empresa.com,matheus@empresa.com' },
+    { id: 'c2', razao_social: 'Outra Empresa', email: 'contato@outra.com' }
+  ];
+  const ticket = { cliente_email: 'matheus@empresa.com', cliente_nome: 'Cliente não cadastrado' };
+
+  assert.equal(matchCompanyFromTicket(ticket, companies, []).id, 'c1');
+});
+
+test('não escolhe automaticamente uma empresa apenas por nome parcialmente parecido', () => {
+  const company = { id: 'c1', razao_social: 'Empresa X Serviços' };
+  const ticket = { cliente_nome: 'Empresa X', descricao: 'Visita técnica' };
+
+  assert.equal(matchCompanyFromTicket(ticket, [company], []), null);
+  assert.equal(resolveAutomaticTicket(ticket, { companies: [company], units: [], equipments: [], parts }).ready, false);
+});
+
+test('importa como chamado mesmo quando há mais de um equipamento possível', () => {
   const company = { id: 'c1', razao_social: 'Empresa X', email: 'cliente@empresa.com.br' };
   const ticket = { cliente_nome: 'Empresa X', cliente_email: 'cliente@empresa.com.br', descricao: 'Trocar mola da catraca.' };
   const equipments = [
@@ -85,8 +103,38 @@ test('mantém para revisão quando existem dois equipamentos igualmente possíve
 
   assert.equal(matchEquipmentFromTicket(ticket, company, null, equipments), null);
   const resolution = resolveAutomaticTicket(ticket, { companies: [company], units: [], equipments, parts });
+  assert.equal(resolution.ready, true);
+  assert.equal(resolution.equipment, null);
+});
+
+test('importa chamado mesmo sem equipamento, peça identificada ou email válido', () => {
+  const company = { id: 'c1', razao_social: 'Empresa sem cadastro de equipamento' };
+  const ticket = {
+    cliente_nome: 'Empresa sem cadastro de equipamento',
+    cliente_email: 'email ausente',
+    assunto: 'Solicitação de atendimento'
+  };
+
+  const resolution = resolveAutomaticTicket(ticket, {
+    companies: [company], units: [], equipments: [], parts
+  });
+  assert.equal(resolution.ready, true);
+  assert.equal(resolution.equipment, null);
+  assert.equal(resolution.contactEmail, null);
+  assert.deepEqual(resolution.analysis.items, []);
+});
+
+test('mantém em revisão quando não identifica uma única empresa', () => {
+  const ticket = { cliente_nome: 'Empresa X', descricao: 'Visita técnica' };
+  const resolution = resolveAutomaticTicket(ticket, {
+    companies: [
+      { id: 'c1', razao_social: 'Empresa X' },
+      { id: 'c2', razao_social: 'Empresa X' }
+    ],
+    units: [], equipments: [], parts
+  });
   assert.equal(resolution.ready, false);
-  assert.match(resolution.reason, /equipamento/i);
+  assert.match(resolution.reason, /empresa/i);
 });
 
 test('motivo ausente não impede a criação automática do rascunho', () => {

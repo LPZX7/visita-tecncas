@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import SearchableSelect from '../components/SearchableSelect';
 
@@ -9,6 +10,11 @@ function formatDateTime(value) {
 
 function norm(str) {
   return (str || '').toLowerCase().trim();
+}
+
+function firstValidEmail(value) {
+  return String(value || '').split(/[;,]/).map((email) => email.trim())
+    .find((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) || '';
 }
 
 // Casa o "Cliente" do ticket Milvus com uma empresa cadastrada pelo nome
@@ -30,10 +36,10 @@ function matchCompany(pendente, companies) {
 // ticket (bate com o email cadastrado na unidade) ou pelo nome da unidade
 // aparecendo no nome do cliente do ticket (ex.: "Mirontec – Atibaia").
 function matchUnit(pendente, unitsOfCompany) {
-  const emails = norm(pendente.cliente_email).split(',').map((e) => e.trim()).filter(Boolean);
+  const emails = norm(pendente.cliente_email).split(/[;,]/).map((e) => e.trim()).filter(Boolean);
   const nome = norm(pendente.cliente_nome);
   const candidates = unitsOfCompany.filter((u) => {
-    const unitEmails = norm(u.email).split(',').map((e) => e.trim()).filter(Boolean);
+    const unitEmails = norm(u.email).split(/[;,]/).map((e) => e.trim()).filter(Boolean);
     if (emails.length && unitEmails.some((ue) => emails.includes(ue))) return true;
     const unome = norm(u.nome);
     return unome && (nome.includes(unome) || unome.includes(nome));
@@ -57,6 +63,7 @@ function matchEquipment(pendente, equipmentsOfCompany) {
 }
 
 export default function MilvusImport() {
+  const navigate = useNavigate();
   const [pendentes, setPendentes] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
@@ -81,7 +88,7 @@ export default function MilvusImport() {
 
   const draftFor = (id) => {
     const ticket = pendentes.find((item) => item.id === id);
-    return drafts[id] || { empresa_id: '', unidade_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '', solicitante_email: ticket?.cliente_email || '' };
+    return drafts[id] || { empresa_id: '', unidade_id: '', equipamento_id: '', urgencia: 'Normal', endereco: '', solicitante_email: firstValidEmail(ticket?.cliente_email) };
   };
   const setDraft = (id, patch) => setDrafts((prev) => ({ ...prev, [id]: { ...draftFor(id), ...patch, _auto: false } }));
 
@@ -120,7 +127,7 @@ export default function MilvusImport() {
           equipamento_id: equipment?.id || '',
           urgencia: 'Normal',
           endereco: addressFor(company.id, unit?.id || ''),
-          solicitante_email: p.cliente_email || unit?.email || company.email || '',
+          solicitante_email: firstValidEmail(p.cliente_email) || firstValidEmail(unit?.email) || firstValidEmail(company.email),
           _auto: true
         };
         changed = true;
@@ -136,7 +143,13 @@ export default function MilvusImport() {
     setSuccess('');
     try {
       const res = await api.post('/milvus-import/sync');
-      setSuccess(`Sincronizado: ${res.data.novos} novo(s), ${res.data.importados_automaticamente || 0} importado(s) automaticamente e ${res.data.aguardando_revisao || 0} aguardando revisão.`);
+      const message = `Sincronizado: ${res.data.novos} novo(s), ${res.data.importados_automaticamente || 0} importado(s) automaticamente e ${res.data.aguardando_revisao || 0} aguardando revisão.`;
+      const importedRequestId = res.data.chamados_importados?.[0];
+      if (importedRequestId) {
+        navigate(`/requests#request-${importedRequestId}`, { state: { milvusImportSuccess: message } });
+        return;
+      }
+      setSuccess(message);
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao sincronizar com o Milvus');
@@ -149,23 +162,21 @@ export default function MilvusImport() {
     setError('');
     setSuccess('');
     const draft = draftFor(id);
-    if (!draft.empresa_id || !draft.equipamento_id) {
-      setError('Selecione o solicitante e o equipamento antes de importar.');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.solicitante_email || '')) {
-      setError('Informe um e-mail válido do cliente antes de importar.');
+    if (!draft.empresa_id) {
+      setError('Selecione o solicitante antes de importar.');
       return;
     }
     try {
-      const res = await api.post(`/milvus-import/${id}/importar`, draft);
+      const res = await api.post(`/milvus-import/${id}/importar`, {
+        ...draft,
+        equipamento_id: draft.equipamento_id || null
+      });
       const pecas = res.data.pecas_identificadas || [];
-      setSuccess(
+      const message =
         pecas.length > 0
-          ? `Chamado importado e plano técnico criado: ${res.data.plano_tecnico?.objective || pecas.join(', ')}${res.data.motivo_identificado ? ` Motivo identificado: ${res.data.motivo_identificado}.` : ' O Milvus não informou um motivo; isso não impede o orçamento.'}`
-          : `Chamado importado sem peças. Plano técnico criado: ${res.data.plano_tecnico?.objective || 'revise a orientação antes de enviar o orçamento.'}`
-      );
-      load();
+          ? `Chamado importado para Chamados. Plano técnico: ${res.data.plano_tecnico?.objective || pecas.join(', ')}.`
+          : 'Chamado importado para Chamados. Equipamento, contato e orçamento podem ser completados depois.';
+      navigate(`/requests#request-${res.data.id}`, { state: { milvusImportSuccess: message } });
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao importar chamado');
     }
@@ -186,8 +197,7 @@ export default function MilvusImport() {
     <div>
       <h2 className="page-title">Importar do Milvus</h2>
       <p className="section-text">
-        Tickets do Milvus são importados automaticamente quando empresa, equipamento, peça e e-mail são identificados com segurança.
-        Somente os casos incompletos ou ambíguos ficam aqui para revisão.
+        Tickets com empresa identificada entram automaticamente em Chamados após a sincronização. Equipamento, e-mail e orçamento podem ser completados depois; somente empresas ambíguas ou não identificadas ficam aqui para revisão.
       </p>
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
@@ -229,7 +239,7 @@ export default function MilvusImport() {
               )}
               {p.status === 'pendente' && draft._auto && (
                 <p className="section-text" style={{ color: 'var(--verde, #1e8e5a)' }}>
-                  Solicitante, equipamento e endereço pré-preenchidos automaticamente a partir do ticket — confira antes de importar.
+                  Solicitante, unidade, equipamento e endereço pré-preenchidos quando identificados — confira antes de importar.
                 </p>
               )}
 
@@ -239,7 +249,7 @@ export default function MilvusImport() {
                     Solicitante
                     <SearchableSelect
                       value={draft.empresa_id}
-                      onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, ''), solicitante_email: p.cliente_email || companies.find((c) => c.id === id)?.email || '' })}
+                      onChange={(id) => setDraft(p.id, { empresa_id: id, unidade_id: '', equipamento_id: '', endereco: addressFor(id, ''), solicitante_email: firstValidEmail(p.cliente_email) || firstValidEmail(companies.find((c) => c.id === id)?.email) })}
                       placeholder="Digite para buscar a empresa..."
                       options={companies.map((c) => ({ value: c.id, label: c.nome_fantasia || c.razao_social, sublabel: [c.razao_social, c.cnpj].filter(Boolean).join(' · ') }))}
                     />
@@ -249,7 +259,7 @@ export default function MilvusImport() {
                       Unidade de Negócio
                       <SearchableSelect
                         value={draft.unidade_id}
-                        onChange={(id) => setDraft(p.id, { unidade_id: id, equipamento_id: '', endereco: addressFor(draft.empresa_id, id), solicitante_email: units.find((u) => u.id === id)?.email || draft.solicitante_email || companies.find((c) => c.id === draft.empresa_id)?.email || '' })}
+                        onChange={(id) => setDraft(p.id, { unidade_id: id, equipamento_id: '', endereco: addressFor(draft.empresa_id, id), solicitante_email: firstValidEmail(units.find((u) => u.id === id)?.email) || draft.solicitante_email || firstValidEmail(companies.find((c) => c.id === draft.empresa_id)?.email) })}
                         placeholder="Digite para buscar a filial ou sede..."
                         emptyMessage="Nenhuma unidade cadastrada para esta empresa."
                         options={unitsForCompany(draft.empresa_id).map((u) => ({
@@ -270,7 +280,7 @@ export default function MilvusImport() {
                       placeholder="cliente@empresa.com.br"
                       required
                     />
-                    <small className="detail-muted">Obrigatório para avisos, aprovação e conclusão do atendimento.</small>
+                    <small className="detail-muted">Opcional na importação; pode ser completado depois para receber avisos e aprovações.</small>
                   </label>
                   <label className="form-field">
                     Equipamento
@@ -280,7 +290,7 @@ export default function MilvusImport() {
                       onChange={(e) => setDraft(p.id, { equipamento_id: e.target.value })}
                       disabled={!draft.empresa_id}
                     >
-                      <option value="">{draft.empresa_id ? 'Selecione' : 'Selecione uma empresa primeiro'}</option>
+                      <option value="">{draft.empresa_id ? 'Não identificado (opcional)' : 'Selecione uma empresa primeiro'}</option>
                       {equipmentsForCompany(draft.empresa_id, draft.unidade_id).map((eq) => (
                         <option key={eq.id} value={eq.id}>{eq.modelo} — {eq.numero_serie}</option>
                       ))}

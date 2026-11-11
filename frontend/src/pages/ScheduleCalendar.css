@@ -189,6 +189,15 @@
 
 .schedule-booking-dialog__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .schedule-booking-dialog__grid .form-field { margin: 0; }
+.schedule-extra-days { display: grid; gap: 9px; padding: 12px; border: 1px solid #e1e8f0; border-radius: 11px; background: #f8fafc; }
+.schedule-extra-days > p { display: grid; gap: 3px; margin: 0; color: #344b66; font-size: .74rem; font-weight: 750; }
+.schedule-extra-days > p small { color: #718096; font-size: .67rem; font-weight: 500; }
+.schedule-extra-day { display: flex; align-items: flex-end; gap: 8px; }
+.schedule-extra-day .form-field { flex: 1; margin: 0; }
+.schedule-extra-day > button { margin-bottom: 1px; }
+.schedule-add-workday { justify-self: start; padding: 7px 10px; border: 1px dashed #9bb5d4; border-radius: 8px; color: #28558e; background: #f7faff; font-size: .7rem; font-weight: 750; cursor: pointer; }
+.schedule-add-workday:hover:not(:disabled) { border-color: #5d8cc6; background: #edf4ff; }
+.schedule-add-workday:disabled { opacity: .55; cursor: not-allowed; }
 .schedule-booking-dialog__end-toggle { display: flex; align-items: center; gap: 9px; margin: 13px 0; color: #344b66; font-size: .74rem; font-weight: 650; cursor: pointer; }
 .schedule-booking-dialog__end-toggle input { flex: 0 0 auto; accent-color: #2563eb; }
 .schedule-booking-dialog__end-time { margin: 0 0 13px; }

@@ -16,3 +16,10 @@ test('prioriza email informado e usa cadastros como fallback', () => {
   }), 'novo@cliente.com');
   assert.equal(resolveContactEmail({ unit: { email: 'filial@cliente.com' }, company: { email: 'empresa@cliente.com' } }), 'filial@cliente.com');
 });
+
+test('seleciona o primeiro email válido quando o Milvus retorna uma lista', () => {
+  assert.equal(resolveContactEmail({
+    request: { solicitante_email: 'suporte@llinea.com.br,matheus.abreu@depholding.com.br' }
+  }), 'suporte@llinea.com.br');
+  assert.equal(resolveContactEmail({ company: { email: 'inválido; contato@cliente.com.br' } }), 'contato@cliente.com.br');
+});

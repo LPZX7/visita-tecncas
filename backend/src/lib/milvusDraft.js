@@ -202,7 +202,7 @@ function matchCompanyFromTicket(pendente, companies = [], units = []) {
     let score = 0;
     if (clientToken && company.milvus_cliente_token && String(company.milvus_cliente_token) === clientToken) score += 120;
     if (document && onlyDigits(company.cnpj) === document) score += 110;
-    if (ticketEmails.has(String(company.email || '').trim().toLowerCase())) score += 90;
+    if (splitEmails(company.email).some((email) => ticketEmails.has(email))) score += 90;
     if (units.some((unit) => unit.empresa_id === company.id && splitEmails(unit.email).some((email) => ticketEmails.has(email)))) score += 85;
     const names = [normalizeText(company.razao_social), normalizeText(company.nome_fantasia)].filter(Boolean);
     if (clientName && names.some((name) => name === clientName)) score += 80;
@@ -210,7 +210,11 @@ function matchCompanyFromTicket(pendente, companies = [], units = []) {
     scored.set(company, score);
   }
 
-  return chooseUniqueBest(scored);
+  const matchedCompany = chooseUniqueBest(scored);
+  // A empresa é o único vínculo obrigatório para criar o chamado. Aceita
+  // apenas identificadores fortes (documento/token/email/nome exato); um
+  // nome apenas parecido fica para confirmação manual.
+  return matchedCompany && scored.get(matchedCompany) >= 80 ? matchedCompany : null;
 }
 
 function matchUnitFromTicket(pendente, company, units = []) {

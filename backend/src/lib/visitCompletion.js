@@ -31,6 +31,14 @@ function formatScheduledAt(value) {
 }
 
 function scheduledWindow(request) {
+  const workDays = Array.isArray(request?.dias_visita) ? request.dias_visita : [];
+  if (workDays.length > 1) {
+    return `Dias de trabalho: ${workDays.map((day) => {
+      const start = formatScheduledAt(`${day.date}T${day.start}`);
+      const end = day.end ? formatScheduledAt(`${day.date}T${day.end}`) : null;
+      return `${start}${end ? ` até ${end}` : ''}`;
+    }).join('; ')}`;
+  }
   const start = formatScheduledAt(request?.agendado_para);
   if (!start) return null;
   const end = formatScheduledAt(request?.agendado_ate);

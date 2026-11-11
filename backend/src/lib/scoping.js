@@ -17,7 +17,11 @@ function scopeRequestsForClient(requests, equipments, user) {
     if (r.empresa_id !== user.empresa_id) return false;
     if (!user.unidade_id) return true;
     const equipment = equipments.find((e) => e.id === r.equipamento_id);
-    return !equipment?.unidade_id || equipment.unidade_id === user.unidade_id;
+    const requestUnitId = r.unidade_id || equipment?.unidade_id || null;
+    // Chamados sem equipamento e sem filial identificada não podem ser
+    // expostos a clientes de uma unidade específica.
+    if (!equipment && !requestUnitId) return false;
+    return !requestUnitId || requestUnitId === user.unidade_id;
   });
 }
 

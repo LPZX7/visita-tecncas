@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 const { buildVisitApprovalPatchFromBudget } = require('./approvalSync');
+const { scheduleDaysForVisit, scheduleDaysFromVisit } = require('./scheduleDays');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -104,6 +105,19 @@ const SCHEMA_SQL = `
   );
 
   ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
+  ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS real BOOLEAN NOT NULL DEFAULT TRUE;
+  UPDATE equipamentos
+    SET real = FALSE
+    WHERE lower(trim(numero_serie)) IN ('a definir', 'definir', 'n/a', 'na', 'sem serie', 'não informado', 'nao informado');
+
+  CREATE TABLE IF NOT EXISTS equipamento_modelos (
+    id TEXT PRIMARY KEY,
+    nome TEXT NOT NULL,
+    criado_em TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_equipamento_modelos_nome ON equipamento_modelos(lower(nome));
+  ALTER TABLE equipamento_modelos ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE equipamento_modelos FROM PUBLIC, anon, authenticated, service_role;
 
   CREATE TABLE IF NOT EXISTS pecas (
     id TEXT PRIMARY KEY,
@@ -135,7 +149,8 @@ const SCHEMA_SQL = `
     id TEXT PRIMARY KEY,
     numero INTEGER,
     empresa_id TEXT NOT NULL REFERENCES empresas(id),
-    equipamento_id TEXT NOT NULL REFERENCES equipamentos(id),
+    equipamento_id TEXT REFERENCES equipamentos(id),
+    unidade_id TEXT REFERENCES unidades(id),
     descricao TEXT NOT NULL,
     urgencia TEXT NOT NULL DEFAULT 'Normal',
     endereco TEXT,
@@ -153,6 +168,8 @@ const SCHEMA_SQL = `
     concluded_at TEXT
   );
 
+  ALTER TABLE requests ALTER COLUMN equipamento_id DROP NOT NULL;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_codigo TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS milvus_id TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS aprovacao_cliente TEXT;
@@ -167,6 +184,8 @@ const SCHEMA_SQL = `
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS observacao_final TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS assigned_analyst TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS agendado_ate TEXT;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS dias_visita JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ALTER TABLE requests ADD COLUMN IF NOT EXISTS agenda_oculta BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS confirmacao_tecnico_em TEXT;
   ALTER TABLE requests ADD COLUMN IF NOT EXISTS pagamento_status TEXT NOT NULL DEFAULT 'Pendente';
@@ -187,6 +206,8 @@ const SCHEMA_SQL = `
     atualizado_em TEXT NOT NULL,
     CHECK (agendado_ate IS NULL OR agendado_ate > agendado_para)
   );
+  ALTER TABLE manual_visits ADD COLUMN IF NOT EXISTS dias_visita JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ALTER TABLE manual_visits ADD COLUMN IF NOT EXISTS agenda_oculta BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS idx_manual_visits_technician_schedule
     ON manual_visits(assigned_technician, agendado_para);
   ALTER TABLE manual_visits ENABLE ROW LEVEL SECURITY;
@@ -425,22 +446,16 @@ async function seedCatracaParts() {
   }
 }
 
-// Modelos de catraca da Mirontec para aparecerem no seletor de Equipamento
-// ao importar chamados — número de série e local de instalação ficam como
-// "A definir" até alguém preencher o valor real em Equipamentos.
-async function seedMirontecCatracas() {
-  const { rows: empresaRows } = await pool.query(
-    "SELECT id FROM empresas WHERE lower(razao_social) LIKE '%mirontec%' OR lower(nome_fantasia) LIKE '%mirontec%' LIMIT 1"
+// Modelos ficam em um catálogo global; eles não representam aparelhos instalados.
+async function seedEquipmentModels() {
+  const { rows: existingModels } = await pool.query(
+    'SELECT DISTINCT modelo AS nome FROM equipamentos WHERE trim(modelo) <> \'\''
   );
-  const empresaId = empresaRows[0]?.id;
-  if (!empresaId) return;
-
-  for (const modelo of ['Catraca Revolution', 'Top Fit']) {
-    const { rows } = await pool.query('SELECT id FROM equipamentos WHERE empresa_id = $1 AND modelo = $2', [empresaId, modelo]);
-    if (rows[0]) continue;
+  const models = new Set(['Catraca Revolution', 'Top Fit', ...existingModels.map((row) => row.nome.trim())]);
+  for (const nome of models) {
     await pool.query(
-      'INSERT INTO equipamentos (id, empresa_id, modelo, numero_serie, local_instalacao, criado_em) VALUES ($1, $2, $3, $4, $5, $6)',
-      [uuid(), empresaId, modelo, 'A definir', 'A definir', now()]
+      'INSERT INTO equipamento_modelos (id, nome, criado_em) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [uuid(), nome, now()]
     );
   }
 }
@@ -473,7 +488,7 @@ async function initDb() {
   await pool.query(SCHEMA_SQL);
   await seedDefaultAdmin();
   await seedCatracaParts();
-  await seedMirontecCatracas();
+  await seedEquipmentModels();
   await seedEscolaVivaContato();
 }
 
@@ -486,8 +501,12 @@ async function updateRow(table, id, patch, { touchUpdatedAt = true, executor = p
   const keys = Object.keys(fields);
   if (keys.length === 0) return;
 
-  const setClause = keys.map((key, idx) => `${key} = $${idx + 1}`).join(', ');
-  const values = keys.map((key) => (fields[key] === undefined ? null : fields[key]));
+  const jsonbFields = new Set(['dias_visita']);
+  const setClause = keys.map((key, idx) => `${key} = $${idx + 1}${jsonbFields.has(key) ? '::jsonb' : ''}`).join(', ');
+  const values = keys.map((key) => {
+    if (fields[key] === undefined) return null;
+    return jsonbFields.has(key) ? JSON.stringify(fields[key]) : fields[key];
+  });
   values.push(id);
   await executor.query(`UPDATE ${table} SET ${setClause} WHERE id = $${keys.length + 1}`, values);
 }
@@ -621,63 +640,60 @@ async function deleteTechnicianUnavailable(technicianId, date) {
 }
 
 async function getTechnicianBookingAt(technicianId, scheduledAt, scheduledUntil, exceptRequestId) {
+  const requestedDate = String(scheduledAt || '').slice(0, 10);
+  const requestedStart = String(scheduledAt || '').slice(11, 16);
+  const requestedEnd = scheduledUntil ? String(scheduledUntil).slice(11, 16) : '';
   const { rows } = await pool.query(
-    `SELECT id, numero FROM requests
+    `SELECT id, numero, agendado_para, agendado_ate, dias_visita FROM requests
      WHERE assigned_technician = $1
-       AND id <> $4
+       AND id <> $2
        AND status NOT IN ('Cancelada', 'Concluída')
-       AND (
-         ($3::text IS NULL AND (
-           agendado_para = $2
-           OR (agendado_ate IS NOT NULL AND agendado_para < $2 AND agendado_ate > $2)
-         ))
-         OR ($3::text IS NOT NULL AND (
-           (agendado_para >= $2 AND agendado_para < $3)
-           OR (agendado_ate IS NOT NULL AND agendado_para < $3 AND agendado_ate > $2)
-         ))
-       )
+       AND agenda_oculta = FALSE
      UNION ALL
-     SELECT id, NULL::integer AS numero FROM manual_visits
+     SELECT id, NULL::integer AS numero, agendado_para, agendado_ate, dias_visita FROM manual_visits
      WHERE assigned_technician = $1
-       AND id <> $4
+       AND id <> $2
        AND status NOT IN ('Cancelada', 'Concluída')
-       AND (
-         ($3::text IS NULL AND (
-           agendado_para = $2
-           OR (agendado_ate IS NOT NULL AND agendado_para < $2 AND agendado_ate > $2)
-         ))
-         OR ($3::text IS NOT NULL AND (
-           (agendado_para >= $2 AND agendado_para < $3)
-           OR (agendado_ate IS NOT NULL AND agendado_para < $3 AND agendado_ate > $2)
-         ))
-       )
-     LIMIT 1`,
-    [technicianId, scheduledAt, scheduledUntil || null, exceptRequestId]
+       AND agenda_oculta = FALSE
+     `,
+    [technicianId, exceptRequestId]
   );
-  return rows[0] || null;
+  for (const visit of rows) {
+    const day = scheduleDaysForVisit(visit).find((entry) => entry.date === requestedDate);
+    if (!day) continue;
+    const overlaps = requestedEnd
+      ? (day.start < requestedEnd && (day.end ? day.end > requestedStart : day.start >= requestedStart))
+      : day.start === requestedStart || Boolean(day.end && day.start < requestedStart && day.end > requestedStart);
+    if (overlaps) return visit;
+  }
+  return null;
 }
 
 async function getTechnicianBookingsForDate(technicianId, date) {
   const { rows } = await pool.query(
-    `SELECT id, numero, agendado_para FROM requests
+    `SELECT id, numero, agendado_para, agendado_ate, dias_visita FROM requests
      WHERE assigned_technician = $1
-       AND agendado_para LIKE $2 || 'T%'
+       AND agenda_oculta = FALSE
        AND status NOT IN ('Cancelada', 'Concluída')
      UNION ALL
-     SELECT id, NULL::integer AS numero, agendado_para FROM manual_visits
+     SELECT id, NULL::integer AS numero, agendado_para, agendado_ate, dias_visita FROM manual_visits
      WHERE assigned_technician = $1
-       AND agendado_para LIKE $2 || 'T%'
+       AND agenda_oculta = FALSE
        AND status NOT IN ('Cancelada', 'Concluída')
      ORDER BY agendado_para`,
-    [technicianId, date]
+    [technicianId]
   );
-  return rows;
+  return rows.flatMap((visit) => scheduleDaysFromVisit(visit)
+    .filter((day) => day.agendado_para.startsWith(`${date}T`)));
 }
 
 async function getTvAgendaVisits(fromDateTime, untilDateTime) {
   const [{ rows: requestRows }, { rows: manualRows }] = await Promise.all([
     pool.query(
-    `SELECT requests.milvus_codigo, requests.agendado_para, requests.agendado_ate,
+    `SELECT requests.milvus_codigo,
+            (work_day.day->>'date') || 'T' || (work_day.day->>'start') AS agendado_para,
+            CASE WHEN NULLIF(work_day.day->>'end', '') IS NULL THEN NULL
+                 ELSE (work_day.day->>'date') || 'T' || (work_day.day->>'end') END AS agendado_ate,
             requests.status, requests.confirmacao_tecnico, NULL::text AS manual_id,
             COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
             users.avatar AS technician_avatar,
@@ -689,18 +705,30 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
      LEFT JOIN empresas ON empresas.id = requests.empresa_id
      LEFT JOIN equipamentos ON equipamentos.id = requests.equipamento_id
      LEFT JOIN unidades ON unidades.id = equipamentos.unidade_id
+     CROSS JOIN LATERAL jsonb_array_elements(
+       CASE WHEN jsonb_array_length(requests.dias_visita) > 0 THEN requests.dias_visita
+            ELSE jsonb_build_array(jsonb_build_object(
+              'date', substring(requests.agendado_para from 1 for 10),
+              'start', substring(requests.agendado_para from 12 for 5),
+              'end', substring(requests.agendado_ate from 12 for 5)
+            )) END
+     ) AS work_day(day)
      WHERE requests.status IN ('Agendada', 'Concluída')
        AND (requests.status = 'Concluída' OR requests.hora_checkout IS NULL)
+       AND requests.agenda_oculta = FALSE
        AND requests.assigned_technician IS NOT NULL
        AND requests.milvus_codigo IS NOT NULL
-       AND requests.agendado_para >= $1
-       AND requests.agendado_para < $2
-     ORDER BY requests.agendado_para ASC
+       AND (work_day.day->>'date') || 'T' || (work_day.day->>'start') >= $1
+       AND (work_day.day->>'date') || 'T' || (work_day.day->>'start') < $2
+     ORDER BY agendado_para ASC
      LIMIT 120`,
       [fromDateTime, untilDateTime]
     ),
     pool.query(
-      `SELECT NULL::text AS milvus_codigo, manual_visits.agendado_para, manual_visits.agendado_ate,
+      `SELECT NULL::text AS milvus_codigo,
+              (work_day.day->>'date') || 'T' || (work_day.day->>'start') AS agendado_para,
+              CASE WHEN NULLIF(work_day.day->>'end', '') IS NULL THEN NULL
+                   ELSE (work_day.day->>'date') || 'T' || (work_day.day->>'end') END AS agendado_ate,
               manual_visits.status, NULL::text AS confirmacao_tecnico, manual_visits.id AS manual_id,
               COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
               users.avatar AS technician_avatar,
@@ -710,10 +738,19 @@ async function getTvAgendaVisits(fromDateTime, untilDateTime) {
        FROM manual_visits
        LEFT JOIN users ON users.id = manual_visits.assigned_technician
        LEFT JOIN empresas ON empresas.id = manual_visits.empresa_id
+       CROSS JOIN LATERAL jsonb_array_elements(
+         CASE WHEN jsonb_array_length(manual_visits.dias_visita) > 0 THEN manual_visits.dias_visita
+              ELSE jsonb_build_array(jsonb_build_object(
+                'date', substring(manual_visits.agendado_para from 1 for 10),
+                'start', substring(manual_visits.agendado_para from 12 for 5),
+                'end', substring(manual_visits.agendado_ate from 12 for 5)
+              )) END
+       ) AS work_day(day)
        WHERE manual_visits.status IN ('Agendada', 'Concluída')
-         AND manual_visits.agendado_para >= $1
-         AND manual_visits.agendado_para < $2
-       ORDER BY manual_visits.agendado_para ASC
+         AND manual_visits.agenda_oculta = FALSE
+         AND (work_day.day->>'date') || 'T' || (work_day.day->>'start') >= $1
+         AND (work_day.day->>'date') || 'T' || (work_day.day->>'start') < $2
+       ORDER BY agendado_para ASC
        LIMIT 120`,
       [fromDateTime, untilDateTime]
     )
@@ -864,8 +901,22 @@ async function deleteUnit(id) {
 // ---------- equipamentos ----------
 
 async function getEquipments() {
-  const { rows } = await pool.query('SELECT * FROM equipamentos ORDER BY criado_em DESC');
+  const { rows } = await pool.query('SELECT * FROM equipamentos WHERE real = TRUE ORDER BY criado_em DESC');
   return rows;
+}
+
+async function getEquipmentModels() {
+  const { rows } = await pool.query('SELECT nome FROM equipamento_modelos ORDER BY lower(nome)');
+  return rows.map((row) => row.nome);
+}
+
+async function saveEquipmentModel(nome, executor = pool) {
+  const normalized = String(nome || '').trim();
+  if (!normalized) return;
+  await executor.query(
+    'INSERT INTO equipamento_modelos (id, nome, criado_em) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    [uuid(), normalized, now()]
+  );
 }
 
 async function getEquipmentById(id) {
@@ -875,18 +926,40 @@ async function getEquipmentById(id) {
 
 async function createEquipment(equipment) {
   const row = withDefaults({ id: uuid(), ...equipment, criado_em: now() });
-  await pool.query(
-    `INSERT INTO equipamentos (id, empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [row.id, row.empresa_id, row.unidade_id, row.modelo, row.numero_serie, row.local_instalacao, row.data_instalacao, row.garantia_ate, row.criado_em]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO equipamentos (id, empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate, criado_em, real)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)`,
+      [row.id, row.empresa_id, row.unidade_id, row.modelo, row.numero_serie, row.local_instalacao, row.data_instalacao, row.garantia_ate, row.criado_em]
+    );
+    await saveEquipmentModel(row.modelo, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   return getEquipmentById(row.id);
 }
 
 async function updateEquipment(id, patch) {
   const existing = await getEquipmentById(id);
   if (!existing) return null;
-  await updateRow('equipamentos', id, patch);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await updateRow('equipamentos', id, patch, { executor: client });
+    if (patch.modelo !== undefined) await saveEquipmentModel(patch.modelo, client);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
   return getEquipmentById(id);
 }
 
@@ -998,12 +1071,14 @@ async function getManualVisits(technicianId = null) {
        LEFT JOIN users ON users.id = manual_visits.assigned_technician
        WHERE manual_visits.assigned_technician = $1
          AND manual_visits.status <> 'Cancelada'
+         AND manual_visits.agenda_oculta = FALSE
        ORDER BY manual_visits.agendado_para`
     : `SELECT manual_visits.*,
               COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
        FROM manual_visits
        LEFT JOIN users ON users.id = manual_visits.assigned_technician
        WHERE manual_visits.status <> 'Cancelada'
+         AND manual_visits.agenda_oculta = FALSE
        ORDER BY manual_visits.agendado_para`;
   const { rows } = await pool.query(query, technicianId ? [technicianId] : []);
   return rows.map((row) => ({ ...row, manual_visit: true }));
@@ -1031,6 +1106,7 @@ async function createManualVisit(visit) {
     descricao: visit.descricao,
     agendado_para: visit.agendado_para,
     agendado_ate: visit.agendado_ate || null,
+    dias_visita: visit.dias_visita || [],
     status: 'Agendada',
     criado_por: visit.criado_por,
     criado_em: now(),
@@ -1039,10 +1115,10 @@ async function createManualVisit(visit) {
   await pool.query(
     `INSERT INTO manual_visits (
        id, assigned_technician, empresa_id, empresa_nome, endereco, descricao,
-       agendado_para, agendado_ate, status, criado_por, criado_em, atualizado_em
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       agendado_para, agendado_ate, dias_visita, status, criado_por, criado_em, atualizado_em
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)`,
     [row.id, row.assigned_technician, row.empresa_id, row.empresa_nome, row.endereco, row.descricao,
-      row.agendado_para, row.agendado_ate, row.status, row.criado_por, row.criado_em, row.atualizado_em]
+      row.agendado_para, row.agendado_ate, JSON.stringify(row.dias_visita), row.status, row.criado_por, row.criado_em, row.atualizado_em]
   );
   return getManualVisitById(row.id);
 }
@@ -1064,7 +1140,8 @@ async function createRequest(request) {
     id: uuid(),
     numero: await nextRequestNumber(),
     empresa_id: request.empresa_id,
-    equipamento_id: request.equipamento_id,
+    equipamento_id: request.equipamento_id || null,
+    unidade_id: request.unidade_id || null,
     descricao: request.descricao,
     urgencia: request.urgencia || 'Normal',
     endereco: request.endereco || '',
@@ -1086,9 +1163,9 @@ async function createRequest(request) {
     concluded_at: null
   });
   await pool.query(
-    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, descricao, urgencia, endereco, status, assigned_analyst, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, milvus_codigo, milvus_id, criado_em, atualizado_em, concluded_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
-    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_analyst, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.milvus_codigo, row.milvus_id, row.criado_em, row.atualizado_em, row.concluded_at]
+    `INSERT INTO requests (id, numero, empresa_id, equipamento_id, unidade_id, descricao, urgencia, endereco, status, assigned_analyst, assigned_technician, agendado_para, hora_checkin, hora_checkout, relatorio_visita, avaliacao, avaliacao_comentario, aberto_por, solicitante_email, milvus_codigo, milvus_id, criado_em, atualizado_em, concluded_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)`,
+    [row.id, row.numero, row.empresa_id, row.equipamento_id, row.unidade_id, row.descricao, row.urgencia, row.endereco, row.status, row.assigned_analyst, row.assigned_technician, row.agendado_para, row.hora_checkin, row.hora_checkout, row.relatorio_visita, row.avaliacao, row.avaliacao_comentario, row.aberto_por, row.solicitante_email, row.milvus_codigo, row.milvus_id, row.criado_em, row.atualizado_em, row.concluded_at]
   );
   return getRequestById(row.id);
 }
@@ -1461,6 +1538,7 @@ module.exports = {
   updateCompany,
   deleteCompany,
   getEquipments,
+  getEquipmentModels,
   getEquipmentById,
   createEquipment,
   updateEquipment,

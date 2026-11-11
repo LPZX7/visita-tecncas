@@ -159,6 +159,10 @@ export default function Requests() {
   }, []);
 
   useEffect(() => {
+    if (location.state?.milvusImportSuccess) setSuccess(location.state.milvusImportSuccess);
+  }, [location.state]);
+
+  useEffect(() => {
     const targetId = location.hash.startsWith('#request-') ? location.hash.slice('#request-'.length) : '';
     if (!targetId || requests.length === 0) return undefined;
     const requestIndex = requests.findIndex((request) => request.id === targetId);
@@ -195,9 +199,9 @@ export default function Requests() {
     const u = unit(id);
     return u ? `${u.tipo} — ${u.nome}` : null;
   };
-  const equipmentLabel = (id) => {
+  const equipmentLabel = (id, request = null) => {
     const eq = equipment(id);
-    return eq ? `${eq.modelo} — ${eq.numero_serie}` : '—';
+    return eq ? `${eq.modelo} — ${eq.numero_serie}` : (request?.milvus_codigo ? 'A identificar' : '—');
   };
   const technicianName = (id) => {
     const technician = technicians.find((item) => item.id === id);
@@ -657,7 +661,7 @@ export default function Requests() {
                 <tr id={`request-${req.id}`} className={highlightedRequestId === req.id ? 'request-row--highlighted' : ''}>
                   <td>{req.descricao}</td>
                   <td>{companyName(req.empresa_id)}</td>
-                  <td>{equipmentLabel(req.equipamento_id)}</td>
+                  <td>{equipmentLabel(req.equipamento_id, req)}</td>
                   <td>{req.milvus_codigo ? <span className="badge badge-aprovado">#{req.milvus_codigo}</span> : <span className="badge badge-rejeitado">Não vinculado</span>}</td>
                   <td><span className={badgeClass(req.status)}>{req.status}</span></td>
                   <td>
@@ -828,7 +832,7 @@ export default function Requests() {
                           </div>
                           <div>
                             <strong>Equipamento</strong>
-                            <p>{eq ? `${eq.modelo} — Série ${eq.numero_serie}` : '—'}</p>
+                            <p>{eq ? `${eq.modelo} — Série ${eq.numero_serie}` : (req.milvus_codigo ? 'A identificar' : '—')}</p>
                             {eq?.local_instalacao && <p className="detail-muted">Instalado em: {eq.local_instalacao}</p>}
                             {eq?.garantia_ate && <p className="detail-muted">Garantia até: {eq.garantia_ate}</p>}
                           </div>

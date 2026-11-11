@@ -16,10 +16,13 @@ function equipmentType(model = '') {
 }
 
 export default function Equipments() {
-  const canManage = getUser()?.role === 'gestor';
+  const role = getUser()?.role;
+  const canManage = ['gestor', 'analista'].includes(role);
+  const canDelete = role === 'gestor';
   const [equipments, setEquipments] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [units, setUnits] = useState([]);
+  const [equipmentModels, setEquipmentModels] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
@@ -30,19 +33,13 @@ export default function Equipments() {
 
   const load = async () => {
     try {
-      const [equipmentRes, companyRes, unitRes] = await Promise.all([api.get('/equipments'), api.get('/companies'), api.get('/units')]);
-      setEquipments(equipmentRes.data); setCompanies(companyRes.data); setUnits(unitRes.data);
+      const [equipmentRes, companyRes, unitRes, modelsRes] = await Promise.all([api.get('/equipments'), api.get('/companies'), api.get('/units'), api.get('/equipments/models')]);
+      setEquipments(equipmentRes.data); setCompanies(companyRes.data); setUnits(unitRes.data); setEquipmentModels(modelsRes.data);
     } catch (err) { setError(err.response?.data?.error || 'Não foi possível carregar os equipamentos.'); }
   };
   useEffect(() => { load(); }, []);
 
   const unitsForSelectedCompany = units.filter((unit) => unit.empresa_id === form.empresa_id && unit.status !== 'inativo');
-  const equipmentModels = useMemo(() => [...new Map(
-    equipments
-      .map((equipment) => equipment.modelo?.trim())
-      .filter(Boolean)
-      .map((model) => [model.toLocaleLowerCase('pt-BR'), model])
-  ).values()].sort((a, b) => a.localeCompare(b, 'pt-BR')), [equipments]);
   const hierarchy = useMemo(() => {
     const q = search.trim().toLowerCase();
     return companies.map((company) => {
@@ -81,8 +78,8 @@ export default function Equipments() {
       {error && <div className="alert alert-error">{error}</div>}
       <label className="form-field">Empresa<SearchableSelect value={form.empresa_id} onChange={(id) => setForm({ ...form, empresa_id: id, unidade_id: '' })} placeholder="Buscar empresa..." options={companies.map((company) => ({ value: company.id, label: company.nome_fantasia || company.razao_social, sublabel: [company.razao_social, company.cnpj].filter(Boolean).join(' · ') }))} /></label>
       <label className="form-field">Filial / sede<SearchableSelect value={form.unidade_id} onChange={(id) => setForm({ ...form, unidade_id: id })} disabled={!form.empresa_id} placeholder={form.empresa_id ? 'Buscar filial ou sede...' : 'Selecione a empresa primeiro'} emptyMessage="Nenhuma filial cadastrada para essa empresa." options={unitsForSelectedCompany.map((unit) => ({ value: unit.id, label: `${unit.tipo} — ${unit.nome}`, sublabel: [unit.endereco, unit.cidade].filter(Boolean).join(', ') }))} /></label>
-      <label className="form-field">Equipamento / modelo<input className="form-input" list="equipment-models" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Ex.: Catraca Revolution, Totem Meep, Caixa Pallas" required /><datalist id="equipment-models">{equipmentModels.map((model) => <option key={model} value={model} />)}</datalist><small className="detail-muted">Modelos cadastrados ficam disponíveis para uso em qualquer empresa. Série e local pertencem ao aparelho instalado em cada unidade.</small></label>
-      <label className="form-field">Número de série<input className="form-input" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} required /></label>
+      <label className="form-field">Equipamento / modelo<input className="form-input" list="equipment-models" value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })} placeholder="Ex.: Catraca Revolution, Totem Meep, Caixa Pallas" required /><datalist id="equipment-models">{equipmentModels.map((model) => <option key={model} value={model} />)}</datalist><small className="detail-muted">O modelo fica disponível para todas as empresas. Este cadastro cria um aparelho real para a empresa e unidade selecionadas.</small></label>
+      <label className="form-field">Número de série real<input className="form-input" value={form.numero_serie} onChange={(e) => setForm({ ...form, numero_serie: e.target.value })} placeholder="Informe a série que está na etiqueta do aparelho" required /><small className="detail-muted">Não use “A definir” ou outro valor provisório.</small></label>
       <label className="form-field">Local dentro da unidade<input className="form-input" value={form.local_instalacao} onChange={(e) => setForm({ ...form, local_instalacao: e.target.value })} placeholder="Ex.: Refeitório, recepção, caixa 02" /></label>
       <div className="form-grid-2"><label className="form-field">Data de instalação<input className="form-input" type="date" value={form.data_instalacao} onChange={(e) => setForm({ ...form, data_instalacao: e.target.value })} /></label><label className="form-field">Garantia até<input className="form-input" type="date" value={form.garantia_ate} onChange={(e) => setForm({ ...form, garantia_ate: e.target.value })} /></label></div>
       <div className="row-actions"><button type="submit" className="btn btn-primary">{editingId ? 'Salvar alterações' : 'Cadastrar equipamento'}</button><button type="button" className="btn btn-outline" onClick={() => { setShowForm(false); setError(''); }}>Cancelar</button></div>
@@ -100,7 +97,7 @@ export default function Equipments() {
           {isOpen && <div className="equipment-company__body">{company.groups.map((group) => {
             const groupOpen = expandedUnits[group.id] !== false;
             return <div key={group.id} className="equipment-unit"><button type="button" className="equipment-unit__toggle" onClick={() => setExpandedUnits((current) => ({ ...current, [group.id]: current[group.id] === false }))} aria-expanded={groupOpen}><span><strong>{group.type} · {group.name}</strong><small>{group.address}</small></span><span>{group.equipments.length} item(ns) {groupOpen ? '−' : '+'}</span></button>
-              {groupOpen && <div className="equipment-cards">{group.equipments.map((equipment) => <article key={equipment.id} className="equipment-card"><div className="equipment-card__top"><span className="equipment-type">{equipmentType(equipment.modelo)}</span><span className="equipment-serial">Série {equipment.numero_serie}</span></div><h4>{equipment.modelo}</h4><p>{equipment.local_instalacao || 'Local interno não informado'}</p><div className="equipment-card__meta"><span>Instalação: {equipment.data_instalacao || '—'}</span><span>Garantia: {equipment.garantia_ate || '—'}</span></div>{canManage && <div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => handleEdit(equipment)}>Editar</button><button className="btn btn-danger btn-sm" onClick={() => handleDelete(equipment.id)}>Excluir</button></div>}</article>)}{canManage && !group.id.startsWith('general-') && <button type="button" className="equipment-add-card" onClick={() => openCreate(company.id, group.id)}>+ Adicionar equipamento nesta unidade</button>}</div>}
+              {groupOpen && <div className="equipment-cards">{group.equipments.map((equipment) => <article key={equipment.id} className="equipment-card"><div className="equipment-card__top"><span className="equipment-type">{equipmentType(equipment.modelo)}</span><span className="equipment-serial">Série {equipment.numero_serie}</span></div><h4>{equipment.modelo}</h4><p>{equipment.local_instalacao || 'Local interno não informado'}</p><div className="equipment-card__meta"><span>Instalação: {equipment.data_instalacao || '—'}</span><span>Garantia: {equipment.garantia_ate || '—'}</span></div>{canManage && <div className="row-actions"><button className="btn btn-outline btn-sm" onClick={() => handleEdit(equipment)}>Editar</button>{canDelete && <button className="btn btn-danger btn-sm" onClick={() => handleDelete(equipment.id)}>Excluir</button>}</div>}</article>)}{canManage && !group.id.startsWith('general-') && <button type="button" className="equipment-add-card" onClick={() => openCreate(company.id, group.id)}>+ Adicionar equipamento nesta unidade</button>}</div>}
             </div>;
           })}</div>}
         </section>;

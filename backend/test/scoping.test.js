@@ -47,17 +47,19 @@ const requests = [
   { id: 'req-1', empresa_id: 'empresa-A', equipamento_id: 'eq-a-filial1' },
   { id: 'req-2', empresa_id: 'empresa-A', equipamento_id: 'eq-a-filial2' },
   { id: 'req-3', empresa_id: 'empresa-A', equipamento_id: 'eq-a-compartilhado' },
+  { id: 'req-5', empresa_id: 'empresa-A', equipamento_id: null, unidade_id: 'filial-1' },
+  { id: 'req-6', empresa_id: 'empresa-A', equipamento_id: null, unidade_id: null },
   { id: 'req-4', empresa_id: 'empresa-B', equipamento_id: 'eq-b-filial1' }
 ];
 
 test('scopeRequestsForClient: filtra chamados por empresa e, se houver, pela filial do equipamento vinculado', () => {
   const user = { empresa_id: 'empresa-A', unidade_id: 'filial-1' };
   const result = scopeRequestsForClient(requests, equipments, user);
-  assert.deepEqual(result.map((r) => r.id).sort(), ['req-1', 'req-3']);
+  assert.deepEqual(result.map((r) => r.id).sort(), ['req-1', 'req-3', 'req-5']);
 });
 
 test('scopeRequestsForClient: sem unidade definida, vê todos os chamados da empresa', () => {
   const user = { empresa_id: 'empresa-A', unidade_id: null };
   const result = scopeRequestsForClient(requests, equipments, user);
-  assert.deepEqual(result.map((r) => r.id).sort(), ['req-1', 'req-2', 'req-3']);
+  assert.deepEqual(result.map((r) => r.id).sort(), ['req-1', 'req-2', 'req-3', 'req-5', 'req-6']);
 });

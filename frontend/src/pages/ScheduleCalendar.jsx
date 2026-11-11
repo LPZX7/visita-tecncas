@@ -51,6 +51,33 @@ function timeRangeOf(visit) {
   return end === 'Horário não definido' ? start : `${start}–${end}`;
 }
 
+function workDaysOf(visit) {
+  const savedDays = Array.isArray(visit?.dias_visita) ? visit.dias_visita : [];
+  if (savedDays.length) {
+    return savedDays.map((day) => ({
+      date: day.date || day.data,
+      start: day.start || day.inicio,
+      end: day.end || day.fim || ''
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  }
+  const date = String(visit?.agendado_para || '').slice(0, 10);
+  const start = timeOf(visit?.agendado_para);
+  if (!date || start === 'Horário não definido') return [];
+  const end = timeOf(visit?.agendado_ate);
+  return [{ date, start, end: end === 'Horário não definido' ? '' : end }];
+}
+
+function visitsForWorkDays(visit) {
+  const days = workDaysOf(visit);
+  return days.map((day, index) => ({
+    ...visit,
+    dia_visita_index: index + 1,
+    dias_visita_total: days.length,
+    agendado_para: `${day.date}T${day.start}`,
+    agendado_ate: day.end ? `${day.date}T${day.end}` : null
+  }));
+}
+
 function companyDisplayName(company) {
   return String(company?.nome || company?.nome_fantasia || company?.razao_social || '').trim();
 }
@@ -112,6 +139,7 @@ export default function ScheduleCalendar() {
   const [bookingTime, setBookingTime] = useState('08:00');
   const [bookingEndEnabled, setBookingEndEnabled] = useState(false);
   const [bookingEndTime, setBookingEndTime] = useState('');
+  const [additionalVisitDays, setAdditionalVisitDays] = useState([]);
   const [bookingVisitAlreadyDone, setBookingVisitAlreadyDone] = useState(false);
   const [bookingAddress, setBookingAddress] = useState('');
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -174,12 +202,14 @@ export default function ScheduleCalendar() {
       request.assigned_technician === selectedTechnicianId
       && request.agendado_para
       && request.status !== 'Cancelada'
-    )),
+      && !request.agenda_oculta
+    )).flatMap(visitsForWorkDays),
     ...manualVisits.filter((visit) => (
       visit.assigned_technician === selectedTechnicianId
       && visit.agendado_para
       && visit.status !== 'Cancelada'
-    ))
+      && !visit.agenda_oculta
+    )).flatMap(visitsForWorkDays)
   ], [requests, manualVisits, selectedTechnicianId]);
   const visitsByDate = useMemo(() => technicianVisits.reduce((result, visit) => {
     const day = String(visit.agendado_para).slice(0, 10);
@@ -197,21 +227,27 @@ export default function ScheduleCalendar() {
     && !request.hora_checkout
   ));
   const selectedBookingRequest = bookableRequests.find((request) => request.id === bookingRequestId);
-  const proposedSchedule = selectedDate ? `${selectedDate}T${bookingTime}` : '';
-  const proposedScheduleEnd = bookingEndEnabled && selectedDate && bookingEndTime
-    ? `${selectedDate}T${bookingEndTime}`
-    : '';
+  const proposedWorkDays = [
+    ...(selectedDate ? [{ date: selectedDate, start: bookingTime, end: bookingEndEnabled ? bookingEndTime : '' }] : []),
+    ...additionalVisitDays.filter(Boolean).map((date) => ({ date, start: bookingTime, end: bookingEndEnabled ? bookingEndTime : '' }))
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const proposedSchedule = proposedWorkDays[0] ? `${proposedWorkDays[0].date}T${proposedWorkDays[0].start}` : '';
+  const proposedScheduleEnd = proposedWorkDays[0]?.end ? `${proposedWorkDays[0].date}T${proposedWorkDays[0].end}` : '';
   const bookingSlotIsPast = Boolean(proposedSchedule && proposedSchedule < `${today}T${currentTime}`);
-  const hasTimeConflict = !bookingVisitAlreadyDone && technicianVisits.some((visit) => (
+  const duplicateWorkDays = new Set(proposedWorkDays.map((day) => day.date)).size !== proposedWorkDays.length;
+  const additionalDayBeforeStart = additionalVisitDays.some((day) => day <= selectedDate);
+  const unavailableWorkDay = proposedWorkDays.find((day) => blockedDateSet.has(day.date) && day.date >= today);
+  const hasTimeConflict = !bookingVisitAlreadyDone && proposedWorkDays.some((day) => technicianVisits.some((visit) => (
     !(editingVisit?.id === visit.id)
-    &&
-    !(bookingMode === 'request' && visit.id === bookingRequestId)
+    && !(bookingMode === 'request' && visit.id === bookingRequestId)
     && !['Cancelada', 'Concluída'].includes(visit.status)
-    && visitOverlapsBooking(visit, selectedDate, bookingTime, bookingEndEnabled ? bookingEndTime : '')
-  ));
+    && visitOverlapsBooking(visit, day.date, day.start, day.end)
+  )));
   const bookingEndNotAfterStart = bookingEndEnabled && bookingEndTime && bookingEndTime <= bookingTime;
-  const bookingEndNotPast = bookingVisitAlreadyDone && proposedScheduleEnd
-    && proposedScheduleEnd >= `${today}T${currentTime}`;
+  const bookingEndNotPast = bookingVisitAlreadyDone && proposedWorkDays.some((day) => (
+    `${day.date}T${day.start}` >= `${today}T${currentTime}`
+    || (day.end && `${day.date}T${day.end}` >= `${today}T${currentTime}`)
+  ));
 
   function changeMonth(delta) {
     setCursor((current) => {
@@ -229,13 +265,13 @@ export default function ScheduleCalendar() {
     setBookingRequestId(mode === 'request' && visit ? visit.id : '');
     setManualCompanyName(mode === 'manual' && visit ? visit.empresa_nome || '' : '');
     setManualVisitDescription(mode === 'manual' && visit ? visit.descricao || '' : 'Visita técnica manual');
-    if (visit?.agendado_para) setSelectedDate(String(visit.agendado_para).slice(0, 10));
-    setBookingEndEnabled(Boolean(visit?.agendado_ate));
-    setBookingEndTime(visit?.agendado_ate ? timeOf(visit.agendado_ate) : '');
+    const visitWorkDays = visit ? workDaysOf(visit) : [];
+    if (visitWorkDays.length) setSelectedDate(visitWorkDays[0].date);
+    setAdditionalVisitDays(visitWorkDays.slice(1).map((day) => day.date));
+    setBookingEndEnabled(Boolean(visitWorkDays[0]?.end));
+    setBookingEndTime(visitWorkDays[0]?.end || '');
     setBookingVisitAlreadyDone(false);
-    setBookingTime(visit?.agendado_para
-      ? timeOf(visit.agendado_para)
-      : selectedDate === today && currentTime > '08:00' ? currentTime : '08:00');
+    setBookingTime(visitWorkDays[0]?.start || (selectedDate === today && currentTime > '08:00' ? currentTime : '08:00'));
     setBookingAddress(visit?.endereco || '');
     setBookingOpen(true);
   }
@@ -250,11 +286,12 @@ export default function ScheduleCalendar() {
     setBookingVisitAlreadyDone(false);
     const request = bookableRequests.find((entry) => entry.id === requestId);
     setBookingAddress(request?.endereco || '');
-    const startTime = timeOf(request?.agendado_para);
-    if (startTime !== 'Horário não definido') setBookingTime(startTime);
-    const endTime = timeOf(request?.agendado_ate);
-    setBookingEndEnabled(endTime !== 'Horário não definido');
-    setBookingEndTime(endTime === 'Horário não definido' ? '' : endTime);
+    const days = workDaysOf(request);
+    if (days.length) setSelectedDate(days[0].date);
+    setAdditionalVisitDays(days.slice(1).map((day) => day.date));
+    if (days[0]?.start) setBookingTime(days[0].start);
+    setBookingEndEnabled(Boolean(days[0]?.end));
+    setBookingEndTime(days[0]?.end || '');
   }
 
   function chooseManualCompany(value) {
@@ -265,9 +302,33 @@ export default function ScheduleCalendar() {
     if (selectedCompany?.endereco && !bookingAddress.trim()) setBookingAddress(selectedCompany.endereco);
   }
 
+  function addWorkDay() {
+    const currentDays = [selectedDate, ...additionalVisitDays].filter(Boolean).sort();
+    if (!currentDays.length) return;
+    const nextDay = new Date(`${currentDays[currentDays.length - 1]}T12:00:00`);
+    nextDay.setDate(nextDay.getDate() + 1);
+    setAdditionalVisitDays((days) => [...days, dateKey(nextDay)]);
+  }
+
+  function changeWorkDay(index, date) {
+    setAdditionalVisitDays((days) => days.map((day, dayIndex) => dayIndex === index ? date : day));
+  }
+
   async function saveBooking(event) {
     event.preventDefault();
     if ((bookingMode === 'request' && !selectedBookingRequest) || !selectedDate || !selectedTechnicianId) return;
+    if (duplicateWorkDays) {
+      setError('Escolha datas diferentes para cada dia de trabalho.');
+      return;
+    }
+    if (additionalDayBeforeStart) {
+      setError('Os dias adicionais precisam ser depois do primeiro dia da visita.');
+      return;
+    }
+    if (unavailableWorkDay) {
+      setError(`O técnico está indisponível em ${formatDateShort(unavailableWorkDay.date)}. Remova esse dia ou escolha outra data.`);
+      return;
+    }
     if (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart)) {
       setError('O horário de fim precisa ser preenchido e ser depois do início.');
       return;
@@ -290,7 +351,8 @@ export default function ScheduleCalendar() {
           endereco: bookingAddress.trim(),
           descricao: manualVisitDescription.trim() || 'Visita técnica manual',
           agendado_para: proposedSchedule,
-          agendado_ate: proposedScheduleEnd || null
+          agendado_ate: proposedScheduleEnd || null,
+          dias_visita: proposedWorkDays
         };
         if (editingVisit?.manual_visit) {
           await api.patch(`/manual-visits/${editingVisit.id}`, manualVisitPayload);
@@ -300,8 +362,8 @@ export default function ScheduleCalendar() {
         setBookingOpen(false);
         setEditingVisit(null);
         setSuccess(editingVisit?.manual_visit
-          ? `Visita para ${manualCompanyName.trim()} atualizada na agenda.`
-          : `Visita para ${manualCompanyName.trim()} cadastrada na agenda de ${formatDateShort(selectedDate)}.`);
+          ? `Visita para ${manualCompanyName.trim()} atualizada com ${proposedWorkDays.length} dia(s) de trabalho.`
+          : `Visita para ${manualCompanyName.trim()} cadastrada com ${proposedWorkDays.length} dia(s) de trabalho.`);
         await load();
         return;
       }
@@ -311,6 +373,7 @@ export default function ScheduleCalendar() {
         assigned_technician: selectedTechnicianId,
         agendado_para: proposedSchedule,
         agendado_ate: proposedScheduleEnd || null,
+        dias_visita: proposedWorkDays,
         visita_realizada: bookingVisitAlreadyDone,
         endereco: bookingAddress.trim(),
         sincronizar_responsaveis_milvus: true
@@ -325,7 +388,7 @@ export default function ScheduleCalendar() {
       } else {
         setSuccess(bookingVisitAlreadyDone
           ? `Chamado #${selectedBookingRequest.numero} registrado como visita realizada.`
-          : `Chamado #${selectedBookingRequest.numero} agendado para ${timeRangeOf({ agendado_para: proposedSchedule, agendado_ate: proposedScheduleEnd })} em ${formatDateShort(selectedDate)}.`);
+          : `Chamado #${selectedBookingRequest.numero} agendado em ${proposedWorkDays.length} dia(s) de trabalho.`);
       }
       await load();
     } catch (err) {
@@ -339,7 +402,16 @@ export default function ScheduleCalendar() {
     const name = visit.manual_visit
       ? visit.empresa_nome
       : `chamado #${visit.numero}`;
-    if (!window.confirm(`Tirar ${name} da agenda? O sistema registrará a ação no histórico.`)) return;
+    const completed = visit.status === 'Concluída';
+    const completedMessage = visit.manual_visit
+      ? 'A conclusão continuará salva no histórico.'
+      : 'A conclusão e o relatório continuarão salvos no chamado.';
+    const confirmation = completed
+      ? `Excluir ${name} do calendário? ${completedMessage}`
+      : visit.manual_visit
+        ? `Excluir a visita de ${name} da agenda? Ela será cancelada e a ação ficará no histórico.`
+        : `Excluir ${name} da agenda? O chamado será reaberto e a ação ficará no histórico.`;
+    if (!window.confirm(confirmation)) return;
 
     setError('');
     setSuccess('');
@@ -348,20 +420,25 @@ export default function ScheduleCalendar() {
       let response = null;
       if (visit.manual_visit) {
         await api.delete(`/manual-visits/${visit.id}`);
+      } else if (completed) {
+        await api.delete(`/requests/${visit.id}/agenda`);
       } else {
         response = await api.patch(`/requests/${visit.id}`, {
           status: 'Aberta',
           agendado_para: null,
-          agendado_ate: null
+          agendado_ate: null,
+          dias_visita: []
         });
       }
       await load();
       if (response?.data?.agenda_milvus_sincronizada === false) {
         setError('A visita saiu da agenda do sistema, mas a atualização não foi enviada ao Milvus. Confira a integração.');
       } else {
-        setSuccess(visit.manual_visit
-          ? `Visita de ${visit.empresa_nome} retirada da agenda. A ação foi registrada no histórico.`
-          : `Chamado #${visit.numero} reaberto e retirado da agenda. A ação foi registrada no histórico.`);
+        setSuccess(completed
+          ? `${name} foi retirado do calendário; a conclusão e o histórico foram preservados.`
+          : visit.manual_visit
+            ? `Visita de ${visit.empresa_nome} retirada da agenda. A ação foi registrada no histórico.`
+            : `Chamado #${visit.numero} reaberto e retirado da agenda. A ação foi registrada no histórico.`);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível tirar esta visita da agenda.');
@@ -457,7 +534,7 @@ export default function ScheduleCalendar() {
                         <span
                           className={`schedule-event schedule-event--${visitVisualState(visit).kind}`}
                           key={visit.id}
-                          title={`${visitVisualState(visit).label} · ${timeRangeOf(visit)} · ${visit.descricao}`}
+                          title={`${visit.dias_visita_total > 1 ? `Dia ${visit.dia_visita_index} de ${visit.dias_visita_total} · ` : ''}${visitVisualState(visit).label} · ${timeRangeOf(visit)} · ${visit.descricao}`}
                         >
                           <span className="schedule-event__marker" aria-hidden="true">{visitVisualState(visit).icon}</span>
                           <b>{timeRangeOf(visit)}</b> {visit.descricao}
@@ -493,8 +570,12 @@ export default function ScheduleCalendar() {
                 {selectedDateUnavailable && <p className="schedule-day-panel__note">O técnico bloqueou esta data. Escolha outro dia para agendar.</p>}
                 {!selectedDateUnavailable && dayVisits.length === 0 && <p className="schedule-day-panel__note">{selectedDate < today ? 'Nenhuma visita registrada neste dia. Você ainda pode lançar um agendamento atrasado.' : 'Nenhuma visita neste dia. Escolha o horário de atendimento conforme a necessidade.'}</p>}
                 <div className="schedule-visit-list">
-                  {dayVisits.map((visit) => (
-                    <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={visit.id}>
+                  {dayVisits.map((visit) => {
+                    const canEditVisit = (canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
+                      || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
+                    const canRemoveVisit = (canManage && (visit.status === 'Concluída' || !['Cancelada', 'Em Atendimento'].includes(visit.status)))
+                      || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
+                    return <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={`${visit.id}-${visit.agendado_para}`}>
                       <div className={`schedule-visit__time schedule-visit__time--${visitVisualState(visit).kind}`}>
                         <span aria-hidden="true">{visitVisualState(visit).icon}</span> {timeRangeOf(visit)}
                       </div>
@@ -503,22 +584,19 @@ export default function ScheduleCalendar() {
                         <span>{visit.empresa_nome || companies.find((company) => company.id === visit.empresa_id)?.nome_fantasia || companies.find((company) => company.id === visit.empresa_id)?.razao_social || 'Empresa'}</span>
                         {visit.endereco && <small>{visit.endereco}</small>}
                         <span className={`schedule-visit__status schedule-visit__status--${visitVisualState(visit).kind}`}>
-                          {visitVisualState(visit).label} · {visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}
+                          {visit.dias_visita_total > 1 ? `Dia ${visit.dia_visita_index} de ${visit.dias_visita_total} · ` : ''}{visitVisualState(visit).label} · {visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}
                         </span>
-                        {((canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
-                          || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status))) && (
+                        {(canEditVisit || canRemoveVisit) && (
                           <div className="schedule-visit__actions">
-                            <button type="button" onClick={() => openBooking(visit.manual_visit ? 'manual' : 'request', visit)} disabled={saving}>
-                              Editar
-                            </button>
-                            <button type="button" className="schedule-visit__remove" onClick={() => removeVisit(visit)} disabled={saving}>
-                              Tirar da agenda
-                            </button>
+                            {canEditVisit && <button type="button" onClick={() => openBooking(visit.manual_visit ? 'manual' : 'request', visit)} disabled={saving}>Editar</button>}
+                            {canRemoveVisit && <button type="button" className="schedule-visit__remove" onClick={() => removeVisit(visit)} disabled={saving}>
+                              {visit.status === 'Concluída' ? 'Excluir do calendário' : 'Excluir da agenda'}
+                            </button>}
                           </div>
                         )}
                       </div>
-                    </article>
-                  ))}
+                    </article>;
+                  })}
                 </div>
                 {canManage && !selectedDateUnavailable && selectedTechnicianId && (
                   <button type="button" className="schedule-add-button" onClick={openBooking}>
@@ -590,7 +668,7 @@ export default function ScheduleCalendar() {
               )}
               <div className="schedule-booking-dialog__grid">
                 <label className="form-field">
-                  Dia
+                  Primeiro dia
                   <input className="form-input" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} required />
                 </label>
                 <label className="form-field">
@@ -598,6 +676,25 @@ export default function ScheduleCalendar() {
                   <input className="form-input" type="time" value={bookingTime} onChange={(event) => { setBookingTime(event.target.value); setBookingVisitAlreadyDone(false); }} required />
                 </label>
               </div>
+              {additionalVisitDays.length > 0 && (
+                <div className="schedule-extra-days">
+                  <p>Mais dias de trabalho <small>O horário configurado acima vale para todos os dias.</small></p>
+                  {additionalVisitDays.map((day, index) => (
+                    <div className="schedule-extra-day" key={`workday-${index}`}>
+                      <label className="form-field">
+                        Dia {index + 2}
+                        <input className="form-input" type="date" value={day} onChange={(event) => changeWorkDay(index, event.target.value)} required />
+                      </label>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setAdditionalVisitDays((days) => days.filter((_, dayIndex) => dayIndex !== index))} disabled={saving}>
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="schedule-add-workday" onClick={addWorkDay} disabled={!selectedDate || saving}>
+                ＋ Adicionar dia trabalhado
+              </button>
               <label className="schedule-booking-dialog__end-toggle">
                 <input type="checkbox" checked={bookingEndEnabled} onChange={(event) => setBookingEndEnabled(event.target.checked)} />
                 <span>Adicionar horário de fim (opcional)</span>

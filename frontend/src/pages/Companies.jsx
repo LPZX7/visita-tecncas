@@ -46,13 +46,17 @@ export default function Companies() {
   const totalPages = Math.max(1, Math.ceil(filteredCompanies.length / PAGE_SIZE));
   const pageItems = filteredCompanies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const load = () => {
-    api.get('/companies').then((res) => setCompanies(res.data));
-    api.get('/units').then((res) => setUnits(res.data)).catch(() => {});
+  const load = async () => {
+    const [companiesRes, unitsRes] = await Promise.all([
+      api.get('/companies'),
+      api.get('/units').catch(() => null)
+    ]);
+    setCompanies(companiesRes.data);
+    if (unitsRes) setUnits(unitsRes.data);
   };
 
   useEffect(() => {
-    load();
+    load().catch((err) => setError(err.response?.data?.error || 'Não foi possível carregar as empresas.'));
   }, []);
 
   const handleSubmit = async (e) => {
@@ -71,12 +75,17 @@ export default function Companies() {
         await api.post('/companies', form);
         setSuccess('Empresa cadastrada com sucesso.');
       }
-      await load();
       setForm(emptyForm);
       setEditingId(null);
       setShowForm(false);
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao salvar empresa');
+      return;
+    }
+    try {
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Empresa salva, mas não foi possível atualizar a lista.');
     }
   };
 

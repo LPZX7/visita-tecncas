@@ -41,25 +41,20 @@ function resolveAutomaticTicket(pendente, { companies, units, equipments, parts 
   if (!company) return { ready: false, reason: 'Aguardando revisão: não foi possível identificar uma única empresa.' };
 
   const unit = matchUnitFromTicket(pendente, company, units);
-  const equipment = matchEquipmentFromTicket(pendente, company, unit, equipments);
-  if (!equipment) return { ready: false, reason: 'Aguardando revisão: não foi possível identificar um único equipamento.' };
-
+  const matchedEquipment = matchEquipmentFromTicket(pendente, company, unit, equipments);
+  const equipment = matchedEquipment && unit && matchedEquipment.unidade_id
+    && matchedEquipment.unidade_id !== unit.id
+    ? null
+    : matchedEquipment;
   const analysis = analyzeMilvusBudget(pendente, parts);
-  if (!analysis.items.length && !analysis.plano_tecnico?.explicitInstruction) {
-    return { ready: false, reason: 'Aguardando revisão: não foi possível identificar uma peça ou uma orientação de serviço clara no texto do Milvus.' };
-  }
 
-  const effectiveUnit = unit || (equipment.unidade_id ? units.find((item) => item.id === equipment.unidade_id) : null);
+  const effectiveUnit = unit || (equipment?.unidade_id ? units.find((item) => item.id === equipment.unidade_id) : null);
   const contactEmail = resolveContactEmail({
     request: { solicitante_email: pendente.cliente_email },
     unit: effectiveUnit,
     company
   });
-  if (!isValidEmail(contactEmail)) {
-    return { ready: false, reason: 'Aguardando revisão: o cliente está sem um e-mail válido.' };
-  }
-
-  return { ready: true, company, unit: effectiveUnit, equipment, analysis, contactEmail };
+  return { ready: true, company, unit: effectiveUnit, equipment, analysis, contactEmail: contactEmail || null };
 }
 
 async function cleanupPartialImport({ budget, request }) {
@@ -73,20 +68,23 @@ async function cleanupPartialImport({ budget, request }) {
 
 async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, automatic = false, analysis: providedAnalysis = null }) {
   const { empresa_id, equipamento_id, unidade_id, urgencia, endereco, solicitante_email } = mapping;
-  if (!empresa_id || !equipamento_id) throw importError('Selecione a empresa e o equipamento');
+  if (!empresa_id) throw importError('Selecione a empresa');
 
   const [company, equipment, allParts, users] = await Promise.all([
     db.getCompanyById(empresa_id),
-    db.getEquipmentById(equipamento_id),
+    equipamento_id ? db.getEquipmentById(equipamento_id) : Promise.resolve(null),
     db.getParts(),
     db.getUsers()
   ]);
   if (!company) throw importError('Empresa inválida');
-  if (!equipment || equipment.empresa_id !== empresa_id) throw importError('Equipamento inválido para esta empresa');
+  if (equipamento_id && (!equipment || equipment.empresa_id !== empresa_id)) throw importError('Equipamento inválido para esta empresa');
 
-  const effectiveUnitId = unidade_id || equipment.unidade_id || null;
+  const effectiveUnitId = unidade_id || equipment?.unidade_id || null;
   const unit = effectiveUnitId ? await db.getUnitById(effectiveUnitId) : null;
   if (effectiveUnitId && (!unit || unit.empresa_id !== empresa_id)) throw importError('Filial/sede inválida para esta empresa');
+  if (equipment?.unidade_id && effectiveUnitId && equipment.unidade_id !== effectiveUnitId) {
+    throw importError('O equipamento selecionado pertence a outra filial/sede');
+  }
 
   const contactEmail = resolveContactEmail({
     provided: solicitante_email,
@@ -94,7 +92,9 @@ async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, 
     unit,
     company
   });
-  if (!isValidEmail(contactEmail)) throw importError('Informe um e-mail válido do cliente antes de importar o chamado.');
+  if (solicitante_email?.trim() && !isValidEmail(contactEmail)) {
+    throw importError('O e-mail informado é inválido. Corrija-o ou deixe o campo vazio para completar depois.');
+  }
 
   const analysis = providedAnalysis || analyzeMilvusBudget(pendente, allParts);
   const mappedMilvusUser = resolveMilvusUser(pendente, users);
@@ -109,7 +109,7 @@ async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, 
   let request = null;
   let budget = null;
   try {
-    if (!company.email) {
+    if (!company.email && contactEmail) {
       await db.updateCompany(company.id, { email: contactEmail });
       company.email = contactEmail;
     }
@@ -117,14 +117,15 @@ async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, 
     const descricao = ticketText(pendente) || `Chamado Milvus #${pendente.milvus_codigo}`;
     request = await db.createRequest({
       empresa_id,
-      equipamento_id,
+      equipamento_id: equipment?.id || null,
+      unidade_id: effectiveUnitId,
       descricao,
       urgencia: urgencia || inferUrgency(pendente),
       endereco: endereco || formatAddress(company, unit),
       aberto_por: actorUser?.id || mappedMilvusUser?.id || null,
       assigned_analyst: assignedAnalyst,
       assigned_technician: assignedTechnician,
-      solicitante_email: contactEmail,
+      solicitante_email: contactEmail || null,
       milvus_codigo: pendente.milvus_codigo,
       milvus_id: pendente.milvus_id
     });
@@ -191,7 +192,7 @@ async function importMilvusPendingTicket({ pendente, mapping, actorUser = null, 
 async function autoImportMilvusPendentes() {
   await db.releaseStaleMilvusClaims();
   const pendentes = await db.getMilvusPendentes('pendente');
-  if (!pendentes.length) return { importados: 0, aguardando_revisao: 0 };
+  if (!pendentes.length) return { importados: 0, aguardando_revisao: 0, request_ids: [] };
   const [companies, units, equipments, parts, users] = await Promise.all([
     db.getCompanies(),
     db.getUnits(),
@@ -201,6 +202,7 @@ async function autoImportMilvusPendentes() {
   ]);
   let importados = 0;
   let aguardandoRevisao = 0;
+  const requestIds = [];
 
   for (const pendente of pendentes) {
     const resolution = resolveAutomaticTicket(pendente, { companies, units, equipments, parts });
@@ -212,12 +214,12 @@ async function autoImportMilvusPendentes() {
 
     const mappedUser = resolveMilvusUser(pendente, users);
     try {
-      await importMilvusPendingTicket({
+      const result = await importMilvusPendingTicket({
         pendente,
         mapping: {
           empresa_id: resolution.company.id,
           unidade_id: resolution.unit?.id || null,
-          equipamento_id: resolution.equipment.id,
+          equipamento_id: resolution.equipment?.id || null,
           urgencia: inferUrgency(pendente),
           endereco: formatAddress(resolution.company, resolution.unit),
           solicitante_email: resolution.contactEmail
@@ -227,13 +229,14 @@ async function autoImportMilvusPendentes() {
         analysis: resolution.analysis
       });
       importados++;
+      requestIds.push(result.request.id);
     } catch (error) {
       console.error(`[milvus-auto] Ticket #${pendente.milvus_codigo} permaneceu para revisão:`, error.message);
       aguardandoRevisao++;
     }
   }
 
-  return { importados, aguardando_revisao: aguardandoRevisao };
+  return { importados, aguardando_revisao: aguardandoRevisao, request_ids: requestIds };
 }
 
 module.exports = {

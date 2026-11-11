@@ -44,7 +44,7 @@ async function syncMilvusChamados() {
     novos++;
   }
 
-  let automatico = { importados: 0, aguardando_revisao: 0 };
+  let automatico = { importados: 0, aguardando_revisao: 0, request_ids: [] };
   try {
     automatico = await autoImportMilvusPendentes();
   } catch (error) {
@@ -55,7 +55,8 @@ async function syncMilvusChamados() {
     encontrados: lista.length,
     novos,
     importados_automaticamente: automatico.importados,
-    aguardando_revisao: automatico.aguardando_revisao
+    aguardando_revisao: automatico.aguardando_revisao,
+    chamados_importados: automatico.request_ids
   };
 }
 
@@ -295,6 +296,14 @@ async function syncRequestScheduleToMilvus(request, { actor } = {}) {
     const end = formatPortalSchedule(request.agendado_ate);
     const technician = request.assigned_technician ? await db.getUserById(request.assigned_technician) : null;
     const lines = [`Visita técnica agendada pelo portal para ${start}${end ? ` até ${end}` : ''}.`];
+    if (Array.isArray(request.dias_visita) && request.dias_visita.length > 1) {
+      const workDays = request.dias_visita.map((day) => {
+        const dayStart = formatPortalSchedule(`${day.date}T${day.start}`) || `${day.date} às ${day.start}`;
+        const dayEnd = day.end ? ` até ${formatPortalSchedule(`${day.date}T${day.end}`) || day.end}` : '';
+        return `${dayStart}${dayEnd}`;
+      });
+      lines.push(`Dias de trabalho previstos: ${workDays.join('; ')}.`);
+    }
     if (technician?.nome) lines.push(`Técnico responsável: ${technician.nome}.`);
     if (request.endereco) lines.push(`Endereço: ${request.endereco}.`);
     if (actor) lines.push(`Registro atualizado por ${actor}.`);

@@ -11,6 +11,7 @@ const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummar
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
 const { canManagerCompleteStartedVisit, validateVisitExecution } = require('../lib/visitWorkflow');
 const { buildTechnicalPlan } = require('../lib/technicalPlan');
+const { normalizeScheduleDays, scheduleDayDateTime, scheduleDayEndDateTime, scheduleDaysEqual } = require('../lib/scheduleDays');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
 const TERMO_VERSAO = '1.0';
@@ -61,6 +62,30 @@ function sendMilvusConfirmationEmail(request, company, equipment, signatureUser)
 
 const router = express.Router();
 router.use(verifyToken);
+
+router.delete('/:id/agenda', requireRole('gestor', 'analista'), async (req, res, next) => {
+  try {
+    const request = await db.getRequestById(req.params.id);
+    if (!request) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+    if (request.status !== 'Concluída' || !request.agendado_para) {
+      return res.status(409).json({ error: 'Somente uma visita concluída que ainda está no calendário pode ser excluída.' });
+    }
+    if (request.agenda_oculta) {
+      return res.status(409).json({ error: 'Esta visita já foi excluída do calendário.' });
+    }
+    const updated = await db.updateRequest(request.id, { agenda_oculta: true });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_concluida_removida_calendario',
+      entidade: 'request',
+      entidade_id: updated.id,
+      detalhes: `Chamado #${updated.numero} ocultado do calendário após a conclusão. O histórico e o relatório foram preservados.`
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
 
 async function approvedContextForRequest(requestId) {
   const budgets = await db.getBudgets();
@@ -289,6 +314,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       assigned_technician,
       agendado_para,
       agendado_ate,
+      dias_visita,
       endereco,
       relatorio_visita,
       teve_adicional,
@@ -303,6 +329,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const requestedScheduleChanged = (
       (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
       || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
+      || (dias_visita !== undefined && !scheduleDaysEqual(dias_visita, request.dias_visita))
     );
     if (requestedScheduleChanged
       && (request.hora_checkin || request.hora_checkout || ['Em Atendimento', 'Concluída'].includes(request.status))) {
@@ -334,6 +361,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       || (assigned_technician !== undefined && (assigned_technician || null) !== (request.assigned_technician || null))
       || (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
       || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
+      || (dias_visita !== undefined && !scheduleDaysEqual(dias_visita, request.dias_visita))
       || (endereco !== undefined && String(endereco || '').trim() !== String(request.endereco || '').trim())
     );
     if (jaTemAceite && dadosProtegidosAlterados) {
@@ -372,6 +400,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           if (status !== undefined) {
             return res.status(400).json({ error: 'Altere a data e o horário em uma ação separada.' });
           }
+          if ((request.dias_visita || []).length > 1) {
+            return res.status(409).json({ error: 'Esta visita tem vários dias de trabalho. Peça ao gestor ou analista para remarcar todos os dias pela agenda.' });
+          }
           if (!parseScheduledSlot(agendado_para)) {
             return res.status(400).json({ error: 'Escolha uma nova data e horário para a visita.' });
           }
@@ -380,6 +411,8 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           }
           patch.agendado_para = agendado_para;
           patch.agendado_ate = null;
+          patch.dias_visita = [];
+          patch.agenda_oculta = false;
           patch.confirmacao_tecnico = null;
           patch.confirmacao_tecnico_em = null;
         }
@@ -493,6 +526,30 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       } else if (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null)) {
         patch.agendado_ate = null;
       }
+      const scheduleMainChanged = (
+        ('agendado_para' in patch && patch.agendado_para !== request.agendado_para)
+        || ('agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate)
+      );
+      if (dias_visita !== undefined) {
+        const effectiveStart = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
+        const effectiveEnd = 'agendado_ate' in patch ? patch.agendado_ate : request.agendado_ate;
+        if (!effectiveStart && !effectiveEnd && (!Array.isArray(dias_visita) || dias_visita.length === 0)) {
+          patch.dias_visita = [];
+        } else {
+          const normalizedSchedule = normalizeScheduleDays(dias_visita, effectiveStart, effectiveEnd);
+          if (normalizedSchedule.error) return res.status(400).json({ error: normalizedSchedule.error });
+          patch.dias_visita = normalizedSchedule.days;
+        }
+      } else if (scheduleMainChanged) {
+        const effectiveStart = 'agendado_para' in patch ? patch.agendado_para : request.agendado_para;
+        if ((request.dias_visita || []).length > 1 && effectiveStart) {
+          return res.status(409).json({ error: 'Esta visita tem vários dias de trabalho. Altere todos os dias pela agenda.' });
+        }
+        patch.dias_visita = [];
+      }
+      if (scheduleMainChanged || (dias_visita !== undefined && !scheduleDaysEqual(dias_visita, request.dias_visita))) {
+        patch.agenda_oculta = false;
+      }
       if (endereco !== undefined) {
         patch.endereco = String(endereco || '').trim();
       }
@@ -500,6 +557,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       const managerChangedSchedule = (
         ('agendado_para' in patch && patch.agendado_para !== request.agendado_para)
         || ('agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate)
+        || ('dias_visita' in patch && !scheduleDaysEqual(patch.dias_visita, request.dias_visita))
       );
       if (managerChangedTechnician || managerChangedSchedule) {
         patch.confirmacao_tecnico = null;
@@ -530,6 +588,18 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           return res.status(400).json({ error: 'O horário de fim precisa ser depois do início e também já ter passado.' });
         }
       }
+      const completedSchedule = normalizeScheduleDays(
+        'dias_visita' in patch ? patch.dias_visita : request.dias_visita,
+        effectiveScheduledAt,
+        effectiveScheduledUntil
+      );
+      if (completedSchedule.error) return res.status(400).json({ error: completedSchedule.error });
+      if (completedSchedule.days.some((day) => (
+        scheduleDayDateTime(day) >= currentDateTimeInSaoPaulo()
+        || (scheduleDayEndDateTime(day) && scheduleDayEndDateTime(day) >= currentDateTimeInSaoPaulo())
+      ))) {
+        return res.status(400).json({ error: 'Todos os dias de uma visita confirmada como realizada precisam estar no passado.' });
+      }
       if (!effectiveTechnicianId) {
         return res.status(400).json({ error: 'Selecione o técnico que realizou a visita.' });
       }
@@ -547,8 +617,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
     const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
     const scheduleEndChanged = 'agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate;
+    const scheduleDaysChanged = 'dias_visita' in patch && !scheduleDaysEqual(patch.dias_visita, request.dias_visita);
     const shouldValidateSchedule = !visitaConfirmadaPelaEquipe
-      && (technicianChanged || scheduleChanged || scheduleEndChanged || patch.status === 'Agendada');
+      && (technicianChanged || scheduleChanged || scheduleEndChanged || scheduleDaysChanged || patch.status === 'Agendada');
 
     if (shouldValidateSchedule) {
       if (!effectiveScheduledAt) {
@@ -563,7 +634,6 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!slot) {
           return res.status(400).json({ error: 'Informe a data e o horário da visita.' });
         }
-        const slotIsPast = `${slot.date}T${slot.time}` < currentDateTimeInSaoPaulo();
         if (!effectiveTechnicianId) {
           return res.status(400).json({ error: 'Selecione um técnico para esta visita.' });
         }
@@ -571,26 +641,28 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!String(destination || '').trim()) {
           return res.status(400).json({ error: 'Informe o endereço de destino da visita.' });
         }
-        if (!slotIsPast) {
-          const unavailable = await db.getTechnicianUnavailabilityForDate(effectiveTechnicianId, slot.date);
-          if (unavailable) {
-            return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
-          }
-        }
-        if (effectiveScheduledUntil) {
-          const endSlot = parseScheduledSlot(effectiveScheduledUntil);
-          if (!endSlot || endSlot.date !== slot.date || endSlot.time <= slot.time) {
-            return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do horário de início.' });
-          }
-        }
-        const conflictingBooking = await db.getTechnicianBookingAt(
-          effectiveTechnicianId,
-          `${slot.date}T${slot.time}`,
-          effectiveScheduledUntil,
-          request.id
+        const normalizedSchedule = normalizeScheduleDays(
+          'dias_visita' in patch ? patch.dias_visita : request.dias_visita,
+          effectiveScheduledAt,
+          effectiveScheduledUntil
         );
-        if (conflictingBooking) {
-          return res.status(409).json({ error: `O horário conflita com outra visita do técnico nesse dia.` });
+        if (normalizedSchedule.error) return res.status(400).json({ error: normalizedSchedule.error });
+        for (const day of normalizedSchedule.days) {
+          if (scheduleDayDateTime(day) >= currentDateTimeInSaoPaulo()) {
+            const unavailable = await db.getTechnicianUnavailabilityForDate(effectiveTechnicianId, day.date);
+            if (unavailable) {
+              return res.status(409).json({ error: `O técnico marcou ${day.date} como indisponível. Escolha outra data.` });
+            }
+          }
+          const conflictingBooking = await db.getTechnicianBookingAt(
+            effectiveTechnicianId,
+            scheduleDayDateTime(day),
+            scheduleDayEndDateTime(day),
+            request.id
+          );
+          if (conflictingBooking) {
+            return res.status(409).json({ error: `O horário conflita com outra visita do técnico em ${day.date}.` });
+          }
         }
       }
     }
@@ -627,18 +699,18 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         actor: req.user.name || req.user.role,
         previousSchedule: request.agendado_para
       });
-    } else if ((scheduleChanged || scheduleEndChanged || technicianChanged || scheduleWasActivated)
+    } else if ((scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged || scheduleWasActivated)
       && updated.status === 'Agendada' && !visitaConfirmadaPelaEquipe) {
       agendaMilvusSync = await syncRequestScheduleToMilvus(updated, { actor: req.user.name || req.user.role });
     }
 
     const addressChanged = String(request.endereco || '') !== String(updated.endereco || '');
-    if (scheduleChanged || scheduleEndChanged || technicianChanged || addressChanged) {
+    if (scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged || addressChanged) {
       const previousSlot = request.agendado_para
         ? `${request.agendado_para}${request.agendado_ate ? ` até ${request.agendado_ate}` : ''}`
         : 'sem horário agendado';
       const nextSlot = updated.agendado_para
-        ? `${updated.agendado_para}${updated.agendado_ate ? ` até ${updated.agendado_ate}` : ''}`
+        ? `${updated.agendado_para}${updated.agendado_ate ? ` até ${updated.agendado_ate}` : ''}${(updated.dias_visita || []).length > 1 ? `; ${updated.dias_visita.length} dias de trabalho` : ''}`
         : 'sem horário agendado';
       await db.logAudit({
         user: req.user,

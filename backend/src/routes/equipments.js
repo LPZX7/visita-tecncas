@@ -6,6 +6,22 @@ const { scopeEquipmentsForClient } = require('../lib/scoping');
 const router = express.Router();
 router.use(verifyToken);
 
+function normalizeSerial(value) {
+  return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function isPlaceholderSerial(value) {
+  return new Set(['a definir', 'definir', 'n/a', 'na', 'sem serie', 'nao informado', 'pendente']).has(normalizeSerial(value));
+}
+
+router.get('/models', requireRole('gestor', 'analista'), async (req, res, next) => {
+  try {
+    res.json(await db.getEquipmentModels());
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const equipments = await db.getEquipments();
@@ -25,11 +41,16 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.post('/', requireRole('gestor'), async (req, res, next) => {
+router.post('/', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
     const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
-    if (!empresa_id || !modelo || !numero_serie) {
+    const modeloReal = String(modelo || '').trim();
+    const numeroSerieReal = String(numero_serie || '').trim();
+    if (!empresa_id || !modeloReal || !numeroSerieReal) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+    }
+    if (isPlaceholderSerial(numeroSerieReal)) {
+      return res.status(400).json({ error: 'Informe o número de série real do aparelho; “A definir” não é válido.' });
     }
     if (!(await db.getCompanyById(empresa_id))) {
       return res.status(400).json({ error: 'Empresa inválida' });
@@ -40,22 +61,27 @@ router.post('/', requireRole('gestor'), async (req, res, next) => {
         return res.status(400).json({ error: 'A filial/sede não pertence à empresa selecionada' });
       }
     }
-    const equipment = await db.createEquipment({ empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+    const equipment = await db.createEquipment({ empresa_id, unidade_id: unidade_id || null, modelo: modeloReal, numero_serie: numeroSerieReal, local_instalacao, data_instalacao, garantia_ate });
     res.status(201).json(equipment);
   } catch (err) {
     next(err);
   }
 });
 
-router.put('/:id', requireRole('gestor'), async (req, res, next) => {
+router.put('/:id', requireRole('gestor', 'analista'), async (req, res, next) => {
   try {
     const existing = await db.getEquipmentById(req.params.id);
     if (!existing) {
       return res.status(404).json({ error: 'Equipamento não encontrado' });
     }
     const { empresa_id, unidade_id, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate } = req.body;
-    if (!empresa_id || !modelo || !numero_serie) {
+    const modeloReal = String(modelo || '').trim();
+    const numeroSerieReal = String(numero_serie || '').trim();
+    if (!empresa_id || !modeloReal || !numeroSerieReal) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+    }
+    if (isPlaceholderSerial(numeroSerieReal)) {
+      return res.status(400).json({ error: 'Informe o número de série real do aparelho; “A definir” não é válido.' });
     }
     if (!(await db.getCompanyById(empresa_id))) {
       return res.status(400).json({ error: 'Empresa inválida' });
@@ -66,7 +92,7 @@ router.put('/:id', requireRole('gestor'), async (req, res, next) => {
         return res.status(400).json({ error: 'A filial/sede não pertence à empresa selecionada' });
       }
     }
-    const updated = await db.updateEquipment(req.params.id, { empresa_id, unidade_id: unidade_id || null, modelo, numero_serie, local_instalacao, data_instalacao, garantia_ate });
+    const updated = await db.updateEquipment(req.params.id, { empresa_id, unidade_id: unidade_id || null, modelo: modeloReal, numero_serie: numeroSerieReal, local_instalacao, data_instalacao, garantia_ate });
     res.json(updated);
   } catch (err) {
     next(err);

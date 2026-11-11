@@ -417,7 +417,7 @@ export default function Dashboard() {
     },
     milvusAvailable && milvusPending.length > 0 && {
       key: 'milvus-pending', tone: 'blue', value: milvusPending.length,
-      title: 'Revisar importações do Milvus', detail: 'Tickets precisam de confirmação antes de virar chamado e orçamento.', to: '/milvus-import', action: 'Abrir fila'
+      title: 'Revisar importações do Milvus', detail: 'Não foi possível identificar a empresa com segurança. Vincule o cliente para importar o chamado.', to: '/milvus-import', action: 'Abrir fila'
     },
     unassignedRequests.length > 0 && {
       key: 'unassigned', tone: 'warning', value: unassignedRequests.length,

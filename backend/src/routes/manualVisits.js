@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
+const { normalizeScheduleDays, scheduleDayDateTime, scheduleDayEndDateTime, scheduleDaysEqual } = require('../lib/scheduleDays');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -67,6 +68,7 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
     const empresa_id = String(req.body.empresa_id || '').trim() || null;
     const agendado_para = String(req.body.agendado_para || '').trim();
     const agendado_ate = String(req.body.agendado_ate || '').trim() || null;
+    const schedule = normalizeScheduleDays(req.body.dias_visita, agendado_para, agendado_ate);
     const start = parseScheduledSlot(agendado_para);
 
     if (!empresa_nome || empresa_nome.length > 160) {
@@ -81,12 +83,7 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
     if (!start) {
       return res.status(400).json({ error: 'Escolha uma data e um horário de início válidos.' });
     }
-    if (agendado_ate) {
-      const end = parseScheduledSlot(agendado_ate);
-      if (!end || end.date !== start.date || end.time <= start.time) {
-        return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do início.' });
-      }
-    }
+    if (schedule.error) return res.status(400).json({ error: schedule.error });
 
     if (empresa_id) {
       const company = await db.getCompanyById(empresa_id);
@@ -99,21 +96,22 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
       }
     }
 
-    if (agendado_para >= currentDateTimeInSaoPaulo()) {
-      const unavailable = await db.getTechnicianUnavailabilityForDate(technician.id, start.date);
-      if (unavailable) {
-        return res.status(409).json({ error: 'Você marcou este dia como indisponível. Remova o bloqueio antes de agendar.' });
+    for (const day of schedule.days) {
+      if (scheduleDayDateTime(day) >= currentDateTimeInSaoPaulo()) {
+        const unavailable = await db.getTechnicianUnavailabilityForDate(technician.id, day.date);
+        if (unavailable) {
+          return res.status(409).json({ error: `Você marcou ${day.date} como indisponível. Remova o bloqueio antes de agendar.` });
+        }
       }
-    }
-
-    const conflictingBooking = await db.getTechnicianBookingAt(
-      technician.id,
-      agendado_para,
-      agendado_ate,
-      ''
-    );
-    if (conflictingBooking) {
-      return res.status(409).json({ error: 'Você já tem outra visita neste horário. Escolha outro horário.' });
+      const conflictingBooking = await db.getTechnicianBookingAt(
+        technician.id,
+        scheduleDayDateTime(day),
+        scheduleDayEndDateTime(day),
+        ''
+      );
+      if (conflictingBooking) {
+        return res.status(409).json({ error: `Você já tem outra visita em ${day.date} neste horário.` });
+      }
     }
 
     const visit = await db.createManualVisit({
@@ -124,6 +122,7 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
       descricao,
       agendado_para,
       agendado_ate,
+      dias_visita: schedule.days,
       criado_por: technician.id
     });
     await db.logAudit({
@@ -145,6 +144,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (!existing || existing.status === 'Cancelada') {
       return res.status(404).json({ error: 'Visita não encontrada na agenda.' });
     }
+    if (existing.agenda_oculta) {
+      return res.status(404).json({ error: 'Esta visita já foi removida do calendário.' });
+    }
     if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
       return res.status(403).json({ error: 'Você só pode alterar suas próprias visitas manuais.' });
     }
@@ -160,6 +162,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const agendado_ate = req.body.agendado_ate === undefined
       ? (existing.agendado_ate || null)
       : String(req.body.agendado_ate || '').trim() || null;
+    const schedule = normalizeScheduleDays(req.body.dias_visita, agendado_para, agendado_ate);
     const start = parseScheduledSlot(agendado_para);
 
     if (!empresa_nome || empresa_nome.length > 160) {
@@ -174,12 +177,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (!start) {
       return res.status(400).json({ error: 'Escolha uma data e um horário de início válidos.' });
     }
-    if (agendado_ate) {
-      const end = parseScheduledSlot(agendado_ate);
-      if (!end || end.date !== start.date || end.time <= start.time) {
-        return res.status(400).json({ error: 'O horário de fim precisa ser no mesmo dia e depois do início.' });
-      }
-    }
+    if (schedule.error) return res.status(400).json({ error: schedule.error });
 
     if (empresa_id) {
       const company = await db.getCompanyById(empresa_id);
@@ -191,22 +189,26 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       }
     }
 
-    const scheduleChanged = agendado_para !== existing.agendado_para || agendado_ate !== (existing.agendado_ate || null);
-    if (scheduleChanged && agendado_para >= currentDateTimeInSaoPaulo()) {
-      const unavailable = await db.getTechnicianUnavailabilityForDate(existing.assigned_technician, start.date);
-      if (unavailable) {
-        return res.status(409).json({ error: 'O técnico marcou este dia como indisponível. Escolha outra data.' });
-      }
-    }
+    const scheduleChanged = agendado_para !== existing.agendado_para
+      || agendado_ate !== (existing.agendado_ate || null)
+      || !scheduleDaysEqual(schedule.days, existing.dias_visita);
     if (scheduleChanged) {
-      const conflictingBooking = await db.getTechnicianBookingAt(
-        existing.assigned_technician,
-        agendado_para,
-        agendado_ate,
-        existing.id
-      );
-      if (conflictingBooking) {
-        return res.status(409).json({ error: 'O técnico já tem outra visita neste horário. Escolha outro horário.' });
+      for (const day of schedule.days) {
+        if (scheduleDayDateTime(day) >= currentDateTimeInSaoPaulo()) {
+          const unavailable = await db.getTechnicianUnavailabilityForDate(existing.assigned_technician, day.date);
+          if (unavailable) {
+            return res.status(409).json({ error: `O técnico marcou ${day.date} como indisponível. Escolha outra data.` });
+          }
+        }
+        const conflictingBooking = await db.getTechnicianBookingAt(
+          existing.assigned_technician,
+          scheduleDayDateTime(day),
+          scheduleDayEndDateTime(day),
+          existing.id
+        );
+        if (conflictingBooking) {
+          return res.status(409).json({ error: `O técnico já tem outra visita em ${day.date} neste horário.` });
+        }
       }
     }
 
@@ -216,7 +218,9 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       endereco,
       descricao,
       agendado_para,
-      agendado_ate
+      agendado_ate,
+      dias_visita: schedule.days,
+      agenda_oculta: false
     });
     await db.logAudit({
       user: req.user,
@@ -237,19 +241,23 @@ router.delete('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, 
     if (!existing || existing.status === 'Cancelada') {
       return res.status(404).json({ error: 'Visita não encontrada na agenda.' });
     }
+    if (existing.agenda_oculta) {
+      return res.status(404).json({ error: 'Esta visita já foi removida do calendário.' });
+    }
     if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
       return res.status(403).json({ error: 'Você só pode retirar suas próprias visitas manuais da agenda.' });
     }
-    if (existing.status === 'Concluída') {
-      return res.status(409).json({ error: 'Uma visita concluída não pode ser retirada da agenda.' });
+    const completed = existing.status === 'Concluída';
+    if (completed && req.user.role === 'tecnico') {
+      return res.status(403).json({ error: 'Somente gestor ou analista pode excluir uma visita concluída do calendário.' });
     }
-    await db.updateManualVisit(existing.id, { status: 'Cancelada' });
+    await db.updateManualVisit(existing.id, completed ? { agenda_oculta: true } : { status: 'Cancelada' });
     await db.logAudit({
       user: req.user,
-      acao: 'visita_manual_retirada_agenda',
+      acao: completed ? 'visita_manual_removida_calendario' : 'visita_manual_retirada_agenda',
       entidade: 'manual_visit',
       entidade_id: existing.id,
-      detalhes: `${existing.empresa_nome} — ${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}; técnico: ${existing.technician_name || existing.assigned_technician}. Visita cancelada na agenda.`
+      detalhes: `${existing.empresa_nome} — ${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}; técnico: ${existing.technician_name || existing.assigned_technician}. ${completed ? 'Conclusão preservada; evento ocultado do calendário.' : 'Visita cancelada na agenda.'}`
     });
     res.status(204).end();
   } catch (err) {
