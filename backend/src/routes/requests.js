@@ -63,28 +63,65 @@ function sendMilvusConfirmationEmail(request, company, equipment, signatureUser)
 const router = express.Router();
 router.use(verifyToken);
 
-router.delete('/:id/agenda', requireRole('tecnico', 'gestor', 'analista'), async (req, res, next) => {
+router.delete('/:id/agenda', requireRole('tecnico', 'gestor'), async (req, res, next) => {
   try {
     const request = await db.getRequestById(req.params.id);
     if (!request) return res.status(404).json({ error: 'Solicitação não encontrada.' });
     if (req.user.role === 'tecnico' && request.assigned_technician !== req.user.sub) {
-      return res.status(403).json({ error: 'Você só pode retirar do calendário visitas concluídas atribuídas a você.' });
+      return res.status(403).json({ error: 'Você só pode retirar do calendário visitas atribuídas a você.' });
     }
-    if (request.status !== 'Concluída' || !request.agendado_para) {
-      return res.status(409).json({ error: 'Somente uma visita concluída que ainda está no calendário pode ser excluída.' });
+    if (request.status === 'Cancelada') {
+      return res.status(409).json({ error: 'Um chamado cancelado não pode ser retirado da agenda.' });
     }
-    if (request.agenda_oculta) {
-      return res.status(409).json({ error: 'Esta visita já foi excluída do calendário.' });
+    if (!request.agendado_para) {
+      return res.status(409).json({ error: 'Este chamado não tem uma visita agendada no calendário.' });
     }
-    const updated = await db.updateRequest(request.id, { agenda_oculta: true });
+    if (request.status === 'Em Atendimento' || (request.hora_checkin && !request.hora_checkout)) {
+      return res.status(409).json({ error: 'Finalize a visita antes de retirá-la da agenda.' });
+    }
+    if (request.pagamento_status === 'Liquidado') {
+      return res.status(409).json({ error: 'O pagamento já foi liquidado. Estorne a liquidação antes de reabrir este chamado.' });
+    }
+    const signedTerm = await db.getVisitaAceiteByRequestId(request.id);
+    if (signedTerm) {
+      return res.status(409).json({ error: 'Este chamado tem um termo de conclusão assinado e não pode voltar para aberto.' });
+    }
+
+    const previousSchedule = `${request.agendado_para}${request.agendado_ate ? ` até ${request.agendado_ate}` : ''}`;
+    const previousVisitHistory = [
+      request.relatorio_visita ? `Relatório anterior: ${request.relatorio_visita}` : null,
+      request.observacao_final ? `Observação final: ${request.observacao_final}` : null,
+      request.teve_adicional ? `Adicional anterior: ${request.adicional_descricao || 'não informado'}; custo: R$ ${Number(request.custo_adicional || 0).toFixed(2)}.` : null
+    ].filter(Boolean).join('\n');
+    const updated = await db.updateRequest(request.id, {
+      status: 'Aberta',
+      agendado_para: null,
+      agendado_ate: null,
+      dias_visita: [],
+      agenda_oculta: false,
+      hora_checkin: null,
+      hora_checkout: null,
+      concluded_at: null,
+      confirmacao_tecnico: null,
+      confirmacao_tecnico_em: null,
+      relatorio_visita: null,
+      teve_adicional: false,
+      adicional_descricao: null,
+      custo_adicional: 0,
+      observacao_final: null
+    });
+    const agendaMilvusSync = await syncRequestScheduleRemovalToMilvus(updated, {
+      actor: req.user.name || req.user.role,
+      previousSchedule
+    });
     await db.logAudit({
       user: req.user,
-      acao: 'visita_concluida_removida_calendario',
+      acao: 'visita_reaberta_como_chamado',
       entidade: 'request',
       entidade_id: updated.id,
-      detalhes: `Chamado #${updated.numero} ocultado do calendário após a conclusão. O histórico e o relatório foram preservados.`
+      detalhes: `Visita retirada da agenda em ${previousSchedule}; chamado #${updated.numero} voltou para Aberta, sem agendamento. Relatório e dados da visita anterior: ${previousVisitHistory || 'nenhum relatório adicional.'}`
     });
-    res.json(updated);
+    res.json({ ...updated, agenda_milvus_sincronizada: agendaMilvusSync });
   } catch (err) {
     next(err);
   }

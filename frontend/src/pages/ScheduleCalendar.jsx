@@ -405,12 +405,12 @@ export default function ScheduleCalendar() {
     const completed = visit.status === 'Concluída';
     const completedMessage = visit.manual_visit
       ? 'A conclusão continuará salva no histórico.'
-      : 'A conclusão e o relatório continuarão salvos no chamado.';
+      : 'O chamado voltará para Aberta e poderá receber novas datas. O relatório anterior ficará no histórico.';
     const confirmation = completed
       ? `Excluir ${name} do calendário? ${completedMessage}`
       : visit.manual_visit
         ? `Excluir a visita de ${name} da agenda? Ela será cancelada e a ação ficará no histórico.`
-        : `Excluir ${name} da agenda? O chamado será reaberto e a ação ficará no histórico.`;
+        : `Excluir ${name} da agenda? O chamado voltará para Aberta e ficará disponível para novo agendamento.`;
     if (!window.confirm(confirmation)) return;
 
     setError('');
@@ -420,25 +420,16 @@ export default function ScheduleCalendar() {
       let response = null;
       if (visit.manual_visit) {
         await api.delete(`/manual-visits/${visit.id}`);
-      } else if (completed) {
-        await api.delete(`/requests/${visit.id}/agenda`);
       } else {
-        response = await api.patch(`/requests/${visit.id}`, {
-          status: 'Aberta',
-          agendado_para: null,
-          agendado_ate: null,
-          dias_visita: []
-        });
+        response = await api.delete(`/requests/${visit.id}/agenda`);
       }
       await load();
       if (response?.data?.agenda_milvus_sincronizada === false) {
         setError('A visita saiu da agenda do sistema, mas a atualização não foi enviada ao Milvus. Confira a integração.');
       } else {
-        setSuccess(completed
-          ? `${name} foi retirado do calendário; a conclusão e o histórico foram preservados.`
-          : visit.manual_visit
-            ? `Visita de ${visit.empresa_nome} retirada da agenda. A ação foi registrada no histórico.`
-            : `Chamado #${visit.numero} reaberto e retirado da agenda. A ação foi registrada no histórico.`);
+        setSuccess(visit.manual_visit
+          ? `${completed ? 'Visita concluída' : 'Visita'} de ${visit.empresa_nome} retirada da agenda. A ação foi registrada no histórico.`
+          : `Chamado #${visit.numero} voltou para Aberta e ficou disponível para novo agendamento.`);
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível tirar esta visita da agenda.');
@@ -573,9 +564,9 @@ export default function ScheduleCalendar() {
                   {dayVisits.map((visit) => {
                     const canEditVisit = (canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
                       || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
-                    const canRemoveVisit = (canManage && (visit.status === 'Concluída' || !['Cancelada', 'Em Atendimento'].includes(visit.status)))
-                      || (technicianMode && visit.assigned_technician === user?.id && visit.status === 'Concluída')
-                      || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
+                    const visitCanBeRemoved = !['Cancelada', 'Em Atendimento'].includes(visit.status);
+                    const canRemoveVisit = (user?.role === 'gestor' && visitCanBeRemoved)
+                      || (technicianMode && visit.assigned_technician === user?.id && visitCanBeRemoved);
                     return <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={`${visit.id}-${visit.agendado_para}`}>
                       <div className={`schedule-visit__time schedule-visit__time--${visitVisualState(visit).kind}`}>
                         <span aria-hidden="true">{visitVisualState(visit).icon}</span> {timeRangeOf(visit)}

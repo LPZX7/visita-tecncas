@@ -235,7 +235,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
   }
 });
 
-router.delete('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
+router.delete('/:id', requireRole('tecnico', 'gestor'), async (req, res, next) => {
   try {
     const existing = await db.getManualVisitById(req.params.id);
     if (!existing || existing.status === 'Cancelada') {
