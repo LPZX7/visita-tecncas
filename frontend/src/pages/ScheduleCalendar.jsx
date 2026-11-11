@@ -574,6 +574,7 @@ export default function ScheduleCalendar() {
                     const canEditVisit = (canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
                       || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
                     const canRemoveVisit = (canManage && (visit.status === 'Concluída' || !['Cancelada', 'Em Atendimento'].includes(visit.status)))
+                      || (technicianMode && visit.assigned_technician === user?.id && visit.status === 'Concluída')
                       || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
                     return <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={`${visit.id}-${visit.agendado_para}`}>
                       <div className={`schedule-visit__time schedule-visit__time--${visitVisualState(visit).kind}`}>

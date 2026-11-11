@@ -63,10 +63,13 @@ function sendMilvusConfirmationEmail(request, company, equipment, signatureUser)
 const router = express.Router();
 router.use(verifyToken);
 
-router.delete('/:id/agenda', requireRole('gestor', 'analista'), async (req, res, next) => {
+router.delete('/:id/agenda', requireRole('tecnico', 'gestor', 'analista'), async (req, res, next) => {
   try {
     const request = await db.getRequestById(req.params.id);
     if (!request) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+    if (req.user.role === 'tecnico' && request.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você só pode retirar do calendário visitas concluídas atribuídas a você.' });
+    }
     if (request.status !== 'Concluída' || !request.agendado_para) {
       return res.status(409).json({ error: 'Somente uma visita concluída que ainda está no calendário pode ser excluída.' });
     }

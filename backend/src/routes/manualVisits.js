@@ -248,9 +248,6 @@ router.delete('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, 
       return res.status(403).json({ error: 'Você só pode retirar suas próprias visitas manuais da agenda.' });
     }
     const completed = existing.status === 'Concluída';
-    if (completed && req.user.role === 'tecnico') {
-      return res.status(403).json({ error: 'Somente gestor ou analista pode excluir uma visita concluída do calendário.' });
-    }
     await db.updateManualVisit(existing.id, completed ? { agenda_oculta: true } : { status: 'Cancelada' });
     await db.logAudit({
       user: req.user,
