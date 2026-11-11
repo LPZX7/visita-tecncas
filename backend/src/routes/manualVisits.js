@@ -150,7 +150,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
       return res.status(403).json({ error: 'Você só pode alterar suas próprias visitas manuais.' });
     }
-    if (existing.status === 'Concluída') {
+    if (existing.status === 'Concluída' && req.user.role !== 'gestor') {
       return res.status(409).json({ error: 'Uma visita concluída não pode ser alterada.' });
     }
 

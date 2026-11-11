@@ -222,9 +222,9 @@ export default function ScheduleCalendar() {
   const selectedDateUnavailable = blockedDateSet.has(selectedDate);
   const bookableRequests = requests.filter((request) => (
     request.milvus_codigo
-    && ['Aberta', 'Agendada'].includes(request.status)
-    && !request.hora_checkin
-    && !request.hora_checkout
+    && (request.status === 'Concluída'
+      ? user?.role === 'gestor' && !editingVisit?.manual_visit && editingVisit?.id === request.id
+      : ['Aberta', 'Agendada'].includes(request.status) && !request.hora_checkin && !request.hora_checkout)
   ));
   const selectedBookingRequest = bookableRequests.find((request) => request.id === bookingRequestId);
   const proposedWorkDays = [
@@ -342,6 +342,7 @@ export default function ScheduleCalendar() {
     setSaving(true);
     try {
       if (bookingMode === 'manual') {
+        const editingCompletedManualVisit = editingVisit?.manual_visit && editingVisit.status === 'Concluída';
         const selectedCompany = manualCompanyOptions.find((company) => (
           companyDisplayName(company).toLocaleLowerCase('pt-BR') === manualCompanyName.trim().toLocaleLowerCase('pt-BR')
         ));
@@ -362,31 +363,41 @@ export default function ScheduleCalendar() {
         setBookingOpen(false);
         setEditingVisit(null);
         setSuccess(editingVisit?.manual_visit
-          ? `Visita para ${manualCompanyName.trim()} atualizada com ${proposedWorkDays.length} dia(s) de trabalho.`
+          ? editingCompletedManualVisit
+            ? `Agenda da visita concluída para ${manualCompanyName.trim()} atualizada. O atendimento continua concluído.`
+            : `Visita para ${manualCompanyName.trim()} atualizada com ${proposedWorkDays.length} dia(s) de trabalho.`
           : `Visita para ${manualCompanyName.trim()} cadastrada com ${proposedWorkDays.length} dia(s) de trabalho.`);
         await load();
         return;
       }
 
-      const response = await api.patch(`/requests/${selectedBookingRequest.id}`, {
-        status: bookingVisitAlreadyDone ? 'Concluída' : 'Agendada',
+      const editingCompletedVisit = editingVisit?.status === 'Concluída';
+      const requestPayload = {
         assigned_technician: selectedTechnicianId,
         agendado_para: proposedSchedule,
         agendado_ate: proposedScheduleEnd || null,
         dias_visita: proposedWorkDays,
-        visita_realizada: bookingVisitAlreadyDone,
         endereco: bookingAddress.trim(),
-        sincronizar_responsaveis_milvus: true
-      });
+        sincronizar_responsaveis_milvus: !editingCompletedVisit
+      };
+      if (!editingCompletedVisit) {
+        requestPayload.status = bookingVisitAlreadyDone ? 'Concluída' : 'Agendada';
+        requestPayload.visita_realizada = bookingVisitAlreadyDone;
+      }
+      const response = await api.patch(`/requests/${selectedBookingRequest.id}`, requestPayload);
       setBookingOpen(false);
       setEditingVisit(null);
-      const milvusSynced = bookingVisitAlreadyDone
+      const milvusSynced = editingCompletedVisit
+        ? null
+        : bookingVisitAlreadyDone
         ? response.data.milvus_visita_sincronizada
         : response.data.agenda_milvus_sincronizada;
       if (milvusSynced === false) {
         setError('A visita foi salva na agenda do site/TV, mas não foi enviada ao Milvus. Confira a integração.');
       } else {
-        setSuccess(bookingVisitAlreadyDone
+        setSuccess(editingCompletedVisit
+          ? `Agenda da visita concluída do chamado #${selectedBookingRequest.numero} atualizada. O atendimento continua concluído.`
+          : bookingVisitAlreadyDone
           ? `Chamado #${selectedBookingRequest.numero} registrado como visita realizada.`
           : `Chamado #${selectedBookingRequest.numero} agendado em ${proposedWorkDays.length} dia(s) de trabalho.`);
       }
@@ -563,6 +574,7 @@ export default function ScheduleCalendar() {
                 <div className="schedule-visit-list">
                   {dayVisits.map((visit) => {
                     const canEditVisit = (canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
+                      || (user?.role === 'gestor' && visit.status === 'Concluída')
                       || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
                     const visitCanBeRemoved = !['Cancelada', 'Em Atendimento'].includes(visit.status);
                     const canRemoveVisit = (user?.role === 'gestor' && visitCanBeRemoved)
@@ -699,7 +711,8 @@ export default function ScheduleCalendar() {
               )}
               {bookingEndNotAfterStart && <p className="schedule-booking-dialog__conflict">O horário de fim precisa ser depois do início.</p>}
               {hasTimeConflict && <p className="schedule-booking-dialog__conflict">O técnico já tem outra visita nesse horário. Escolha outro horário.</p>}
-              {bookingMode === 'request' && bookingSlotIsPast && (
+              {editingVisit?.status === 'Concluída' && <p className="schedule-day-panel__note">{editingVisit.manual_visit ? 'A visita continuará concluída; você está alterando apenas os dados da agenda.' : 'A conclusão, o check-in e o relatório serão mantidos. Você está alterando apenas os dados da agenda.'}</p>}
+              {bookingMode === 'request' && !editingVisit && bookingSlotIsPast && (
                 <label className="schedule-booking-dialog__completed-confirm">
                   <input type="checkbox" checked={bookingVisitAlreadyDone} onChange={(event) => setBookingVisitAlreadyDone(event.target.checked)} />
                   <span><strong>A visita já foi realizada?</strong><small>Marque para concluir o chamado. Sem marcar, ele ficará como visita atrasada e pendente.</small></span>

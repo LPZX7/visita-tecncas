@@ -371,8 +371,10 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
       || (dias_visita !== undefined && !scheduleDaysEqual(dias_visita, request.dias_visita))
     );
+    const managerEditingCompletedVisit = request.status === 'Concluída' && req.user.role === 'gestor';
     if (requestedScheduleChanged
-      && (request.hora_checkin || request.hora_checkout || ['Em Atendimento', 'Concluída'].includes(request.status))) {
+      && (request.hora_checkin || request.hora_checkout || ['Em Atendimento', 'Concluída'].includes(request.status))
+      && !managerEditingCompletedVisit) {
       return res.status(409).json({ error: 'Uma visita que já começou ou foi concluída não pode ser removida ou remarcada pela agenda.' });
     }
     const patch = {};
