@@ -10,14 +10,10 @@ function validateTechnicalVisitBudget({ items = [], deslocamento } = {}) {
     }
   }
 
-  const visitValue = Number(deslocamento);
-  if (deslocamento === undefined || deslocamento === null || deslocamento === '' || !Number.isFinite(visitValue) || visitValue < 0) {
-    return 'Informe o valor da visita técnica';
-  }
-
-  if (normalizedItems.length === 0 && visitValue <= 0) {
-    return 'Para um orçamento sem peças, informe um valor maior que zero para a visita técnica';
-  }
+  const visitValue = deslocamento === undefined || deslocamento === null || deslocamento === ''
+    ? 0
+    : Number(deslocamento);
+  if (!Number.isFinite(visitValue) || visitValue < 0) return 'Informe um valor válido para a visita técnica';
 
   return null;
 }

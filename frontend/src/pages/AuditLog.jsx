@@ -23,6 +23,7 @@ export const ACAO_LABEL = {
   visita_registrada_como_realizada: 'Visita confirmada como realizada',
   visita_finalizada_pagamento_liquidado: 'Visita finalizada e pagamento liquidado',
   visita_registrada_realizada_pagamento_liquidado: 'Visita confirmada e pagamento liquidado',
+  pagamento_visita_liquidado: 'Pagamento da visita marcado como liquidado',
   visita_aprovada_pagamento_liquidado: 'Visita aprovada e pagamento liquidado',
   visita_desaprovada_pagamento_revertido: 'Visita desaprovada e pagamento revertido',
   usuario_criado: 'Usuário criado',

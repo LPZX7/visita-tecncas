@@ -6,8 +6,9 @@ test('aceita orçamento somente com visita técnica', () => {
   assert.equal(validateTechnicalVisitBudget({ items: [], deslocamento: 180 }), null);
 });
 
-test('exige valor positivo quando o orçamento não possui peças', () => {
-  assert.match(validateTechnicalVisitBudget({ items: [], deslocamento: 0 }), /maior que zero/);
+test('aceita orçamento sem peças e sem valor de visita', () => {
+  assert.equal(validateTechnicalVisitBudget({ items: [], deslocamento: '' }), null);
+  assert.equal(validateTechnicalVisitBudget({ items: [] }), null);
 });
 
 test('aceita orçamento com peça e visita sem custo', () => {
@@ -24,5 +25,5 @@ test('rejeita quantidade e valor inválidos de peça', () => {
 });
 
 test('rejeita valor de visita inválido', () => {
-  assert.match(validateTechnicalVisitBudget({ items: [], deslocamento: 'texto' }), /valor da visita/);
+  assert.match(validateTechnicalVisitBudget({ items: [], deslocamento: 'texto' }), /valor válido/);
 });

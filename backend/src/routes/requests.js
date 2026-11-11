@@ -9,7 +9,7 @@ const { scopeRequestsForClient, isEquipmentAllowedForClient } = require('../lib/
 const { ensureRequestInMilvus, syncRequestAssigneeToMilvus, syncRequestScheduleToMilvus, syncRequestScheduleRemovalToMilvus, syncRequestUpdateToMilvus, syncRequestDisapprovalToMilvus } = require('../lib/milvusSync');
 const { buildAutomaticServiceReport, buildCompletionEmail, buildCompletionSummary } = require('../lib/visitCompletion');
 const { isValidEmail, resolveContactEmail } = require('../lib/contact');
-const { validateVisitExecution } = require('../lib/visitWorkflow');
+const { canManagerCompleteStartedVisit, validateVisitExecution } = require('../lib/visitWorkflow');
 const { buildTechnicalPlan } = require('../lib/technicalPlan');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5183';
@@ -311,8 +311,14 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     const patch = {};
     let completionContext = null;
     let completingOverdueVisitWithoutCheckin = false;
+    const managerCompletingStartedVisit = canManagerCompleteStartedVisit(
+      request,
+      status,
+      req.user.role,
+      visita_realizada
+    );
 
-    const executionError = validateVisitExecution(request, status);
+    const executionError = validateVisitExecution(request, status, req.user.role);
     if (executionError) {
       return res.status(409).json({ error: executionError });
     }
@@ -423,9 +429,6 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
           patch.adicional_descricao = teve_adicional ? adicional_descricao.trim() : null;
           patch.custo_adicional = teve_adicional ? additionalCost : 0;
           patch.observacao_final = (observacao_final || '').trim() || null;
-          patch.pagamento_status = 'Liquidado';
-          patch.pagamento_liquidado_em = new Date().toISOString();
-          patch.pagamento_liquidado_por = req.user.sub;
         }
       }
     } else {
@@ -439,10 +442,24 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         if (!STAFF_STATUSES.includes(status)) {
           return res.status(400).json({ error: 'Status inválido' });
         }
-        if (status === 'Concluída' && request.status !== 'Concluída' && visita_realizada !== true) {
-          return res.status(400).json({ error: 'Marque a confirmação de visita realizada para concluir e liquidar o chamado.' });
+        if (status === 'Concluída' && request.status !== 'Concluída' && visita_realizada !== true && !managerCompletingStartedVisit) {
+          return res.status(400).json({ error: 'Inicie a visita ou confirme que ela já foi realizada antes de concluir o chamado.' });
         }
         patch.status = status;
+        if (status === 'Em Atendimento' && !request.hora_checkin) {
+          patch.hora_checkin = new Date().toISOString();
+        }
+        if (managerCompletingStartedVisit) {
+          completionContext = await approvedContextForRequest(request.id);
+          patch.hora_checkout = new Date().toISOString();
+          patch.relatorio_visita = (relatorio_visita || '').trim()
+            || request.relatorio_visita
+            || buildAutomaticServiceReport(completionContext.parts);
+          patch.teve_adicional = teve_adicional === true;
+          patch.adicional_descricao = teve_adicional === true ? String(adicional_descricao || '').trim() || null : null;
+          patch.custo_adicional = teve_adicional === true ? Number(custo_adicional || 0) : 0;
+          patch.observacao_final = String(observacao_final || '').trim() || request.observacao_final || null;
+        }
       }
       if (assigned_analyst !== undefined) {
         if (assigned_analyst) {
@@ -526,9 +543,6 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         || `Visita confirmada como realizada por ${req.user.name || req.user.role}.`;
       patch.hora_checkin = request.hora_checkin || new Date().toISOString();
       patch.hora_checkout = request.hora_checkout || new Date().toISOString();
-      patch.pagamento_status = 'Liquidado';
-      patch.pagamento_liquidado_em = new Date().toISOString();
-      patch.pagamento_liquidado_por = req.user.sub;
     }
     const technicianChanged = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
     const scheduleChanged = 'agendado_para' in patch && patch.agendado_para !== request.agendado_para;
@@ -699,12 +713,12 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         await db.logAudit({
           user: req.user,
           acao: visitaConfirmadaPelaEquipe
-            ? 'visita_registrada_realizada_pagamento_liquidado'
-            : 'visita_finalizada_pagamento_liquidado',
+            ? 'visita_registrada_como_realizada'
+            : 'visita_finalizada',
           entidade: 'request',
           entidade_id: updated.id,
           detalhes: visitaConfirmadaPelaEquipe
-            ? `Chamado #${updated.numero}: visita confirmada como realizada administrativamente por ${req.user.name || req.user.role}, para ${effectiveScheduledAt}.`
+            ? `Chamado #${updated.numero}: visita confirmada como realizada administrativamente por ${req.user.name || req.user.role}, para ${effectiveScheduledAt}. O pagamento permanece ${updated.pagamento_status || 'Pendente'}.`
             : `Chamado #${updated.numero} finalizado${updated.teve_adicional ? ` com adicional de R$ ${Number(updated.custo_adicional).toFixed(2)}` : ' sem custo adicional'}${emailDestino ? ` — resumo enviado ao contato do chamado (${emailDestino})` : ' — sem email de destinatário cadastrado'}`
         });
       }
@@ -735,7 +749,7 @@ router.patch('/:id/aprovar-visita', requireRole('tecnico', 'gestor'), async (req
       return res.status(409).json({ error: 'Registre a visita como realizada antes de aprovar e liquidar o pagamento.' });
     }
     if (request.pagamento_status === 'Liquidado') {
-      return res.status(409).json({ error: 'A visita já está aprovada e o pagamento liquidado.' });
+      return res.status(409).json({ error: 'O pagamento desta visita já está marcado como liquidado.' });
     }
 
     const liquidadoEm = new Date().toISOString();
@@ -746,10 +760,10 @@ router.patch('/:id/aprovar-visita', requireRole('tecnico', 'gestor'), async (req
     });
     await db.logAudit({
       user: req.user,
-      acao: 'visita_aprovada_pagamento_liquidado',
+      acao: 'pagamento_visita_liquidado',
       entidade: 'request',
       entidade_id: request.id,
-      detalhes: `Chamado #${request.numero}: visita aprovada por ${req.user.name || req.user.role}; pagamento marcado como liquidado.`
+      detalhes: `Chamado #${request.numero}: pagamento da visita marcado como liquidado por ${req.user.name || req.user.role}.`
     });
     res.json(updated);
   } catch (err) {

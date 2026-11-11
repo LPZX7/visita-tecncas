@@ -129,12 +129,8 @@ export default function Budgets() {
       setError('Selecione uma solicitação.');
       return;
     }
-    if (form.deslocamento === '' || !Number.isFinite(Number(form.deslocamento)) || Number(form.deslocamento) < 0) {
-      setError('Informe o valor da visita técnica.');
-      return;
-    }
-    if (items.length === 0 && Number(form.deslocamento) <= 0) {
-      setError('Para um orçamento sem peças, informe um valor maior que zero para a visita técnica.');
+    if (form.deslocamento !== '' && (!Number.isFinite(Number(form.deslocamento)) || Number(form.deslocamento) < 0)) {
+      setError('Informe um valor válido para a visita técnica.');
       return;
     }
     try {
@@ -286,7 +282,7 @@ export default function Budgets() {
           </div>
 
           <p className="detail-muted">
-            Adicione peças somente quando houver troca. Para deslocamento, configuração ou mudança de local da catraca, informe apenas o valor da visita técnica.
+            Adicione peças somente quando houver troca. Para deslocamento, configuração ou mudança de local da catraca, informe o valor da visita técnica se houver cobrança.
           </p>
 
           {itemFeedback && <div className="item-feedback" role="status"><span aria-hidden="true">✓</span> {itemFeedback}</div>}
@@ -312,7 +308,7 @@ export default function Budgets() {
             </div>
           )}
 
-          <label className="form-field">Valor da visita técnica (R$)<input className="form-input" type="number" min="0" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} /></label>
+          <label className="form-field">Valor da visita técnica (R$) <small>(opcional)</small><input className="form-input" type="number" min="0" step="0.01" value={form.deslocamento} onChange={(e) => setForm({ ...form, deslocamento: e.target.value })} placeholder="Deixe em branco se não houver cobrança" /></label>
 
           <label className="form-field">
             Motivo da troca (opcional)
