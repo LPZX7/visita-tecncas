@@ -4,7 +4,7 @@ import api from '../api';
 import { getUser } from '../utils/auth';
 import './ScheduleCalendar.css';
 
-const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 function dateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -82,6 +82,13 @@ function companyDisplayName(company) {
   return String(company?.nome || company?.nome_fantasia || company?.razao_social || '').trim();
 }
 
+function unitAddress(unit) {
+  return [unit?.endereco, unit?.numero, unit?.complemento, unit?.bairro,
+    unit?.cidade && unit?.estado ? `${unit.cidade}/${unit.estado}` : unit?.cidade, unit?.cep]
+    .filter(Boolean)
+    .join(', ');
+}
+
 function visitVisualState(visit) {
   if (visit.status === 'Concluída') return { kind: 'completed', icon: '✓', label: 'Realizada' };
   const scheduledAt = String(visit.agendado_para || '').slice(0, 16);
@@ -104,7 +111,7 @@ function visitOverlapsBooking(visit, date, start, end) {
 }
 
 function makeCalendarCells(year, month) {
-  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+  const offset = new Date(year, month, 1).getDay();
   const days = new Date(year, month + 1, 0).getDate();
   const cells = Array.from({ length: offset }, (_, index) => ({ key: `empty-${index}`, empty: true }));
   for (let day = 1; day <= days; day += 1) {
@@ -122,6 +129,7 @@ export default function ScheduleCalendar() {
   const [requests, setRequests] = useState([]);
   const [manualVisits, setManualVisits] = useState([]);
   const [companies, setCompanies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [manualCompanyOptions, setManualCompanyOptions] = useState([]);
   const [technicians, setTechnicians] = useState([]);
   const [unavailableDates, setUnavailableDates] = useState([]);
@@ -132,9 +140,11 @@ export default function ScheduleCalendar() {
   });
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [bookingRequestId, setBookingRequestId] = useState('');
+  const [bookingUnitId, setBookingUnitId] = useState('');
   const [bookingMode, setBookingMode] = useState('request');
   const [editingVisit, setEditingVisit] = useState(null);
   const [manualCompanyName, setManualCompanyName] = useState('');
+  const [manualCompanyId, setManualCompanyId] = useState('');
   const [manualVisitDescription, setManualVisitDescription] = useState('Visita técnica manual');
   const [bookingTime, setBookingTime] = useState('08:00');
   const [bookingEndEnabled, setBookingEndEnabled] = useState(false);
@@ -144,6 +154,7 @@ export default function ScheduleCalendar() {
   const [bookingAddress, setBookingAddress] = useState('');
   const [bookingOpen, setBookingOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncingTickets, setSyncingTickets] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -152,11 +163,12 @@ export default function ScheduleCalendar() {
     setLoading(true);
     setError('');
     try {
-      const [requestResponse, companyResponse, manualVisitResponse] = await Promise.all([
-        api.get('/requests'), api.get('/companies'), api.get('/manual-visits')
+      const [requestResponse, companyResponse, manualVisitResponse, unitsResponse] = await Promise.all([
+        api.get('/requests'), api.get('/companies'), api.get('/manual-visits'), api.get('/units')
       ]);
       setRequests(requestResponse.data);
       setCompanies(companyResponse.data);
+      setUnits(unitsResponse.data);
       setManualCompanyOptions(companyResponse.data
         .map((company) => ({ id: company.id, nome: companyDisplayName(company), endereco: company.endereco || '' }))
         .filter((company) => company.nome));
@@ -188,7 +200,24 @@ export default function ScheduleCalendar() {
 
   useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
 
+  async function syncTicketsFromMilvus() {
+    setSyncingTickets(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.post('/milvus-import/sync');
+      await load();
+      setSuccess(`Milvus consultado: ${data.novos || 0} chamado(s) novo(s), ${data.importados_automaticamente || 0} pronto(s) para agendar e ${data.aguardando_revisao || 0} aguardando revisão.`);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível buscar chamados no Milvus.');
+    } finally {
+      setSyncingTickets(false);
+    }
+  }
+
   const selectedTechnician = technicians.find((entry) => entry.id === selectedTechnicianId);
+  const unitsForCompany = (companyId) => units.filter((unit) => unit.empresa_id === companyId
+    && String(unit.status || '').toLowerCase() === 'ativo');
   const cells = useMemo(() => makeCalendarCells(cursor.year, cursor.month), [cursor.year, cursor.month]);
   const today = todayKey();
   const currentTime = currentTimeInSaoPaulo();
@@ -264,6 +293,7 @@ export default function ScheduleCalendar() {
     setEditingVisit(visit);
     setBookingRequestId(mode === 'request' && visit ? visit.id : '');
     setManualCompanyName(mode === 'manual' && visit ? visit.empresa_nome || '' : '');
+    setManualCompanyId(mode === 'manual' && visit ? visit.empresa_id || '' : '');
     setManualVisitDescription(mode === 'manual' && visit ? visit.descricao || '' : 'Visita técnica manual');
     const visitWorkDays = visit ? workDaysOf(visit) : [];
     if (visitWorkDays.length) setSelectedDate(visitWorkDays[0].date);
@@ -272,7 +302,12 @@ export default function ScheduleCalendar() {
     setBookingEndTime(visitWorkDays[0]?.end || '');
     setBookingVisitAlreadyDone(false);
     setBookingTime(visitWorkDays[0]?.start || (selectedDate === today && currentTime > '08:00' ? currentTime : '08:00'));
-    setBookingAddress(visit?.endereco || '');
+    const initialCompanyId = visit?.empresa_id;
+    const companyUnits = unitsForCompany(initialCompanyId);
+    const initialUnitId = visit?.unidade_id || (companyUnits.length === 1 ? companyUnits[0].id : '');
+    setBookingUnitId(initialUnitId);
+    setBookingAddress(visit?.endereco || unitAddress(units.find((unit) => unit.id === initialUnitId))
+      || companies.find((company) => company.id === initialCompanyId)?.endereco || '');
     setBookingOpen(true);
   }
 
@@ -285,7 +320,12 @@ export default function ScheduleCalendar() {
     setBookingRequestId(requestId);
     setBookingVisitAlreadyDone(false);
     const request = bookableRequests.find((entry) => entry.id === requestId);
-    setBookingAddress(request?.endereco || '');
+    const companyUnits = unitsForCompany(request?.empresa_id);
+    const unitId = request?.unidade_id || (companyUnits.length === 1 ? companyUnits[0].id : '');
+    setBookingUnitId(unitId);
+    setBookingAddress(unitAddress(units.find((unit) => unit.id === unitId))
+      || request?.endereco
+      || companies.find((company) => company.id === request?.empresa_id)?.endereco || '');
     const days = workDaysOf(request);
     if (days.length) setSelectedDate(days[0].date);
     setAdditionalVisitDays(days.slice(1).map((day) => day.date));
@@ -299,7 +339,11 @@ export default function ScheduleCalendar() {
     const selectedCompany = manualCompanyOptions.find((company) => (
       companyDisplayName(company).toLocaleLowerCase('pt-BR') === value.trim().toLocaleLowerCase('pt-BR')
     ));
-    if (selectedCompany?.endereco && !bookingAddress.trim()) setBookingAddress(selectedCompany.endereco);
+    setManualCompanyId(selectedCompany?.id || '');
+    const companyUnits = unitsForCompany(selectedCompany?.id);
+    const unitId = companyUnits.length === 1 ? companyUnits[0].id : '';
+    setBookingUnitId(unitId);
+    setBookingAddress(unitAddress(units.find((unit) => unit.id === unitId)) || selectedCompany?.endereco || '');
   }
 
   function addWorkDay() {
@@ -348,6 +392,7 @@ export default function ScheduleCalendar() {
         ));
         const manualVisitPayload = {
           empresa_id: selectedCompany?.id || null,
+          unidade_id: bookingUnitId || null,
           empresa_nome: manualCompanyName.trim(),
           endereco: bookingAddress.trim(),
           descricao: manualVisitDescription.trim() || 'Visita técnica manual',
@@ -374,6 +419,7 @@ export default function ScheduleCalendar() {
       const editingCompletedVisit = editingVisit?.status === 'Concluída';
       const requestPayload = {
         assigned_technician: selectedTechnicianId,
+        unidade_id: bookingUnitId || null,
         agendado_para: proposedSchedule,
         agendado_ate: proposedScheduleEnd || null,
         dias_visita: proposedWorkDays,
@@ -458,6 +504,12 @@ export default function ScheduleCalendar() {
           <p>{canManage
             ? 'Escolha um técnico e agende um chamado diretamente em um dia livre.'
             : 'Veja seus chamados e agende visitas para empresas, mesmo quando ainda não estão cadastradas.'}</p>
+          {canManage && <div className="row-actions">
+            <button type="button" className="btn btn-outline btn-sm" onClick={syncTicketsFromMilvus} disabled={syncingTickets}>
+              {syncingTickets ? 'Buscando chamados…' : 'Buscar chamados do Milvus'}
+            </button>
+            <Link className="btn btn-outline btn-sm" to="/milvus-import">Revisar chamados pendentes</Link>
+          </div>}
         </div>
         {canManage && (
           <label className="schedule-technician-picker">
@@ -573,6 +625,7 @@ export default function ScheduleCalendar() {
                 {!selectedDateUnavailable && dayVisits.length === 0 && <p className="schedule-day-panel__note">{selectedDate < today ? 'Nenhuma visita registrada neste dia. Você ainda pode lançar um agendamento atrasado.' : 'Nenhuma visita neste dia. Escolha o horário de atendimento conforme a necessidade.'}</p>}
                 <div className="schedule-visit-list">
                   {dayVisits.map((visit) => {
+                    const visitUnit = units.find((unit) => unit.id === visit.unidade_id);
                     const canEditVisit = (canManage && !['Concluída', 'Cancelada', 'Em Atendimento'].includes(visit.status))
                       || (user?.role === 'gestor' && visit.status === 'Concluída')
                       || (technicianMode && visit.manual_visit && visit.assigned_technician === user?.id && !['Concluída', 'Cancelada'].includes(visit.status));
@@ -586,6 +639,7 @@ export default function ScheduleCalendar() {
                       <div>
                         <strong>{visit.descricao}</strong>
                         <span>{visit.empresa_nome || companies.find((company) => company.id === visit.empresa_id)?.nome_fantasia || companies.find((company) => company.id === visit.empresa_id)?.razao_social || 'Empresa'}</span>
+                        {visitUnit && <small>{visitUnit.tipo}: {visitUnit.nome}</small>}
                         {visit.endereco && <small>{visit.endereco}</small>}
                         <span className={`schedule-visit__status schedule-visit__status--${visitVisualState(visit).kind}`}>
                           {visit.dias_visita_total > 1 ? `Dia ${visit.dia_visita_index} de ${visit.dias_visita_total} · ` : ''}{visitVisualState(visit).label} · {visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}
@@ -655,6 +709,26 @@ export default function ScheduleCalendar() {
                     Descrição da visita
                     <input className="form-input" value={manualVisitDescription} onChange={(event) => setManualVisitDescription(event.target.value)} maxLength={300} placeholder="Ex.: manutenção preventiva" />
                   </label>
+                  <label className="form-field">
+                    Filial / sede
+                    <select
+                      className="form-select"
+                      value={bookingUnitId}
+                      onChange={(event) => {
+                        const id = event.target.value;
+                        setBookingUnitId(id);
+                        const company = manualCompanyOptions.find((item) => item.id === manualCompanyId);
+                        setBookingAddress(unitAddress(units.find((unit) => unit.id === id)) || company?.endereco || '');
+                      }}
+                      disabled={!manualCompanyId || unitsForCompany(manualCompanyId).length === 0}
+                    >
+                      <option value="">{manualCompanyId ? 'Endereço principal da empresa' : 'Selecione uma empresa primeiro'}</option>
+                      {unitsForCompany(manualCompanyId).map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.tipo} — {unit.nome}{unit.endereco ? ` · ${unit.endereco}` : ''}</option>
+                      ))}
+                    </select>
+                    {manualCompanyId && unitsForCompany(manualCompanyId).length === 0 && <small className="detail-muted">Nenhuma filial importada para essa empresa. Sincronize os endereços do Milvus em “Cadastrar Filial”.</small>}
+                  </label>
                 </>
               ) : (
                 <label className="form-field">
@@ -663,12 +737,40 @@ export default function ScheduleCalendar() {
                     <option value="">Selecione um chamado em aberto</option>
                     {bookableRequests.map((request) => (
                       <option key={request.id} value={request.id}>
-                        #{request.numero} · {request.descricao} {request.status === 'Agendada' ? '(reagendar)' : ''}
+                        #{request.numero} · {companyDisplayName(companies.find((company) => company.id === request.empresa_id))} · {request.descricao} {request.status === 'Agendada' ? '(reagendar)' : ''}
                       </option>
                     ))}
                   </select>
                   {bookableRequests.length === 0 && <small className="detail-muted">Não há chamados vinculados ao Milvus aguardando agendamento.</small>}
                 </label>
+              )}
+              {bookingMode === 'request' && selectedBookingRequest && (
+                <>
+                  <label className="form-field">
+                    Empresa
+                    <input className="form-input" value={companyDisplayName(companies.find((company) => company.id === selectedBookingRequest.empresa_id))} readOnly />
+                  </label>
+                  <label className="form-field">
+                    Filial / sede
+                    <select
+                      className="form-select"
+                      value={bookingUnitId}
+                      onChange={(event) => {
+                        const id = event.target.value;
+                        setBookingUnitId(id);
+                        setBookingAddress(unitAddress(units.find((unit) => unit.id === id))
+                          || companies.find((company) => company.id === selectedBookingRequest.empresa_id)?.endereco || '');
+                      }}
+                      disabled={unitsForCompany(selectedBookingRequest.empresa_id).length === 0}
+                    >
+                      <option value="">Endereço principal da empresa</option>
+                      {unitsForCompany(selectedBookingRequest.empresa_id).map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.tipo} — {unit.nome}{unit.endereco ? ` · ${unit.endereco}` : ''}</option>
+                      ))}
+                    </select>
+                    {unitsForCompany(selectedBookingRequest.empresa_id).length === 0 && <small className="detail-muted">Nenhuma filial importada para essa empresa. Sincronize os endereços do Milvus em “Cadastrar Filial”.</small>}
+                  </label>
+                </>
               )}
               <div className="schedule-booking-dialog__grid">
                 <label className="form-field">

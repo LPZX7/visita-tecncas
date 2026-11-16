@@ -59,6 +59,7 @@ const SCHEMA_SQL = `
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS email TEXT;
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ativo';
   ALTER TABLE unidades ADD COLUMN IF NOT EXISTS valor_deslocamento_padrao REAL;
+  ALTER TABLE unidades ADD COLUMN IF NOT EXISTS milvus_endereco_key TEXT;
   CREATE UNIQUE INDEX IF NOT EXISTS idx_unidades_sede_unica ON unidades(empresa_id) WHERE tipo = 'Sede';
 
   ALTER TABLE users ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
@@ -208,6 +209,7 @@ const SCHEMA_SQL = `
   );
   ALTER TABLE manual_visits ADD COLUMN IF NOT EXISTS dias_visita JSONB NOT NULL DEFAULT '[]'::jsonb;
   ALTER TABLE manual_visits ADD COLUMN IF NOT EXISTS agenda_oculta BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE manual_visits ADD COLUMN IF NOT EXISTS unidade_id TEXT REFERENCES unidades(id);
   CREATE INDEX IF NOT EXISTS idx_manual_visits_technician_schedule
     ON manual_visits(assigned_technician, agendado_para);
   ALTER TABLE manual_visits ENABLE ROW LEVEL SECURITY;
@@ -880,9 +882,9 @@ async function createUnit(unit) {
     criado_em: now()
   });
   await pool.query(
-    `INSERT INTO unidades (id, empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status, valor_deslocamento_padrao, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-    [row.id, row.empresa_id, row.nome, row.tipo, row.codigo, row.cnpj, row.cep, row.endereco, row.numero, row.complemento, row.bairro, row.cidade, row.estado, row.responsavel, row.telefone, row.email, row.status, row.valor_deslocamento_padrao ?? null, row.criado_em]
+    `INSERT INTO unidades (id, empresa_id, nome, tipo, codigo, cnpj, cep, endereco, numero, complemento, bairro, cidade, estado, responsavel, telefone, email, status, valor_deslocamento_padrao, criado_em, milvus_endereco_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+    [row.id, row.empresa_id, row.nome, row.tipo, row.codigo, row.cnpj, row.cep, row.endereco, row.numero, row.complemento, row.bairro, row.cidade, row.estado, row.responsavel, row.telefone, row.email, row.status, row.valor_deslocamento_padrao ?? null, row.criado_em, row.milvus_endereco_key || null]
   );
   return getUnitById(row.id);
 }
@@ -1066,17 +1068,21 @@ async function getRequestById(id) {
 async function getManualVisits(technicianId = null) {
   const query = technicianId
     ? `SELECT manual_visits.*,
-              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+              unidades.nome AS unidade_nome, unidades.tipo AS unidade_tipo
        FROM manual_visits
        LEFT JOIN users ON users.id = manual_visits.assigned_technician
+       LEFT JOIN unidades ON unidades.id = manual_visits.unidade_id
        WHERE manual_visits.assigned_technician = $1
          AND manual_visits.status <> 'Cancelada'
          AND manual_visits.agenda_oculta = FALSE
        ORDER BY manual_visits.agendado_para`
     : `SELECT manual_visits.*,
-              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+              COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+              unidades.nome AS unidade_nome, unidades.tipo AS unidade_tipo
        FROM manual_visits
        LEFT JOIN users ON users.id = manual_visits.assigned_technician
+       LEFT JOIN unidades ON unidades.id = manual_visits.unidade_id
        WHERE manual_visits.status <> 'Cancelada'
          AND manual_visits.agenda_oculta = FALSE
        ORDER BY manual_visits.agendado_para`;
@@ -1087,9 +1093,11 @@ async function getManualVisits(technicianId = null) {
 async function getManualVisitById(id) {
   const { rows } = await pool.query(
     `SELECT manual_visits.*,
-            COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name
+            COALESCE(NULLIF(users.milvus_nome, ''), users.nome) AS technician_name,
+            unidades.nome AS unidade_nome, unidades.tipo AS unidade_tipo
      FROM manual_visits
      LEFT JOIN users ON users.id = manual_visits.assigned_technician
+     LEFT JOIN unidades ON unidades.id = manual_visits.unidade_id
      WHERE manual_visits.id = $1`,
     [id]
   );
@@ -1101,6 +1109,7 @@ async function createManualVisit(visit) {
     id: uuid(),
     assigned_technician: visit.assigned_technician,
     empresa_id: visit.empresa_id || null,
+    unidade_id: visit.unidade_id || null,
     empresa_nome: visit.empresa_nome,
     endereco: visit.endereco,
     descricao: visit.descricao,
@@ -1114,10 +1123,10 @@ async function createManualVisit(visit) {
   };
   await pool.query(
     `INSERT INTO manual_visits (
-       id, assigned_technician, empresa_id, empresa_nome, endereco, descricao,
+       id, assigned_technician, empresa_id, unidade_id, empresa_nome, endereco, descricao,
        agendado_para, agendado_ate, dias_visita, status, criado_por, criado_em, atualizado_em
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13)`,
-    [row.id, row.assigned_technician, row.empresa_id, row.empresa_nome, row.endereco, row.descricao,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)`,
+    [row.id, row.assigned_technician, row.empresa_id, row.unidade_id, row.empresa_nome, row.endereco, row.descricao,
       row.agendado_para, row.agendado_ate, JSON.stringify(row.dias_visita), row.status, row.criado_por, row.criado_em, row.atualizado_em]
   );
   return getManualVisitById(row.id);

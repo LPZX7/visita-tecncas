@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const db = require('./db');
 const {
   listarChamadosVisitaTecnica,
@@ -11,6 +12,7 @@ const {
 const { buildMilvusPayload } = require('./visitaTecnicaFormat');
 const { buildCompletionSummary } = require('./visitCompletion');
 const { isValidEmail, normalizeEmail } = require('./contact');
+const { normalizeText } = require('./milvusDraft');
 const { autoImportMilvusPendentes } = require('./milvusImportService');
 
 function milvusError(message, statusCode = 502) {
@@ -127,6 +129,111 @@ function normalizeMilvusClient(client) {
   };
 }
 
+function addressRowsForClient(client) {
+  const source = client.cliente_enderecos || client.enderecos || client.addresses || [];
+  if (Array.isArray(source) && source.length) return source.filter((item) => item && typeof item === 'object');
+  if (source && typeof source === 'object' && !Array.isArray(source)) return [source];
+  if (clientAddress(client)) return [{ endereco_padrao: true, endereco_descricao: 'Sede', endereco: client.endereco || client.endereco_completo || client.address }];
+  return [];
+}
+
+function isDefaultMilvusAddress(address) {
+  return [address.endereco_padrao, address.is_padrao].some((value) => (
+    value === true || value === 1 || ['true', '1', 'sim'].includes(String(value || '').trim().toLowerCase())
+  ));
+}
+
+function normalizeMilvusAddress(address, index, defaultIndex, company) {
+  const tipo = index === defaultIndex ? 'Sede' : 'Filial';
+  const endereco = firstText(address.endereco_logradouro, address.logradouro, address.rua, address.endereco, address.endereco_completo, address.address);
+  const numero = firstText(address.endereco_numero, address.numero);
+  const complemento = firstText(address.endereco_complemento, address.complemento);
+  const bairro = firstText(address.endereco_bairro, address.bairro);
+  const cidade = firstText(address.endereco_cidade, address.cidade);
+  const estado = firstText(address.endereco_estado, address.estado);
+  const cep = firstText(address.endereco_cep, address.cep);
+  const nome = firstText(address.endereco_descricao, address.descricao, address.nome, address.filial_nome)
+    || (cidade ? `${tipo} — ${cidade}` : `${tipo}${tipo === 'Filial' ? ` ${index + 1}` : ''}`);
+  const externalId = firstText(address.endereco_id, address.id, address.codigo, address.endereco_codigo);
+  const fingerprint = [nome, endereco, numero, complemento, bairro, cidade, estado, cep]
+    .map((value) => normalizeText(value || ''))
+    .join('|');
+  const milvus_endereco_key = externalId
+    ? `id:${externalId}`
+    : `hash:${crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 32)}`;
+
+  return {
+    empresa_id: company.id,
+    milvus_endereco_key,
+    nome,
+    tipo,
+    codigo: firstText(address.codigo, address.endereco_codigo),
+    cnpj: firstText(address.cnpj, address.endereco_cnpj),
+    cep,
+    endereco,
+    numero,
+    complemento,
+    bairro,
+    cidade,
+    estado,
+    status: company.status || 'ativo'
+  };
+}
+
+async function syncMilvusClientAddresses(client, company) {
+  const addresses = addressRowsForClient(client);
+  if (!addresses.length) return { created: 0, updated: 0 };
+  const defaultIndex = Math.max(0, addresses.findIndex(isDefaultMilvusAddress));
+  const existingUnits = await db.getUnits(company.id);
+  const byMilvusKey = new Map(existingUnits.filter((unit) => unit.milvus_endereco_key)
+    .map((unit) => [unit.milvus_endereco_key, unit]));
+  let created = 0;
+  let updated = 0;
+
+  for (const [index, source] of addresses.entries()) {
+    const incoming = normalizeMilvusAddress(source, index, defaultIndex, company);
+    const addressValues = ['nome', 'tipo', 'codigo', 'cnpj', 'cep', 'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'status'];
+    const sameNameAndAddress = existingUnits.find((item) => item.empresa_id === company.id
+      && item.tipo === incoming.tipo
+      && normalizeText(item.nome) === normalizeText(incoming.nome)
+      && ['endereco', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'cep'].every((field) => (
+        !incoming[field] || normalizeText(item[field] || '') === normalizeText(incoming[field])
+      )));
+    const defaultUnit = incoming.tipo === 'Sede'
+      ? existingUnits.find((item) => item.empresa_id === company.id && item.tipo === 'Sede')
+      : null;
+    // Keep a single Sede when the address marked as default changes in Milvus.
+    const unit = incoming.tipo === 'Sede'
+      ? (defaultUnit || sameNameAndAddress || byMilvusKey.get(incoming.milvus_endereco_key))
+      : (byMilvusKey.get(incoming.milvus_endereco_key) || sameNameAndAddress);
+
+    if (unit) {
+      const previousMilvusKey = unit.milvus_endereco_key;
+      const patch = { milvus_endereco_key: incoming.milvus_endereco_key };
+      for (const field of addressValues) {
+        if (incoming[field] && incoming[field] !== unit[field]) patch[field] = incoming[field];
+      }
+      if (Object.keys(patch).some((field) => patch[field] !== unit[field])) {
+        const saved = await db.updateUnit(unit.id, patch);
+        Object.assign(unit, saved);
+        updated++;
+      }
+      if (previousMilvusKey && previousMilvusKey !== incoming.milvus_endereco_key) {
+        byMilvusKey.delete(previousMilvusKey);
+      }
+      byMilvusKey.set(incoming.milvus_endereco_key, unit);
+      continue;
+    }
+
+    const saved = await db.createUnit(incoming);
+    existingUnits.push(saved);
+    byMilvusKey.set(incoming.milvus_endereco_key, saved);
+    created++;
+  }
+
+  return { created, updated };
+}
+
 function formatPortalSchedule(value) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/);
   if (!match) return null;
@@ -150,6 +257,8 @@ async function syncMilvusClientes() {
   let atualizados = 0;
   let ignorados = 0;
   let localizacoes = 0;
+  let filiais_novas = 0;
+  let filiais_atualizadas = 0;
 
   for (const client of clientes) {
     const incoming = normalizeMilvusClient(client);
@@ -162,31 +271,36 @@ async function syncMilvusClientes() {
     const existing = (incoming.milvus_cliente_token && byToken.get(incoming.milvus_cliente_token))
       || byDocument.get(incoming.cnpj);
 
+    let savedCompany = existing;
+
     if (!existing) {
       const created = await db.createCompany(incoming);
       byDocument.set(incoming.cnpj, created);
       if (incoming.milvus_cliente_token) byToken.set(incoming.milvus_cliente_token, created);
       novos++;
-      continue;
-    }
-
-    const patch = {};
-    for (const field of ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco', 'telefone', 'email', 'responsavel', 'milvus_cliente_token']) {
-      if (!existing[field] && incoming[field]) patch[field] = incoming[field];
-    }
-    if (incoming.status === 'inativo' && existing.status === 'ativo') patch.status = 'inativo';
-
-    if (Object.keys(patch).length) {
-      const updated = await db.updateCompany(existing.id, patch);
-      byDocument.set(incoming.cnpj, updated);
-      if (updated.milvus_cliente_token) byToken.set(String(updated.milvus_cliente_token), updated);
-      atualizados++;
     } else {
-      ignorados++;
+      const patch = {};
+      for (const field of ['razao_social', 'nome_fantasia', 'inscricao_estadual', 'endereco', 'telefone', 'email', 'responsavel', 'milvus_cliente_token']) {
+        if (!existing[field] && incoming[field]) patch[field] = incoming[field];
+      }
+      if (incoming.status === 'inativo' && existing.status === 'ativo') patch.status = 'inativo';
+
+      if (Object.keys(patch).length) {
+        savedCompany = await db.updateCompany(existing.id, patch);
+        byDocument.set(incoming.cnpj, savedCompany);
+        if (savedCompany.milvus_cliente_token) byToken.set(String(savedCompany.milvus_cliente_token), savedCompany);
+        atualizados++;
+      } else {
+        ignorados++;
+      }
     }
+
+    const addressSync = await syncMilvusClientAddresses(client, savedCompany);
+    filiais_novas += addressSync.created;
+    filiais_atualizadas += addressSync.updated;
   }
 
-  return { encontrados: clientes.length, novos, atualizados, ignorados, localizacoes };
+  return { encontrados: clientes.length, novos, atualizados, ignorados, localizacoes, filiais_novas, filiais_atualizadas };
 }
 
 async function ensureRequestInMilvus(request, company, opts = {}) {

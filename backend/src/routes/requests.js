@@ -203,6 +203,7 @@ router.get('/', async (req, res, next) => {
 router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, next) => {
   try {
     const { equipamento_id, descricao, urgencia, endereco, solicitante_email } = req.body;
+    const requestedUnitId = String(req.body.unidade_id || '').trim() || null;
     let empresa_id = req.body.empresa_id;
 
     let requesterUser = null;
@@ -231,7 +232,16 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     }
 
     const company = await db.getCompanyById(empresa_id);
-    const unit = equipment.unidade_id ? await db.getUnitById(equipment.unidade_id) : null;
+    const effectiveUnitId = req.user.role === 'cliente'
+      ? (req.user.unidade_id || equipment.unidade_id || null)
+      : (requestedUnitId || equipment.unidade_id || null);
+    const unit = effectiveUnitId ? await db.getUnitById(effectiveUnitId) : null;
+    if (effectiveUnitId && (!unit || unit.empresa_id !== empresa_id || String(unit.status || '').toLowerCase() !== 'ativo')) {
+      return res.status(400).json({ error: 'Filial inválida para esta empresa.' });
+    }
+    if (equipment.unidade_id && unit && equipment.unidade_id !== unit.id) {
+      return res.status(400).json({ error: 'O equipamento selecionado pertence a outra filial.' });
+    }
     const actorUser = requesterUser || await db.getUserById(req.user.sub);
     const contactEmail = resolveContactEmail({ provided: solicitante_email, unit, company, user: requesterUser || req.user });
     if (!isValidEmail(contactEmail)) {
@@ -245,6 +255,7 @@ router.post('/', requireRole('cliente', 'analista', 'gestor'), async (req, res, 
     const request = {
       empresa_id,
       equipamento_id,
+      unidade_id: unit?.id || null,
       descricao,
       urgencia: urgencia || 'Normal',
       endereco: endereco || '',
@@ -352,6 +363,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       status,
       assigned_analyst,
       assigned_technician,
+      unidade_id,
       agendado_para,
       agendado_ate,
       dias_visita,
@@ -401,6 +413,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       (relatorio_visita !== undefined && relatorio_visita !== request.relatorio_visita)
       || (assigned_analyst !== undefined && (assigned_analyst || null) !== (request.assigned_analyst || null))
       || (assigned_technician !== undefined && (assigned_technician || null) !== (request.assigned_technician || null))
+      || (unidade_id !== undefined && (unidade_id || null) !== (request.unidade_id || null))
       || (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
       || (agendado_ate !== undefined && (agendado_ate || null) !== (request.agendado_ate || null))
       || (dias_visita !== undefined && !scheduleDaysEqual(dias_visita, request.dias_visita))
@@ -560,6 +573,15 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         }
         patch.assigned_technician = assigned_technician || null;
       }
+      if (unidade_id !== undefined) {
+        if (unidade_id) {
+          const unit = await db.getUnitById(unidade_id);
+          if (!unit || unit.empresa_id !== request.empresa_id || String(unit.status || '').toLowerCase() !== 'ativo') {
+            return res.status(400).json({ error: 'Selecione uma filial ativa que pertença à empresa do chamado.' });
+          }
+        }
+        patch.unidade_id = unidade_id || null;
+      }
       if (agendado_para !== undefined) {
         patch.agendado_para = agendado_para || null;
       }
@@ -596,12 +618,13 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         patch.endereco = String(endereco || '').trim();
       }
       const managerChangedTechnician = 'assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician;
+      const managerChangedUnit = 'unidade_id' in patch && patch.unidade_id !== request.unidade_id;
       const managerChangedSchedule = (
         ('agendado_para' in patch && patch.agendado_para !== request.agendado_para)
         || ('agendado_ate' in patch && patch.agendado_ate !== request.agendado_ate)
         || ('dias_visita' in patch && !scheduleDaysEqual(patch.dias_visita, request.dias_visita))
       );
-      if (managerChangedTechnician || managerChangedSchedule) {
+      if (managerChangedTechnician || managerChangedUnit || managerChangedSchedule) {
         patch.confirmacao_tecnico = null;
         patch.confirmacao_tecnico_em = null;
       }
@@ -747,7 +770,14 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const addressChanged = String(request.endereco || '') !== String(updated.endereco || '');
-    if (scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged || addressChanged) {
+    const unitChanged = request.unidade_id !== updated.unidade_id;
+    if (scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged || addressChanged || unitChanged) {
+      const [previousUnit, nextUnit] = unitChanged
+        ? await Promise.all([
+          request.unidade_id ? db.getUnitById(request.unidade_id) : Promise.resolve(null),
+          updated.unidade_id ? db.getUnitById(updated.unidade_id) : Promise.resolve(null)
+        ])
+        : [null, null];
       const previousSlot = request.agendado_para
         ? `${request.agendado_para}${request.agendado_ate ? ` até ${request.agendado_ate}` : ''}`
         : 'sem horário agendado';
@@ -759,7 +789,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         acao: scheduleWasRemoved ? 'visita_retirada_agenda' : 'visita_agenda_alterada',
         entidade: 'request',
         entidade_id: updated.id,
-        detalhes: `Chamado #${updated.numero}: ${previousSlot} → ${nextSlot}; ${request.endereco || 'endereço não informado'} → ${updated.endereco || 'endereço não informado'}${request.assigned_technician !== updated.assigned_technician ? `; técnico ${request.assigned_technician || 'não atribuído'} → ${updated.assigned_technician || 'não atribuído'}` : ''}.`
+        detalhes: `Chamado #${updated.numero}: ${previousSlot} → ${nextSlot}; ${request.endereco || 'endereço não informado'} → ${updated.endereco || 'endereço não informado'}${unitChanged ? `; filial ${previousUnit?.nome || 'não informada'} → ${nextUnit?.nome || 'não informada'}` : ''}${request.assigned_technician !== updated.assigned_technician ? `; técnico ${request.assigned_technician || 'não atribuído'} → ${updated.assigned_technician || 'não atribuído'}` : ''}.`
       });
     }
 

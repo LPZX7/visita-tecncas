@@ -104,7 +104,7 @@ const port = process.env.PORT || 4100;
       const runMilvusClientSync = async () => {
         try {
           const r = await syncMilvusClientes();
-          console.log(`[milvus-clientes] ${r.encontrados} recebido(s), ${r.novos} criado(s), ${r.atualizados} atualizado(s), ${r.ignorados} ignorado(s), ${r.localizacoes} com localização.`);
+          console.log(`[milvus-clientes] ${r.encontrados} recebido(s), ${r.novos} criado(s), ${r.atualizados} atualizado(s), ${r.ignorados} ignorado(s), ${r.localizacoes} com localização, ${r.filiais_novas} endereço(s) criado(s) e ${r.filiais_atualizadas} atualizado(s).`);
         } catch (err) {
           console.error('[milvus-clientes] Falha na sincronização:', err.message);
         }

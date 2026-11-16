@@ -22,6 +22,9 @@ export default function CreateFilial() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [cepLoading, setCepLoading] = useState(false);
+  const [syncingMilvus, setSyncingMilvus] = useState(false);
+  const [milvusSyncMessage, setMilvusSyncMessage] = useState('');
+  const [milvusSyncError, setMilvusSyncError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const preselectedRef = useRef(false);
@@ -29,6 +32,21 @@ export default function CreateFilial() {
   const load = () => {
     api.get('/companies').then((res) => setCompanies(res.data));
     api.get('/units').then((res) => setUnits(res.data));
+  };
+
+  const syncMilvusAddresses = async () => {
+    setSyncingMilvus(true);
+    setMilvusSyncMessage('');
+    setMilvusSyncError('');
+    try {
+      const { data } = await api.post('/units/sync-milvus');
+      setMilvusSyncMessage(`Milvus sincronizado: ${data.filiais_novas || 0} endereço(s) criado(s) e ${data.filiais_atualizadas || 0} atualizado(s).`);
+      load();
+    } catch (err) {
+      setMilvusSyncError(err.response?.data?.error || 'Não foi possível sincronizar as filiais com o Milvus.');
+    } finally {
+      setSyncingMilvus(false);
+    }
   };
 
   useEffect(() => {
@@ -197,6 +215,13 @@ export default function CreateFilial() {
   return (
     <div>
       <h2 className="page-title">Cadastrar Filial</h2>
+      {isGestor && <div className="row-actions" style={{ marginBottom: 14 }}>
+        <button type="button" className="btn btn-outline" onClick={syncMilvusAddresses} disabled={syncingMilvus}>
+          {syncingMilvus ? 'Buscando endereços no Milvus…' : 'Sincronizar filiais e endereços do Milvus'}
+        </button>
+      </div>}
+      {milvusSyncMessage && <div className="alert alert-success">{milvusSyncMessage}</div>}
+      {milvusSyncError && <div className="alert alert-error">{milvusSyncError}</div>}
 
       <div className="import-layout">
         <div className="panel-card import-layout__company">

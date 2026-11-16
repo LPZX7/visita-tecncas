@@ -2,25 +2,33 @@ const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
 const { calculateValorDeslocamento } = require('../lib/deslocamento');
+const { syncMilvusClientes } = require('../lib/milvusSync');
 
 const router = express.Router();
 router.use(verifyToken);
 
+router.post('/sync-milvus', requireRole('gestor'), async (req, res, next) => {
+  try {
+    if (!process.env.MILVUS_API_TOKEN) {
+      return res.status(503).json({ error: 'A integração com o Milvus não está configurada.' });
+    }
+    const result = await syncMilvusClientes();
+    res.json(result);
+  } catch (err) {
+    console.error('[milvus-clientes] Falha na sincronização manual:', err.message);
+    res.status(502).json({ error: 'Não foi possível carregar as empresas e filiais do Milvus agora. Tente novamente mais tarde.' });
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     if (req.user.role === 'tecnico') {
-      const [requests, equipments, units] = await Promise.all([
-        db.getRequests(),
-        db.getEquipments(),
-        db.getUnits()
-      ]);
-      const equipmentIds = new Set(requests
-        .filter((request) => request.assigned_technician === req.user.sub)
-        .map((request) => request.equipamento_id));
-      const unitIds = new Set(equipments
-        .filter((equipment) => equipmentIds.has(equipment.id) && equipment.unidade_id)
-        .map((equipment) => equipment.unidade_id));
-      return res.json(units.filter((unit) => unitIds.has(unit.id)));
+      const [companies, units] = await Promise.all([db.getCompanies(), db.getUnits()]);
+      const activeCompanyIds = new Set(companies
+        .filter((company) => String(company.status || '').toLowerCase() === 'ativo')
+        .map((company) => company.id));
+      return res.json(units.filter((unit) => activeCompanyIds.has(unit.empresa_id)
+        && String(unit.status || '').toLowerCase() === 'ativo'));
     }
     const empresaId = req.user.role === 'cliente' ? req.user.empresa_id : req.query.empresa_id;
     res.json(await db.getUnits(empresaId || undefined));

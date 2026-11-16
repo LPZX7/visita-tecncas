@@ -21,6 +21,13 @@ function companyName(company) {
   return String(company?.nome_fantasia || company?.razao_social || '').trim();
 }
 
+function unitAddress(unit) {
+  return [unit?.endereco, unit?.numero, unit?.complemento, unit?.bairro,
+    unit?.cidade && unit?.estado ? `${unit.cidade}/${unit.estado}` : unit?.cidade, unit?.cep]
+    .filter(Boolean)
+    .join(', ');
+}
+
 function currentDateTimeInSaoPaulo() {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -63,9 +70,10 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
     }
 
     const empresa_nome = String(req.body.empresa_nome || '').trim();
-    const endereco = String(req.body.endereco || '').trim();
+    let endereco = String(req.body.endereco || '').trim();
     const descricao = String(req.body.descricao || 'Visita técnica manual').trim();
     const empresa_id = String(req.body.empresa_id || '').trim() || null;
+    const unidade_id = String(req.body.unidade_id || '').trim() || null;
     const agendado_para = String(req.body.agendado_para || '').trim();
     const agendado_ate = String(req.body.agendado_ate || '').trim() || null;
     const schedule = normalizeScheduleDays(req.body.dias_visita, agendado_para, agendado_ate);
@@ -73,9 +81,6 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
 
     if (!empresa_nome || empresa_nome.length > 160) {
       return res.status(400).json({ error: 'Informe o nome da empresa (máximo de 160 caracteres).' });
-    }
-    if (!endereco || endereco.length > 500) {
-      return res.status(400).json({ error: 'Informe o endereço da visita (máximo de 500 caracteres).' });
     }
     if (!descricao || descricao.length > 300) {
       return res.status(400).json({ error: 'A descrição precisa ter até 300 caracteres.' });
@@ -85,8 +90,10 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
     }
     if (schedule.error) return res.status(400).json({ error: schedule.error });
 
+    let company = null;
+    let unit = null;
     if (empresa_id) {
-      const company = await db.getCompanyById(empresa_id);
+      company = await db.getCompanyById(empresa_id);
       if (!company || String(company.status || '').toLowerCase() !== 'ativo') {
         return res.status(400).json({ error: 'Selecione uma empresa ativa ou digite o nome para usar neste agendamento.' });
       }
@@ -94,6 +101,16 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
       if (expectedName.toLocaleLowerCase('pt-BR') !== empresa_nome.toLocaleLowerCase('pt-BR')) {
         return res.status(400).json({ error: 'O nome da empresa selecionada não corresponde ao cadastro.' });
       }
+    }
+    if (unidade_id) {
+      unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== empresa_id || String(unit.status || '').toLowerCase() !== 'ativo') {
+        return res.status(400).json({ error: 'Selecione uma filial ativa que pertença à empresa.' });
+      }
+      if (!endereco) endereco = unitAddress(unit);
+    }
+    if (!endereco || endereco.length > 500) {
+      return res.status(400).json({ error: 'Informe o endereço da visita (máximo de 500 caracteres).' });
     }
 
     for (const day of schedule.days) {
@@ -117,6 +134,7 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
     const visit = await db.createManualVisit({
       assigned_technician: technician.id,
       empresa_id,
+      unidade_id,
       empresa_nome,
       endereco,
       descricao,
@@ -130,7 +148,7 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
       acao: 'visita_manual_agendada',
       entidade: 'manual_visit',
       entidade_id: visit.id,
-      detalhes: `${empresa_nome} — ${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}; técnico ${technician.nome}; endereço: ${endereco}.`
+      detalhes: `${empresa_nome}${unit ? ` — ${unit.tipo}: ${unit.nome}` : ''}; ${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}; técnico ${technician.nome}; endereço: ${endereco}.`
     });
     res.status(201).json(visit);
   } catch (err) {
@@ -155,9 +173,11 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
 
     const empresa_nome = String(req.body.empresa_nome ?? existing.empresa_nome).trim();
-    const endereco = String(req.body.endereco ?? existing.endereco).trim();
+    const enderecoProvided = req.body.endereco !== undefined;
+    let endereco = String(req.body.endereco ?? existing.endereco).trim();
     const descricao = String(req.body.descricao ?? existing.descricao).trim();
     const empresa_id = req.body.empresa_id === undefined ? existing.empresa_id : String(req.body.empresa_id || '').trim() || null;
+    const unidade_id = req.body.unidade_id === undefined ? existing.unidade_id || null : String(req.body.unidade_id || '').trim() || null;
     const agendado_para = String(req.body.agendado_para ?? existing.agendado_para).trim();
     const agendado_ate = req.body.agendado_ate === undefined
       ? (existing.agendado_ate || null)
@@ -168,9 +188,6 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     if (!empresa_nome || empresa_nome.length > 160) {
       return res.status(400).json({ error: 'Informe o nome da empresa (máximo de 160 caracteres).' });
     }
-    if (!endereco || endereco.length > 500) {
-      return res.status(400).json({ error: 'Informe o endereço da visita (máximo de 500 caracteres).' });
-    }
     if (!descricao || descricao.length > 300) {
       return res.status(400).json({ error: 'A descrição precisa ter até 300 caracteres.' });
     }
@@ -179,14 +196,26 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
     }
     if (schedule.error) return res.status(400).json({ error: schedule.error });
 
+    let company = null;
+    let unit = null;
     if (empresa_id) {
-      const company = await db.getCompanyById(empresa_id);
+      company = await db.getCompanyById(empresa_id);
       if (!company || String(company.status || '').toLowerCase() !== 'ativo') {
         return res.status(400).json({ error: 'Selecione uma empresa ativa ou digite o nome para usar neste agendamento.' });
       }
       if (companyName(company).toLocaleLowerCase('pt-BR') !== empresa_nome.toLocaleLowerCase('pt-BR')) {
         return res.status(400).json({ error: 'O nome da empresa selecionada não corresponde ao cadastro.' });
       }
+    }
+    if (unidade_id) {
+      unit = await db.getUnitById(unidade_id);
+      if (!unit || unit.empresa_id !== empresa_id || String(unit.status || '').toLowerCase() !== 'ativo') {
+        return res.status(400).json({ error: 'Selecione uma filial ativa que pertença à empresa.' });
+      }
+      if (!enderecoProvided) endereco = unitAddress(unit) || existing.endereco;
+    }
+    if (!endereco || endereco.length > 500) {
+      return res.status(400).json({ error: 'Informe o endereço da visita (máximo de 500 caracteres).' });
     }
 
     const scheduleChanged = agendado_para !== existing.agendado_para
@@ -214,6 +243,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
 
     const updated = await db.updateManualVisit(existing.id, {
       empresa_id,
+      unidade_id,
       empresa_nome,
       endereco,
       descricao,
@@ -227,7 +257,7 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       acao: 'visita_manual_alterada',
       entidade: 'manual_visit',
       entidade_id: existing.id,
-      detalhes: `${existing.empresa_nome} (${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}) alterada para ${empresa_nome} (${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}); endereço: ${endereco}.`
+      detalhes: `${existing.empresa_nome} (${existing.agendado_para}${existing.agendado_ate ? ` até ${existing.agendado_ate}` : ''}) alterada para ${empresa_nome}${unit ? ` — ${unit.tipo}: ${unit.nome}` : ''} (${agendado_para}${agendado_ate ? ` até ${agendado_ate}` : ''}); endereço: ${endereco}.`
     });
     res.json(updated);
   } catch (err) {
