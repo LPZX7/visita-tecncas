@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
 const { calculateValorDeslocamento } = require('../lib/deslocamento');
-const { syncMilvusClientes } = require('../lib/milvusSync');
+const { syncMilvusClientes, syncMilvusClienteEnderecos } = require('../lib/milvusSync');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -12,11 +12,15 @@ router.post('/sync-milvus', requireRole('gestor'), async (req, res, next) => {
     if (!process.env.MILVUS_API_TOKEN) {
       return res.status(503).json({ error: 'A integração com o Milvus não está configurada.' });
     }
-    const result = await syncMilvusClientes();
+    const result = req.body?.empresa_id
+      ? await syncMilvusClienteEnderecos(String(req.body.empresa_id))
+      : await syncMilvusClientes();
     res.json(result);
   } catch (err) {
     console.error('[milvus-clientes] Falha na sincronização manual:', err.message);
-    res.status(502).json({ error: 'Não foi possível carregar as empresas e filiais do Milvus agora. Tente novamente mais tarde.' });
+    res.status(err.expose ? err.statusCode || 400 : 502).json({
+      error: err.expose ? err.message : 'Não foi possível carregar as empresas e filiais do Milvus agora. Tente novamente mais tarde.'
+    });
   }
 });
 

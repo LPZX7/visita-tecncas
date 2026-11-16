@@ -303,6 +303,32 @@ async function syncMilvusClientes() {
   return { encontrados: clientes.length, novos, atualizados, ignorados, localizacoes, filiais_novas, filiais_atualizadas };
 }
 
+async function syncMilvusClienteEnderecos(empresaId) {
+  const company = await db.getCompanyById(empresaId);
+  if (!company) throw milvusError('Empresa não encontrada no sistema.', 404);
+  if (!digitsOnly(company.cnpj)) {
+    throw milvusError('Cadastre o CNPJ da empresa antes de buscar os endereços no Milvus.', 422);
+  }
+
+  const client = await buscarClientePorDocumento(company.cnpj);
+  if (!client) {
+    throw milvusError('Empresa não encontrada no Milvus pelo CNPJ cadastrado.', 404);
+  }
+
+  const addresses = addressRowsForClient(client);
+  if (!addresses.length) {
+    throw milvusError('O Milvus não retornou endereços cadastrados para esta empresa.', 422);
+  }
+
+  const result = await syncMilvusClientAddresses(client, company);
+  return {
+    empresa_id: company.id,
+    enderecos_encontrados: addresses.length,
+    filiais_novas: result.created,
+    filiais_atualizadas: result.updated
+  };
+}
+
 async function ensureRequestInMilvus(request, company, opts = {}) {
   if (request?.milvus_codigo) return request;
   if (!process.env.MILVUS_API_TOKEN) {
@@ -546,6 +572,7 @@ async function syncRequestDisapprovalToMilvus(request, { actor, previousReport }
 module.exports = {
   syncMilvusChamados,
   syncMilvusClientes,
+  syncMilvusClienteEnderecos,
   ensureRequestInMilvus,
   syncRequestAssigneeToMilvus,
   syncRequestScheduleToMilvus,

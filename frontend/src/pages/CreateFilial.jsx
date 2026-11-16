@@ -39,9 +39,9 @@ export default function CreateFilial() {
     setMilvusSyncMessage('');
     setMilvusSyncError('');
     try {
-      const { data } = await api.post('/units/sync-milvus');
-      setMilvusSyncMessage(`Milvus sincronizado: ${data.filiais_novas || 0} endereço(s) criado(s) e ${data.filiais_atualizadas || 0} atualizado(s).`);
-      load();
+      const { data } = await api.post('/units/sync-milvus', { empresa_id: empresaId });
+      setMilvusSyncMessage(`Milvus sincronizado: ${data.enderecos_encontrados} endereço(s) localizado(s), ${data.filiais_novas || 0} novo(s) e ${data.filiais_atualizadas || 0} atualizado(s).`);
+      await load();
     } catch (err) {
       setMilvusSyncError(err.response?.data?.error || 'Não foi possível sincronizar as filiais com o Milvus.');
     } finally {
@@ -216,9 +216,10 @@ export default function CreateFilial() {
     <div>
       <h2 className="page-title">Cadastrar Filial</h2>
       {isGestor && <div className="row-actions" style={{ marginBottom: 14 }}>
-        <button type="button" className="btn btn-outline" onClick={syncMilvusAddresses} disabled={syncingMilvus}>
-          {syncingMilvus ? 'Buscando endereços no Milvus…' : 'Sincronizar filiais e endereços do Milvus'}
+        <button type="button" className="btn btn-outline" onClick={syncMilvusAddresses} disabled={syncingMilvus || !empresaId}>
+          {syncingMilvus ? 'Buscando endereços no Milvus…' : 'Sincronizar endereços da empresa selecionada'}
         </button>
+        {!empresaId && <small className="detail-muted">Selecione uma empresa para buscar seus endereços no Milvus pelo CNPJ.</small>}
       </div>}
       {milvusSyncMessage && <div className="alert alert-success">{milvusSyncMessage}</div>}
       {milvusSyncError && <div className="alert alert-error">{milvusSyncError}</div>}
