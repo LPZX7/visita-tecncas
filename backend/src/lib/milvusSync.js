@@ -446,10 +446,9 @@ async function syncRequestScheduleToMilvus(request, { actor } = {}) {
       });
       lines.push(`Dias de trabalho previstos: ${workDays.join('; ')}.`);
     }
-    if (technician?.nome) lines.push(`Técnico responsável: ${technician.nome}.`);
+    if (technician?.nome) lines.push(`Técnico: ${technician.nome}.`);
     if (request.endereco) lines.push(`Endereço: ${request.endereco}.`);
-    if (actor) lines.push(`Registro atualizado por ${actor}.`);
-    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n') });
+    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n'), privado: true });
     console.log(`[milvus] Agenda do chamado #${request.numero} sincronizada com o ticket #${request.milvus_codigo}`);
     return true;
   } catch (error) {
@@ -458,24 +457,10 @@ async function syncRequestScheduleToMilvus(request, { actor } = {}) {
   }
 }
 
-async function syncRequestScheduleRemovalToMilvus(request, { actor, previousSchedule } = {}) {
-  if (!request?.milvus_codigo || !process.env.MILVUS_API_TOKEN) return false;
-  try {
-    const previous = formatPortalSchedule(previousSchedule) || previousSchedule || 'horário anterior não informado';
-    const lines = [`Visita técnica retirada da agenda do portal. Agendamento anterior: ${previous}.`];
-    if (request.assigned_technician) {
-      const technician = await db.getUserById(request.assigned_technician);
-      if (technician?.nome) lines.push(`Técnico que permanece responsável pelo chamado: ${technician.nome}.`);
-    }
-    lines.push('O chamado voltou para aberto e pode receber um novo agendamento.');
-    if (actor) lines.push(`Alteração feita por ${actor}.`);
-    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n') });
-    console.log(`[milvus] Remoção da agenda do chamado #${request.numero} registrada no ticket #${request.milvus_codigo}`);
-    return true;
-  } catch (error) {
-    console.error(`[milvus] Falha ao registrar retirada da agenda do chamado #${request.numero}:`, error.message);
-    return false;
-  }
+async function syncRequestScheduleRemovalToMilvus() {
+  // A API do Milvus não oferece uma operação documentada para excluir acompanhamentos.
+  // Não adicionamos uma segunda mensagem ao ticket quando a agenda é removida.
+  return null;
 }
 
 async function pushVisitaTecnicaAprovadaToMilvus(budget, request, company, items, opts = {}) {
