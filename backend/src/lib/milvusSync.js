@@ -391,7 +391,7 @@ async function ensureRequestInMilvus(request, company, opts = {}) {
   return updated;
 }
 
-async function syncRequestAssigneeToMilvus(request, { analyst, technician } = {}) {
+async function syncRequestAssigneeToMilvus(request, { analyst, technician, includeAccompaniment = true } = {}) {
   if (!request?.milvus_codigo) {
     throw milvusError('O chamado ainda não está vinculado ao Milvus.', 409);
   }
@@ -418,14 +418,16 @@ async function syncRequestAssigneeToMilvus(request, { analyst, technician } = {}
     await db.updateRequest(request.id, { milvus_id: resolvedMilvusId });
   }
 
-  const lines = ['Responsáveis atualizados automaticamente pelo portal Mirontec.'];
-  if (analyst) lines.push(`Analista: ${analyst.nome}.`);
-  if (technician) lines.push(`Técnico de campo: ${technician.nome}.`);
-  if (!analyst && !technician) lines.push('Chamado sem responsável atribuído no portal.');
-  try {
-    await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n'), privado: true });
-  } catch (error) {
-    console.warn(`[milvus] Responsável do ticket #${request.milvus_codigo} atualizado, mas o acompanhamento não foi criado: ${error.message}`);
+  if (includeAccompaniment) {
+    const lines = ['Responsáveis atualizados automaticamente pelo portal Mirontec.'];
+    if (analyst) lines.push(`Analista: ${analyst.nome}.`);
+    if (technician) lines.push(`Técnico de campo: ${technician.nome}.`);
+    if (!analyst && !technician) lines.push('Chamado sem responsável atribuído no portal.');
+    try {
+      await criarAcompanhamento({ ticketCodigo: request.milvus_codigo, descricao: lines.join('\n'), privado: true });
+    } catch (error) {
+      console.warn(`[milvus] Responsável do ticket #${request.milvus_codigo} atualizado, mas o acompanhamento não foi criado: ${error.message}`);
+    }
   }
 }
 

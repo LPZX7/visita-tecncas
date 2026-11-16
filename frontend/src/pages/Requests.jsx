@@ -316,7 +316,7 @@ export default function Requests() {
         agendado_para: draft.agendado_para || null,
         visita_realizada: Boolean(draft.visita_realizada),
         endereco: draft.endereco || '',
-        sincronizar_responsaveis_milvus: true
+        sincronizar_agenda_milvus: status === 'Agendada'
       });
       setDrafts((prev) => {
         const next = { ...prev };

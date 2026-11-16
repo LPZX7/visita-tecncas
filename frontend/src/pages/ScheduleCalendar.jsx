@@ -424,7 +424,7 @@ export default function ScheduleCalendar() {
         agendado_ate: proposedScheduleEnd || null,
         dias_visita: proposedWorkDays,
         endereco: bookingAddress.trim(),
-        sincronizar_responsaveis_milvus: !editingCompletedVisit
+        sincronizar_agenda_milvus: !editingCompletedVisit && !bookingVisitAlreadyDone
       };
       if (!editingCompletedVisit) {
         requestPayload.status = bookingVisitAlreadyDone ? 'Concluída' : 'Agendada';

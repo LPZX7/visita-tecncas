@@ -376,7 +376,8 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       confirmacao_tecnico,
       visita_realizada,
       confirmar_visita_atrasada,
-      sincronizar_responsaveis_milvus
+      sincronizar_responsaveis_milvus,
+      sincronizar_agenda_milvus
     } = req.body;
     const requestedScheduleChanged = (
       (agendado_para !== undefined && (agendado_para || null) !== (request.agendado_para || null))
@@ -740,7 +741,13 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
       ('assigned_analyst' in patch && patch.assigned_analyst !== request.assigned_analyst)
       || ('assigned_technician' in patch && patch.assigned_technician !== request.assigned_technician)
     );
-    const assigneeSyncRequested = assigneeChanged || sincronizar_responsaveis_milvus === true;
+    const agendaMilvusSyncRequested = !visitaConfirmadaPelaEquipe
+      && effectiveStatus === 'Agendada'
+      && (scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged
+        || (request.status !== 'Agendada' && effectiveStatus === 'Agendada')
+        || sincronizar_agenda_milvus === true);
+    const assigneeSyncRequested = assigneeChanged
+      || (sincronizar_responsaveis_milvus === true && !agendaMilvusSyncRequested);
     if (assigneeSyncRequested && req.user.role !== 'tecnico') {
       if (!request.milvus_codigo) {
         return res.status(409).json({ error: 'Vincule o chamado ao Milvus antes de definir os responsáveis' });
@@ -751,21 +758,23 @@ router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, r
         effectiveAnalystId ? db.getUserById(effectiveAnalystId) : Promise.resolve(null),
         effectiveTechnicianId ? db.getUserById(effectiveTechnicianId) : Promise.resolve(null)
       ]);
-      await syncRequestAssigneeToMilvus(request, { analyst, technician });
+      await syncRequestAssigneeToMilvus(request, {
+        analyst,
+        technician,
+        includeAccompaniment: !agendaMilvusSyncRequested
+      });
     }
 
     const updated = await db.updateRequest(request.id, patch);
     let agendaMilvusSync = null;
     let visitaMilvusSync = null;
-    const scheduleWasActivated = request.status !== 'Agendada' && updated.status === 'Agendada';
     const scheduleWasRemoved = Boolean(request.agendado_para) && !updated.agendado_para;
     if (scheduleWasRemoved) {
       agendaMilvusSync = await syncRequestScheduleRemovalToMilvus(updated, {
         actor: req.user.name || req.user.role,
         previousSchedule: request.agendado_para
       });
-    } else if ((scheduleChanged || scheduleEndChanged || scheduleDaysChanged || technicianChanged || scheduleWasActivated)
-      && updated.status === 'Agendada' && !visitaConfirmadaPelaEquipe) {
+    } else if (agendaMilvusSyncRequested && updated.status === 'Agendada') {
       agendaMilvusSync = await syncRequestScheduleToMilvus(updated, { actor: req.user.name || req.user.role });
     }
 
