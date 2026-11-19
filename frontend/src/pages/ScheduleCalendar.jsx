@@ -262,9 +262,19 @@ export default function ScheduleCalendar() {
   ].sort((a, b) => a.date.localeCompare(b.date));
   const proposedSchedule = proposedWorkDays[0] ? `${proposedWorkDays[0].date}T${proposedWorkDays[0].start}` : '';
   const proposedScheduleEnd = proposedWorkDays[0]?.end ? `${proposedWorkDays[0].date}T${proposedWorkDays[0].end}` : '';
-  const bookingSlotIsPast = Boolean(proposedSchedule && proposedSchedule < `${today}T${currentTime}`);
   const duplicateWorkDays = new Set(proposedWorkDays.map((day) => day.date)).size !== proposedWorkDays.length;
   const additionalDayBeforeStart = additionalVisitDays.some((day) => day <= selectedDate);
+  const proposedWorkDaysArePast = proposedWorkDays.length > 0 && proposedWorkDays.every((day) => (
+    `${day.date}T${day.start}` < `${today}T${currentTime}`
+    && (!day.end || `${day.date}T${day.end}` < `${today}T${currentTime}`)
+  ));
+  const canConcludeScheduledVisit = user?.role === 'gestor'
+    && bookingMode === 'request'
+    && Boolean(editingVisit)
+    && !editingVisit?.manual_visit
+    && selectedBookingRequest
+    && !['Concluída', 'Cancelada'].includes(selectedBookingRequest.status)
+    && proposedWorkDaysArePast;
   const unavailableWorkDay = proposedWorkDays.find((day) => blockedDateSet.has(day.date) && day.date >= today);
   const hasTimeConflict = !bookingVisitAlreadyDone && proposedWorkDays.some((day) => technicianVisits.some((visit) => (
     !(editingVisit?.id === visit.id)
@@ -352,15 +362,24 @@ export default function ScheduleCalendar() {
     const nextDay = new Date(`${currentDays[currentDays.length - 1]}T12:00:00`);
     nextDay.setDate(nextDay.getDate() + 1);
     setAdditionalVisitDays((days) => [...days, dateKey(nextDay)]);
+    setBookingVisitAlreadyDone(false);
   }
 
   function changeWorkDay(index, date) {
     setAdditionalVisitDays((days) => days.map((day, dayIndex) => dayIndex === index ? date : day));
+    setBookingVisitAlreadyDone(false);
   }
 
-  async function saveBooking(event) {
+  async function saveBooking(event, confirmVisitRealizada = false) {
     event.preventDefault();
-    if ((bookingMode === 'request' && !selectedBookingRequest) || !selectedDate || !selectedTechnicianId) return;
+    if ((bookingMode === 'request' && !selectedBookingRequest) || !selectedDate || !bookingTime || !selectedTechnicianId) {
+      setError('Preencha o chamado, a data, o horário e o técnico da visita.');
+      return;
+    }
+    if (!bookingAddress.trim()) {
+      setError('Informe o endereço da visita.');
+      return;
+    }
     if (duplicateWorkDays) {
       setError('Escolha datas diferentes para cada dia de trabalho.');
       return;
@@ -377,8 +396,9 @@ export default function ScheduleCalendar() {
       setError('O horário de fim precisa ser preenchido e ser depois do início.');
       return;
     }
-    if (bookingEndNotPast) {
-      setError('Como a visita já foi realizada, o horário de fim também precisa estar no passado.');
+    const confirmVisit = confirmVisitRealizada || bookingVisitAlreadyDone;
+    if ((confirmVisit && !proposedWorkDaysArePast) || (bookingVisitAlreadyDone && bookingEndNotPast)) {
+      setError('Para concluir uma visita passada, todos os dias e horários precisam estar no passado.');
       return;
     }
     setError('');
@@ -424,18 +444,18 @@ export default function ScheduleCalendar() {
         agendado_ate: proposedScheduleEnd || null,
         dias_visita: proposedWorkDays,
         endereco: bookingAddress.trim(),
-        sincronizar_agenda_milvus: !editingCompletedVisit && !bookingVisitAlreadyDone
+        sincronizar_agenda_milvus: !editingCompletedVisit && !confirmVisit
       };
       if (!editingCompletedVisit) {
-        requestPayload.status = bookingVisitAlreadyDone ? 'Concluída' : 'Agendada';
-        requestPayload.visita_realizada = bookingVisitAlreadyDone;
+        requestPayload.status = confirmVisit ? 'Concluída' : 'Agendada';
+        requestPayload.visita_realizada = confirmVisit;
       }
       const response = await api.patch(`/requests/${selectedBookingRequest.id}`, requestPayload);
       setBookingOpen(false);
       setEditingVisit(null);
       const milvusSynced = editingCompletedVisit
         ? null
-        : bookingVisitAlreadyDone
+        : confirmVisit
         ? response.data.milvus_visita_sincronizada
         : response.data.agenda_milvus_sincronizada;
       if (milvusSynced === false) {
@@ -443,7 +463,7 @@ export default function ScheduleCalendar() {
       } else {
         setSuccess(editingCompletedVisit
           ? `Agenda da visita concluída do chamado #${selectedBookingRequest.numero} atualizada. O atendimento continua concluído.`
-          : bookingVisitAlreadyDone
+          : confirmVisit
           ? `Chamado #${selectedBookingRequest.numero} registrado como visita realizada.`
           : `Chamado #${selectedBookingRequest.numero} agendado em ${proposedWorkDays.length} dia(s) de trabalho.`);
       }
@@ -775,7 +795,7 @@ export default function ScheduleCalendar() {
               <div className="schedule-booking-dialog__grid">
                 <label className="form-field">
                   Primeiro dia
-                  <input className="form-input" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} required />
+                  <input className="form-input" type="date" value={selectedDate} onChange={(event) => { setSelectedDate(event.target.value); setBookingVisitAlreadyDone(false); }} required />
                 </label>
                 <label className="form-field">
                   Horário de início
@@ -791,7 +811,7 @@ export default function ScheduleCalendar() {
                         Dia {index + 2}
                         <input className="form-input" type="date" value={day} onChange={(event) => changeWorkDay(index, event.target.value)} required />
                       </label>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setAdditionalVisitDays((days) => days.filter((_, dayIndex) => dayIndex !== index))} disabled={saving}>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => { setAdditionalVisitDays((days) => days.filter((_, dayIndex) => dayIndex !== index)); setBookingVisitAlreadyDone(false); }} disabled={saving}>
                         Remover
                       </button>
                     </div>
@@ -814,7 +834,8 @@ export default function ScheduleCalendar() {
               {bookingEndNotAfterStart && <p className="schedule-booking-dialog__conflict">O horário de fim precisa ser depois do início.</p>}
               {hasTimeConflict && <p className="schedule-booking-dialog__conflict">O técnico já tem outra visita nesse horário. Escolha outro horário.</p>}
               {editingVisit?.status === 'Concluída' && <p className="schedule-day-panel__note">{editingVisit.manual_visit ? 'A visita continuará concluída; você está alterando apenas os dados da agenda.' : 'A conclusão, o check-in e o relatório serão mantidos. Você está alterando apenas os dados da agenda.'}</p>}
-              {bookingMode === 'request' && !editingVisit && bookingSlotIsPast && (
+              {bookingMode === 'request' && user?.role === 'gestor' && proposedWorkDaysArePast
+                && !['Concluída', 'Cancelada'].includes(editingVisit?.status) && (
                 <label className="schedule-booking-dialog__completed-confirm">
                   <input type="checkbox" checked={bookingVisitAlreadyDone} onChange={(event) => setBookingVisitAlreadyDone(event.target.checked)} />
                   <span><strong>A visita já foi realizada?</strong><small>Marque para concluir o chamado. Sem marcar, ele ficará como visita atrasada e pendente.</small></span>
@@ -828,8 +849,13 @@ export default function ScheduleCalendar() {
             </div>
             <div className="checkout-modal__footer">
               <button type="button" className="btn btn-outline" onClick={closeBooking} disabled={saving}>Cancelar</button>
+              {canConcludeScheduledVisit && (
+                <button type="button" className="btn btn-primary" onClick={(event) => saveBooking(event, true)} disabled={saving || !bookingAddress.trim() || !bookingTime || duplicateWorkDays || additionalDayBeforeStart || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart))}>
+                  {saving ? 'Concluindo visita…' : 'Concluir visita'}
+                </button>
+              )}
               <button type="submit" className="btn btn-primary" disabled={saving || (bookingMode === 'request' && !selectedBookingRequest) || (bookingMode === 'manual' && !manualCompanyName.trim()) || !bookingAddress.trim() || hasTimeConflict || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart)) || bookingEndNotPast}>
-                {saving ? 'Salvando agenda…' : editingVisit ? 'Salvar alterações' : bookingMode === 'manual' ? 'Agendar visita' : bookingVisitAlreadyDone ? 'Confirmar visita realizada' : 'Confirmar agendamento'}
+                {saving ? 'Salvando agenda…' : bookingVisitAlreadyDone ? 'Concluir visita' : editingVisit ? 'Salvar alterações' : bookingMode === 'manual' ? 'Agendar visita' : 'Confirmar agendamento'}
               </button>
             </div>
           </form>
