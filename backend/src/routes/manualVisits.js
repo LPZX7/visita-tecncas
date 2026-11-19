@@ -156,6 +156,43 @@ router.post('/', requireRole('tecnico'), async (req, res, next) => {
   }
 });
 
+router.patch('/:id/conclude', requireRole('tecnico', 'gestor'), async (req, res, next) => {
+  try {
+    const existing = await db.getManualVisitById(req.params.id);
+    if (!existing || existing.status === 'Cancelada' || existing.agenda_oculta) {
+      return res.status(404).json({ error: 'Visita não encontrada na agenda.' });
+    }
+    if (req.user.role === 'tecnico' && existing.assigned_technician !== req.user.sub) {
+      return res.status(403).json({ error: 'Você só pode concluir suas próprias visitas manuais.' });
+    }
+    if (existing.status === 'Concluída') {
+      return res.status(409).json({ error: 'Esta visita já está concluída.' });
+    }
+
+    const schedule = normalizeScheduleDays(existing.dias_visita, existing.agendado_para, existing.agendado_ate);
+    if (schedule.error) return res.status(400).json({ error: schedule.error });
+    const now = currentDateTimeInSaoPaulo();
+    if (!schedule.days.length || schedule.days.some((day) => (
+      scheduleDayDateTime(day) >= now
+      || (scheduleDayEndDateTime(day) && scheduleDayEndDateTime(day) >= now)
+    ))) {
+      return res.status(409).json({ error: 'Só é possível concluir a visita depois que todos os dias e horários agendados já passaram.' });
+    }
+
+    const updated = await db.updateManualVisit(existing.id, { status: 'Concluída' });
+    await db.logAudit({
+      user: req.user,
+      acao: 'visita_manual_concluida',
+      entidade: 'manual_visit',
+      entidade_id: updated.id,
+      detalhes: `${updated.empresa_nome} — ${updated.agendado_para}${updated.agendado_ate ? ` até ${updated.agendado_ate}` : ''}; visita manual concluída por ${req.user.name || req.user.role}.`
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/:id', requireRole('tecnico', 'analista', 'gestor'), async (req, res, next) => {
   try {
     const existing = await db.getManualVisitById(req.params.id);

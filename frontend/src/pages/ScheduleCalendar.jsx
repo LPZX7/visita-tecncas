@@ -98,6 +98,20 @@ function visitVisualState(visit) {
   return { kind: 'pending', icon: '🕒', label: 'Pendente' };
 }
 
+function canConfirmVisitAsCompleted(visit, today, currentTime) {
+  const statusCanBeCompleted = visit?.manual_visit
+    ? visit.status === 'Agendada'
+    : ['Aberta', 'Agendada', 'Em Atendimento'].includes(visit?.status);
+  if (!statusCanBeCompleted) return false;
+  const days = workDaysOf(visit);
+  return days.length > 0 && days.every((day) => (
+    /^\d{4}-\d{2}-\d{2}$/.test(day.date || '')
+    && /^\d{2}:\d{2}$/.test(day.start || '')
+    && `${day.date}T${day.start}` < `${today}T${currentTime}`
+    && (!day.end || (/^\d{2}:\d{2}$/.test(day.end) && `${day.date}T${day.end}` < `${today}T${currentTime}`))
+  ));
+}
+
 function visitOverlapsBooking(visit, date, start, end) {
   if (String(visit.agendado_para).slice(0, 10) !== date) return false;
   const existingStart = timeOf(visit.agendado_para);
@@ -275,6 +289,12 @@ export default function ScheduleCalendar() {
     && selectedBookingRequest
     && !['Concluída', 'Cancelada'].includes(selectedBookingRequest.status)
     && proposedWorkDaysArePast;
+  const canConcludeManualVisit = bookingMode === 'manual'
+    && editingVisit?.manual_visit
+    && editingVisit.status === 'Agendada'
+    && proposedWorkDaysArePast
+    && (user?.role === 'gestor'
+      || (technicianMode && editingVisit.assigned_technician === user?.id));
   const unavailableWorkDay = proposedWorkDays.find((day) => blockedDateSet.has(day.date) && day.date >= today);
   const hasTimeConflict = !bookingVisitAlreadyDone && proposedWorkDays.some((day) => technicianVisits.some((visit) => (
     !(editingVisit?.id === visit.id)
@@ -422,6 +442,7 @@ export default function ScheduleCalendar() {
         };
         if (editingVisit?.manual_visit) {
           await api.patch(`/manual-visits/${editingVisit.id}`, manualVisitPayload);
+          if (confirmVisitRealizada) await api.patch(`/manual-visits/${editingVisit.id}/conclude`);
         } else {
           await api.post('/manual-visits', manualVisitPayload);
         }
@@ -430,6 +451,8 @@ export default function ScheduleCalendar() {
         setSuccess(editingVisit?.manual_visit
           ? editingCompletedManualVisit
             ? `Agenda da visita concluída para ${manualCompanyName.trim()} atualizada. O atendimento continua concluído.`
+            : confirmVisitRealizada
+              ? `Agenda da visita para ${manualCompanyName.trim()} atualizada e confirmada como concluída.`
             : `Visita para ${manualCompanyName.trim()} atualizada com ${proposedWorkDays.length} dia(s) de trabalho.`
           : `Visita para ${manualCompanyName.trim()} cadastrada com ${proposedWorkDays.length} dia(s) de trabalho.`);
         await load();
@@ -510,6 +533,35 @@ export default function ScheduleCalendar() {
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Não foi possível tirar esta visita da agenda.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmVisitCompleted(visit) {
+    if (saving || !visit) return;
+    const name = visit.manual_visit ? visit.empresa_nome : `chamado #${visit.numero}`;
+    const question = visit.manual_visit
+      ? `Confirmar que a visita de ${name} foi realizada?`
+      : `Confirmar que a visita do chamado #${visit.numero} foi realizada? O chamado será concluído e o pagamento ficará pendente até a confirmação.`;
+    if (!window.confirm(question)) return;
+    setError('');
+    setSuccess('');
+    setSaving(true);
+    try {
+      const response = visit.manual_visit
+        ? await api.patch(`/manual-visits/${visit.id}/conclude`)
+        : await api.patch(`/requests/${visit.id}`, { status: 'Concluída', visita_realizada: true });
+      await load();
+      if (!visit.manual_visit && response.data.milvus_visita_sincronizada === false) {
+        setError('A visita foi concluída no portal, mas o fechamento não foi sincronizado ao Milvus.');
+      } else {
+        setSuccess(visit.manual_visit
+          ? `Visita de ${visit.empresa_nome} confirmada como concluída.`
+          : `Visita do chamado #${visit.numero} confirmada como realizada. O pagamento continua pendente até ser confirmado.`);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível confirmar a visita como realizada.');
     } finally {
       setSaving(false);
     }
@@ -652,6 +704,9 @@ export default function ScheduleCalendar() {
                     const visitCanBeRemoved = !['Cancelada', 'Em Atendimento'].includes(visit.status);
                     const canRemoveVisit = (user?.role === 'gestor' && visitCanBeRemoved)
                       || (technicianMode && visit.assigned_technician === user?.id && visitCanBeRemoved);
+                    const canConfirmVisit = canConfirmVisitAsCompleted(visit, today, currentTime)
+                      && (user?.role === 'gestor'
+                        || (visit.manual_visit && technicianMode && visit.assigned_technician === user?.id));
                     return <article className={`schedule-visit schedule-visit--${visitVisualState(visit).kind}`} key={`${visit.id}-${visit.agendado_para}`}>
                       <div className={`schedule-visit__time schedule-visit__time--${visitVisualState(visit).kind}`}>
                         <span aria-hidden="true">{visitVisualState(visit).icon}</span> {timeRangeOf(visit)}
@@ -664,9 +719,10 @@ export default function ScheduleCalendar() {
                         <span className={`schedule-visit__status schedule-visit__status--${visitVisualState(visit).kind}`}>
                           {visit.dias_visita_total > 1 ? `Dia ${visit.dia_visita_index} de ${visit.dias_visita_total} · ` : ''}{visitVisualState(visit).label} · {visit.status}{visit.confirmacao_tecnico === 'confirmada' ? ' · Técnico confirmou' : ''}
                         </span>
-                        {(canEditVisit || canRemoveVisit) && (
+                        {(canEditVisit || canRemoveVisit || canConfirmVisit) && (
                           <div className="schedule-visit__actions">
                             {canEditVisit && <button type="button" onClick={() => openBooking(visit.manual_visit ? 'manual' : 'request', visit)} disabled={saving}>Editar</button>}
+                            {canConfirmVisit && <button type="button" className="schedule-visit__complete" onClick={() => confirmVisitCompleted(visit)} disabled={saving}>Concluir visita</button>}
                             {canRemoveVisit && <button type="button" className="schedule-visit__remove" onClick={() => removeVisit(visit)} disabled={saving}>
                               {visit.status === 'Concluída' ? 'Excluir do calendário' : 'Excluir da agenda'}
                             </button>}
@@ -851,6 +907,11 @@ export default function ScheduleCalendar() {
               <button type="button" className="btn btn-outline" onClick={closeBooking} disabled={saving}>Cancelar</button>
               {canConcludeScheduledVisit && (
                 <button type="button" className="btn btn-primary" onClick={(event) => saveBooking(event, true)} disabled={saving || !bookingAddress.trim() || !bookingTime || duplicateWorkDays || additionalDayBeforeStart || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart))}>
+                  {saving ? 'Concluindo visita…' : 'Concluir visita'}
+                </button>
+              )}
+              {canConcludeManualVisit && (
+                <button type="button" className="btn btn-primary" onClick={(event) => saveBooking(event, true)} disabled={saving || !manualCompanyName.trim() || !bookingAddress.trim() || !bookingTime || duplicateWorkDays || additionalDayBeforeStart || (bookingEndEnabled && (!bookingEndTime || bookingEndNotAfterStart))}>
                   {saving ? 'Concluindo visita…' : 'Concluir visita'}
                 </button>
               )}
