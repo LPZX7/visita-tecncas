@@ -22,6 +22,7 @@ export default function Users() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const [resendingUserId, setResendingUserId] = useState(null);
   const [editDraft, setEditDraft] = useState({ role: 'cliente', empresa_id: '', unidade_id: '', milvus_email: '', milvus_nome: '' });
 
   const load = () => {
@@ -69,6 +70,20 @@ export default function Users() {
       load();
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao atualizar usuário');
+    }
+  };
+
+  const resendWelcomeEmail = async (user) => {
+    setError('');
+    setSuccess('');
+    setResendingUserId(user.id);
+    try {
+      await api.post(`/users/${user.id}/resend-welcome`);
+      setSuccess(`E-mail de boas-vindas reenviado para ${user.email}.`);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Não foi possível reenviar o e-mail de boas-vindas.');
+    } finally {
+      setResendingUserId(null);
     }
   };
 
@@ -296,6 +311,11 @@ export default function Users() {
                     </>
                   ) : (
                     <button className="btn btn-outline btn-sm" onClick={() => startEdit(user)}>Editar</button>
+                  )}
+                  {isGestor && (
+                    <button className="btn btn-outline btn-sm" onClick={() => resendWelcomeEmail(user)} disabled={resendingUserId === user.id}>
+                      {resendingUserId === user.id ? 'Enviando...' : 'Reenviar boas-vindas'}
+                    </button>
                   )}
                   <button className="btn btn-outline btn-sm" onClick={() => toggleActive(user)}>
                     {user.ativo ? 'Desativar' : 'Ativar'}

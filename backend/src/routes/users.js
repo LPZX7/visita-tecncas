@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../lib/db');
 const { verifyToken, requireRole } = require('../lib/auth');
 const { isValidEmail, normalizeEmail } = require('../lib/contact');
+const { sendWelcomeEmail } = require('../lib/welcomeEmail');
 
 const router = express.Router();
 router.use(verifyToken);
@@ -27,6 +28,32 @@ router.get('/me', async (req, res, next) => {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
     res.json(sanitize(user));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/resend-welcome', requireRole('gestor'), async (req, res, next) => {
+  try {
+    const user = await db.getUserById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    const creator = await db.getUserById(req.user.sub);
+    const sent = await sendWelcomeEmail(user, creator);
+    await db.logAudit({
+      user: req.user,
+      acao: 'email_boas_vindas_reenviado',
+      entidade: 'user',
+      entidade_id: user.id,
+      detalhes: `${user.nome} (${user.email}) — e-mail de boas-vindas ${sent ? 'aceito pelo provedor' : 'não enviado'}`
+    });
+
+    if (!sent) {
+      return res.status(502).json({ error: 'O usuário continua cadastrado, mas o provedor não aceitou o e-mail. Corrija a conexão de envio e tente novamente.' });
+    }
+    res.json({ email_boas_vindas_enviado: true });
   } catch (err) {
     next(err);
   }
