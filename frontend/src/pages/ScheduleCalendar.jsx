@@ -188,16 +188,12 @@ export default function ScheduleCalendar() {
         .filter((company) => company.nome));
       setManualVisits(manualVisitResponse.data);
       if (canManage) {
-        const [usersResponse, unavailableResponse] = await Promise.all([
-          api.get('/users'),
-          api.get('/technician-availability/team')
-        ]);
-        const activeTechnicians = usersResponse.data.filter((entry) => (
-          entry.role === 'tecnico' && entry.ativo && entry.milvus_email && entry.milvus_nome
-        ));
+        const usersResponse = await api.get('/users');
+        const activeTechnicians = usersResponse.data.filter((entry) => entry.role === 'tecnico' && entry.ativo);
         setTechnicians(activeTechnicians);
-        setUnavailableDates(unavailableResponse.data);
         setSelectedTechnicianId((current) => current || activeTechnicians[0]?.id || '');
+        const unavailableResponse = await api.get('/technician-availability/team');
+        setUnavailableDates(unavailableResponse.data);
       } else if (technicianMode) {
         const [availabilityResponse, companyOptionsResponse] = await Promise.all([
           api.get('/technician-availability'), api.get('/manual-visits/companies')
@@ -593,10 +589,18 @@ export default function ScheduleCalendar() {
               disabled={!technicians.length}
             >
               <option value="">{technicians.length ? 'Selecione um técnico' : 'Nenhum técnico ativo'}</option>
-              {technicians.map((technician) => (
-                <option key={technician.id} value={technician.id}>{technician.nome}</option>
-              ))}
+              {technicians.map((technician) => {
+                const hasMilvusLink = technician.milvus_email && technician.milvus_nome;
+                return (
+                  <option key={technician.id} value={technician.id}>
+                    {technician.milvus_nome || technician.nome}{hasMilvusLink ? '' : ' · vínculo Milvus pendente'}
+                  </option>
+                );
+              })}
             </select>
+            {technicians.some((technician) => !technician.milvus_email || !technician.milvus_nome) && (
+              <small className="detail-muted">O gestor precisa completar o vínculo Milvus dos técnicos marcados para sincronizar chamados.</small>
+            )}
           </label>
         )}
       </div>
@@ -610,7 +614,7 @@ export default function ScheduleCalendar() {
         <section className="schedule-empty-card">
           <div className="schedule-empty-card__icon">＋</div>
           <h3>Cadastre ou ative um técnico</h3>
-          <p>Para agendar, cadastre ou ative um técnico e vincule a conta dele ao Milvus.</p>
+          <p>Não há técnicos ativos cadastrados para selecionar na agenda. Peça ao gestor para cadastrar ou ativar um técnico.</p>
           <Link className="btn btn-primary" to="/users">Abrir usuários</Link>
         </section>
       ) : (
